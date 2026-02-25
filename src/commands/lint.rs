@@ -4,7 +4,7 @@ use crate::lint::{LintEngine, Severity};
 use crate::ui;
 use std::path::Path;
 
-pub fn run(path: &Path, rule: Option<String>, quiet: bool, format: &str) -> Result<()> {
+pub fn run(path: &Path, rule: Option<&str>, quiet: bool, format: &str) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
     let (config, _) = StrataConfig::load(&root)?;
     let scan = crate::scanner::scan_project(&root, &config)?;
@@ -13,13 +13,13 @@ pub fn run(path: &Path, rule: Option<String>, quiet: bool, format: &str) -> Resu
     let mut diagnostics = engine.run(&scan, &root, &config);
 
     // Filter by rule if specified
-    if let Some(ref rule_name) = rule {
-        diagnostics.retain(|d| d.rule == *rule_name);
+    if let Some(rule_name) = rule {
+        diagnostics.retain(|d| d.rule == rule_name);
     }
 
     if format == "json" {
         let json = serde_json::to_string_pretty(&diagnostics).unwrap_or_else(|_| "[]".to_string());
-        println!("{}", json);
+        println!("{json}");
     } else if !quiet {
         ui::header("Lint Diagnostics");
 
@@ -53,14 +53,14 @@ pub fn run(path: &Path, rule: Option<String>, quiet: bool, format: &str) -> Resu
     } else {
         if !quiet && format != "json" {
             if warnings > 0 {
-                ui::warning(&format!("{} warning(s)", warnings));
+                ui::warning(&format!("{warnings} warning(s)"));
             }
             let infos = diagnostics
                 .iter()
                 .filter(|d| d.severity == Severity::Info)
                 .count();
             if infos > 0 {
-                ui::info(&format!("{} info(s)", infos));
+                ui::info(&format!("{infos} info(s)"));
             }
         }
         Ok(())

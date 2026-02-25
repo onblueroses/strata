@@ -6,7 +6,7 @@ use std::path::Path;
 pub struct IndexFreshness;
 
 impl LintRule for IndexFreshness {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "index-freshness"
     }
 
@@ -28,7 +28,7 @@ impl LintRule for IndexFreshness {
                 Diagnostic {
                     rule: self.name().to_string(),
                     severity: self.severity(),
-                    message: format!("File not listed in INDEX.md: {}", rel),
+                    message: format!("File not listed in INDEX.md: {rel}"),
                     location: "INDEX.md".to_string(),
                 }
             })

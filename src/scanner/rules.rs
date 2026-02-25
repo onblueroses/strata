@@ -3,7 +3,10 @@ use std::path::Path;
 
 /// Parsed content of a RULES.md file.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "purpose_text and boundaries_text are public API for future lint rules"
+)]
 pub struct DomainRules {
     pub has_purpose: bool,
     pub has_boundaries: bool,
@@ -35,9 +38,8 @@ pub fn parse_rules(path: &Path) -> Result<DomainRules> {
                 has_boundaries = true;
                 current_section = Some("boundaries");
                 continue;
-            } else {
-                current_section = None;
             }
+            current_section = None;
         }
 
         match current_section {

@@ -6,7 +6,7 @@ use std::path::Path;
 pub struct DeadLinks;
 
 impl LintRule for DeadLinks {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "dead-links"
     }
 
@@ -20,7 +20,7 @@ impl LintRule for DeadLinks {
             .map(|(source, target)| Diagnostic {
                 rule: self.name().to_string(),
                 severity: self.severity(),
-                message: format!("Dead crosslink to '{}'", target),
+                message: format!("Dead crosslink to '{target}'"),
                 location: source.to_string_lossy().replace('\\', "/"),
             })
             .collect()

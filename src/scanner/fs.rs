@@ -42,10 +42,10 @@ fn build_ignore_set(patterns: &[String]) -> Result<globset::GlobSet> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         // Match both as exact name and as glob
-        let glob = Glob::new(pattern).or_else(|_| Glob::new(&format!("**/{}", pattern)))?;
+        let glob = Glob::new(pattern).or_else(|_| Glob::new(&format!("**/{pattern}")))?;
         builder.add(glob);
         // Also add a variant that matches directory prefix
-        if let Ok(g) = Glob::new(&format!("{}/**", pattern)) {
+        if let Ok(g) = Glob::new(&format!("{pattern}/**")) {
             builder.add(g);
         }
     }
@@ -64,6 +64,6 @@ fn should_ignore(rel_path: &str, ignore_set: &globset::GlobSet) -> bool {
 
 impl From<globset::Error> for crate::error::StrataError {
     fn from(e: globset::Error) -> Self {
-        crate::error::StrataError::General(format!("Glob pattern error: {}", e))
+        crate::error::StrataError::General(format!("Glob pattern error: {e}"))
     }
 }

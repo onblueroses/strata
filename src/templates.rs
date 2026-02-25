@@ -1,4 +1,5 @@
 use crate::config::DomainConfig;
+use std::fmt::Write as _;
 
 const PROJECT_MD_TMPL: &str = include_str!("../templates/PROJECT.md.tmpl");
 const INDEX_MD_TMPL: &str = include_str!("../templates/INDEX.md.tmpl");
@@ -14,10 +15,11 @@ pub fn render_index_md(project_name: &str, domains: &[DomainConfig]) -> String {
     let mut entries = String::new();
     for domain in domains {
         let dir_name = format!("{}-{}", domain.prefix, domain.name);
-        entries.push_str(&format!(
-            "| `{}/RULES.md` | Domain rules for {} |\n",
-            dir_name, domain.name
-        ));
+        let _ = writeln!(
+            entries,
+            "| `{dir_name}/RULES.md` | Domain rules for {} |",
+            domain.name
+        );
     }
 
     INDEX_MD_TMPL

@@ -14,47 +14,47 @@ pub fn run(path: &Path) -> Result<()> {
     let mut issues = 0;
 
     // Check 1: INDEX.md exists
-    if !root.join("INDEX.md").exists() {
+    if root.join("INDEX.md").exists() {
+        ui::success("INDEX.md exists");
+    } else {
         ui::error("INDEX.md is missing");
         issues += 1;
-    } else {
-        ui::success("INDEX.md exists");
     }
 
     // Check 2: PROJECT.md exists
-    if !root.join("PROJECT.md").exists() {
+    if root.join("PROJECT.md").exists() {
+        ui::success("PROJECT.md exists");
+    } else {
         ui::error("PROJECT.md is missing");
         issues += 1;
-    } else {
-        ui::success("PROJECT.md exists");
     }
 
     // Check 3: Every domain has RULES.md
     for domain in &config.project.domains {
         let dir_name = format!("{}-{}", domain.prefix, domain.name);
         let rules_path = root.join(&dir_name).join("RULES.md");
-        if !rules_path.exists() {
-            ui::error(&format!("{}/RULES.md is missing", dir_name));
-            issues += 1;
+        if rules_path.exists() {
+            ui::success(&format!("{dir_name}/RULES.md exists"));
         } else {
-            ui::success(&format!("{}/RULES.md exists", dir_name));
+            ui::error(&format!("{dir_name}/RULES.md is missing"));
+            issues += 1;
         }
     }
 
     // Check 4: No dead crosslinks
     let dead_links = scan.dead_links();
-    if !dead_links.is_empty() {
+    if dead_links.is_empty() {
+        ui::success("No dead crosslinks");
+    } else {
         for (source, target) in &dead_links {
             ui::error(&format!("Dead link: {} -> {}", source.display(), target));
         }
         issues += dead_links.len();
-    } else {
-        ui::success("No dead crosslinks");
     }
 
     println!();
     if issues > 0 {
-        ui::error(&format!("{} issue(s) found", issues));
+        ui::error(&format!("{issues} issue(s) found"));
         Err(StrataError::CheckFailed(issues))
     } else {
         ui::success("All structural checks passed");

@@ -40,7 +40,7 @@ pub fn run(path: &Path, name: Option<String>, domains: Option<Vec<String>>) -> R
         })
         .collect();
 
-    ui::header(&format!("Initializing strata project: {}", project_name));
+    ui::header(&format!("Initializing strata project: {project_name}"));
 
     // Create directory structure
     create_directories(&path, &domain_configs)?;
@@ -120,7 +120,7 @@ fn create_directories(root: &Path, domains: &[DomainConfig]) -> Result<()> {
     for domain in domains {
         let dir_name = format!("{}-{}", domain.prefix, domain.name);
         fs::create_dir_all(root.join(&dir_name))?;
-        ui::file_action("create", &format!("{}/", dir_name));
+        ui::file_action("create", &format!("{dir_name}/"));
     }
 
     Ok(())
@@ -142,7 +142,7 @@ fn generate_files(root: &Path, project_name: &str, domains: &[DomainConfig]) -> 
         let dir_name = format!("{}-{}", domain.prefix, domain.name);
         let rules_md = templates::render_rules_md(&domain.name);
         fs::write(root.join(&dir_name).join("RULES.md"), rules_md)?;
-        ui::file_action("create", &format!("{}/RULES.md", dir_name));
+        ui::file_action("create", &format!("{dir_name}/RULES.md"));
     }
 
     // Default .gitignore

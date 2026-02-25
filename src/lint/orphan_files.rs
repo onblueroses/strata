@@ -6,7 +6,7 @@ use std::path::Path;
 pub struct OrphanFiles;
 
 impl LintRule for OrphanFiles {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "orphan-files"
     }
 

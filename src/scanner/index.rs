@@ -3,13 +3,16 @@ use std::path::Path;
 
 /// A single entry from INDEX.md.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct IndexEntry {
     pub path: String,
+    #[expect(
+        dead_code,
+        reason = "used in tests and available for future lint rules"
+    )]
     pub description: String,
 }
 
-/// Parse INDEX.md table rows into IndexEntry structs.
+/// Parse INDEX.md table rows into `IndexEntry` structs.
 /// Expected format: | `path/to/file` | Description text |
 pub fn parse_index(index_path: &Path) -> Result<Vec<IndexEntry>> {
     let content = std::fs::read_to_string(index_path)?;

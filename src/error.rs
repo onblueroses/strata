@@ -37,7 +37,7 @@ pub enum StrataError {
 
 impl From<dialoguer::Error> for StrataError {
     fn from(e: dialoguer::Error) -> Self {
-        StrataError::General(format!("Prompt error: {}", e))
+        StrataError::General(format!("Prompt error: {e}"))
     }
 }
 

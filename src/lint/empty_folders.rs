@@ -6,7 +6,7 @@ use std::path::Path;
 pub struct EmptyFolders;
 
 impl LintRule for EmptyFolders {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "empty-folders"
     }
 
@@ -31,7 +31,7 @@ impl LintRule for EmptyFolders {
                     rule: self.name().to_string(),
                     severity: self.severity(),
                     message: format!("Domain '{}' has no content files", domain.name),
-                    location: format!("{}/", dir_name),
+                    location: format!("{dir_name}/"),
                 });
             }
         }

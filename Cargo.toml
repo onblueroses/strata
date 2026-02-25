@@ -34,3 +34,28 @@ assert_fs = "1"
 lto = true
 strip = true
 codegen-units = 1
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+panic_in_result_fn = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+# CLI tool - stdout/stderr is the primary output, not a mistake
+print_stdout = "allow"
+print_stderr = "allow"
+# Pedantic overrides - too noisy, low signal
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+cast_precision_loss = "allow"
+cast_possible_wrap = "allow"
+
+[lints.rust]
+missing_debug_implementations = "warn"

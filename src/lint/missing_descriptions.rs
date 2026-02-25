@@ -6,7 +6,7 @@ use std::path::Path;
 pub struct MissingDescriptions;
 
 impl LintRule for MissingDescriptions {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "missing-descriptions"
     }
 

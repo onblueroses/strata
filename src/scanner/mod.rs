@@ -16,7 +16,7 @@ pub struct ProjectScan {
     pub files: Vec<PathBuf>,
     /// Parsed INDEX.md entries.
     pub index_entries: Vec<index::IndexEntry>,
-    /// Crosslinks found: (source_file, target_path_string).
+    /// Crosslinks found: (`source_file`, `target_path_string`).
     pub crosslinks: Vec<(PathBuf, String)>,
     /// Frontmatter/description per file.
     pub descriptions: HashMap<PathBuf, Option<String>>,
@@ -38,8 +38,7 @@ impl ProjectScan {
                     .root
                     .join(source)
                     .parent()
-                    .map(|p| p.to_path_buf())
-                    .unwrap_or_else(|| self.root.clone());
+                    .map_or_else(|| self.root.clone(), std::path::Path::to_path_buf);
                 let resolved = source_dir.join(target);
                 // Canonicalize to handle ../ etc., fallback to simple exists check
                 let exists = resolved.canonicalize().map(|p| p.exists()).unwrap_or(false)

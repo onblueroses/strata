@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::scanner;
 use crate::templates;
 use crate::ui;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
@@ -41,13 +42,13 @@ pub fn run(path: &Path, dry_run: bool) -> Result<()> {
         let rules_path = root.join(&dir_name).join("RULES.md");
         if !rules_path.exists() {
             if dry_run {
-                ui::info(&format!("Would create {}/RULES.md", dir_name));
+                ui::info(&format!("Would create {dir_name}/RULES.md"));
             } else {
                 // Ensure domain directory exists
                 fs::create_dir_all(root.join(&dir_name))?;
                 let content = templates::render_rules_md(&domain.name);
                 fs::write(&rules_path, content)?;
-                ui::success(&format!("Created {}/RULES.md", dir_name));
+                ui::success(&format!("Created {dir_name}/RULES.md"));
             }
             fixes += 1;
         }
@@ -81,9 +82,9 @@ pub fn run(path: &Path, dry_run: bool) -> Result<()> {
     if fixes == 0 {
         ui::success("Nothing to fix");
     } else if dry_run {
-        ui::info(&format!("{} fix(es) would be applied", fixes));
+        ui::info(&format!("{fixes} fix(es) would be applied"));
     } else {
-        ui::success(&format!("{} fix(es) applied", fixes));
+        ui::success(&format!("{fixes} fix(es) applied"));
     }
 
     Ok(())
@@ -103,7 +104,7 @@ fn append_to_index(root: &Path, files: &[std::path::PathBuf]) -> Result<()> {
             .unwrap_or(file)
             .to_string_lossy()
             .replace('\\', "/");
-        content.push_str(&format!("| `{}` | *TODO: add description* |\n", relative));
+        let _ = writeln!(content, "| `{relative}` | *TODO: add description* |");
     }
 
     fs::write(&index_path, content)?;
@@ -117,11 +118,11 @@ fn remove_link_from_file(file: &Path, target: &str) -> Result<()> {
     let mut result = content.clone();
 
     // Remove [[wiki-link]] style
-    let wiki_pattern = format!("[[{}]]", target);
+    let wiki_pattern = format!("[[{target}]]");
     result = result.replace(&wiki_pattern, "");
 
     // Remove [text](target) style - more careful replacement
-    let md_link_pattern = format!("({})", target);
+    let md_link_pattern = format!("({target})");
     let lines: Vec<String> = result
         .lines()
         .map(|line| {

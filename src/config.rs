@@ -91,10 +91,10 @@ impl StrataConfig {
     /// Find the project root (directory containing strata.toml).
     pub fn find_root(dir: &Path) -> Result<PathBuf> {
         let config_path = find_config(dir)?;
-        Ok(config_path
+        config_path
             .parent()
-            .expect("config path has parent")
-            .to_path_buf())
+            .map(Path::to_path_buf)
+            .ok_or_else(|| StrataError::General("config path has no parent".to_string()))
     }
 }
 

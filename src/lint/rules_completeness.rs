@@ -6,7 +6,7 @@ use std::path::Path;
 pub struct RulesCompleteness;
 
 impl LintRule for RulesCompleteness {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "rules-completeness"
     }
 
@@ -27,7 +27,7 @@ impl LintRule for RulesCompleteness {
                         rule: self.name().to_string(),
                         severity: self.severity(),
                         message: format!("RULES.md missing for domain '{}'", domain.name),
-                        location: format!("{}/RULES.md", dir_name),
+                        location: format!("{dir_name}/RULES.md"),
                     });
                 }
                 Some(rules) => {
@@ -39,7 +39,7 @@ impl LintRule for RulesCompleteness {
                                 "RULES.md for '{}' is missing a Purpose section",
                                 domain.name
                             ),
-                            location: format!("{}/RULES.md", dir_name),
+                            location: format!("{dir_name}/RULES.md"),
                         });
                     }
                     if !rules.has_boundaries {
@@ -50,7 +50,7 @@ impl LintRule for RulesCompleteness {
                                 "RULES.md for '{}' is missing a Boundaries section",
                                 domain.name
                             ),
-                            location: format!("{}/RULES.md", dir_name),
+                            location: format!("{dir_name}/RULES.md"),
                         });
                     }
                 }

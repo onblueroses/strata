@@ -25,7 +25,7 @@ pub fn header(msg: &str) {
     println!("\n{}", style.apply_to(msg));
 }
 
-#[allow(dead_code)]
+#[expect(dead_code, reason = "utility function for future UI enhancements")]
 pub fn dim(msg: &str) {
     let style = Style::new().dim();
     println!("  {}", style.apply_to(msg));
