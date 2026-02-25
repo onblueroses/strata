@@ -1,0 +1,16 @@
+#!/bin/sh
+# strata pre-commit hook - validates project structure before commit
+# Installed by: strata install-hooks
+
+set -e
+
+echo "Running strata check..."
+
+if ! command -v strata &> /dev/null; then
+    echo "Warning: strata not found in PATH, skipping structural check"
+    exit 0
+fi
+
+strata check
+
+echo "Structural check passed."
