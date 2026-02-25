@@ -113,7 +113,11 @@ fn append_to_index(root: &Path, files: &[std::path::PathBuf]) -> Result<()> {
 
 fn remove_link_from_file(file: &Path, target: &str) -> Result<()> {
     let content = fs::read_to_string(file)?;
-    let line_ending = if content.contains("\r\n") { "\r\n" } else { "\n" };
+    let line_ending = if content.contains("\r\n") {
+        "\r\n"
+    } else {
+        "\n"
+    };
 
     // Remove [[wiki-link]] style
     let wiki_pattern = format!("[[{target}]]");
