@@ -67,7 +67,7 @@ pub fn run(path: &Path, dry_run: bool) -> Result<()> {
             }
         } else {
             for (source, target) in &dead_links {
-                remove_link_from_file(source, target)?;
+                remove_link_from_file(&root.join(source), target)?;
                 ui::success(&format!(
                     "Removed dead link in {}: {}",
                     source.display(),
