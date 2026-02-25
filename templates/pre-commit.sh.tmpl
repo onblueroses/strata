@@ -6,7 +6,7 @@ set -e
 
 echo "Running strata check..."
 
-if ! command -v strata &> /dev/null; then
+if ! command -v strata > /dev/null 2>&1; then
     echo "Warning: strata not found in PATH, skipping structural check"
     exit 0
 fi

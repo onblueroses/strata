@@ -1,5 +1,20 @@
 use clap::{Parser, Subcommand};
 
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum OutputFormat {
+    Text,
+    Json,
+}
+
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutputFormat::Text => write!(f, "text"),
+            OutputFormat::Json => write!(f, "json"),
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(
     name = "strata",
@@ -51,8 +66,8 @@ pub enum Command {
         quiet: bool,
 
         /// Output format (text or json)
-        #[arg(long, default_value = "text")]
-        format: String,
+        #[arg(long, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
     },
 
     /// Auto-repair common structural issues

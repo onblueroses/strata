@@ -113,44 +113,47 @@ fn append_to_index(root: &Path, files: &[std::path::PathBuf]) -> Result<()> {
 
 fn remove_link_from_file(file: &Path, target: &str) -> Result<()> {
     let content = fs::read_to_string(file)?;
-    // Remove markdown links: [text](target)
-    let pattern_md = format!("[{}]({})", "", target);
-    let mut result = content.clone();
+    let line_ending = if content.contains("\r\n") { "\r\n" } else { "\n" };
 
     // Remove [[wiki-link]] style
     let wiki_pattern = format!("[[{target}]]");
-    result = result.replace(&wiki_pattern, "");
+    let content = content.replace(&wiki_pattern, "");
 
-    // Remove [text](target) style - more careful replacement
-    let md_link_pattern = format!("({target})");
-    let lines: Vec<String> = result
+    // Remove [text](target) style
+    let needle = format!("]({target})");
+    let lines: Vec<String> = content
         .lines()
         .map(|line| {
-            if line.contains(&md_link_pattern) {
-                // Remove the entire markdown link [text](target)
-                let mut l = line.to_string();
-                while let Some(start) = l.find('[') {
-                    if let Some(mid) = l[start..].find("](") {
-                        let mid_abs = start + mid;
-                        let target_start = mid_abs + 2;
-                        if l[target_start..].starts_with(target) {
-                            let end = target_start + target.len();
-                            if l.as_bytes().get(end) == Some(&b')') {
-                                l = format!("{}{}", &l[..start], &l[end + 1..]);
-                                continue;
-                            }
-                        }
-                    }
-                    break;
-                }
-                l
+            if line.contains(&needle) {
+                remove_md_links(line, target)
             } else {
                 line.to_string()
             }
         })
         .collect();
 
-    let _ = pattern_md; // suppress unused warning
-    fs::write(file, lines.join("\n"))?;
+    let mut output = lines.join(line_ending);
+    if content.ends_with('\n') || content.ends_with("\r\n") {
+        output.push_str(line_ending);
+    }
+
+    fs::write(file, output)?;
     Ok(())
+}
+
+fn remove_md_links(line: &str, target: &str) -> String {
+    let needle = format!("]({target})");
+    let mut result = line.to_string();
+
+    while let Some(close_bracket) = result.find(&needle) {
+        let before = &result[..close_bracket];
+        if let Some(open_bracket) = before.rfind('[') {
+            let end = close_bracket + needle.len();
+            result = format!("{}{}", &result[..open_bracket], &result[end..]);
+        } else {
+            break;
+        }
+    }
+
+    result
 }

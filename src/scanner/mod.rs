@@ -41,8 +41,7 @@ impl ProjectScan {
                     .map_or_else(|| self.root.clone(), std::path::Path::to_path_buf);
                 let resolved = source_dir.join(target);
                 // Canonicalize to handle ../ etc., fallback to simple exists check
-                let exists = resolved.canonicalize().map(|p| p.exists()).unwrap_or(false)
-                    || resolved.exists();
+                let exists = resolved.canonicalize().is_ok() || resolved.exists();
                 !exists
             })
             .map(|(source, target)| (source.clone(), target.clone()))
@@ -61,13 +60,7 @@ impl ProjectScan {
             .iter()
             .filter(|f| {
                 let rel = f.to_string_lossy().replace('\\', "/");
-                // Skip meta files
-                !rel.ends_with("INDEX.md")
-                    && !rel.ends_with("PROJECT.md")
-                    && !rel.ends_with("RULES.md")
-                    && !rel.ends_with("strata.toml")
-                    && !rel.ends_with(".gitignore")
-                    && !indexed.contains(&rel)
+                !is_meta_file(f) && !indexed.contains(&rel)
             })
             .map(|f| root.join(f))
             .collect()
@@ -91,14 +84,7 @@ impl ProjectScan {
             .iter()
             .filter(|f| {
                 let rel = f.to_string_lossy().replace('\\', "/");
-                // Skip meta files
-                !rel.ends_with("INDEX.md")
-                    && !rel.ends_with("PROJECT.md")
-                    && !rel.ends_with("RULES.md")
-                    && !rel.ends_with("strata.toml")
-                    && !rel.ends_with(".gitignore")
-                    && !indexed.contains(&rel)
-                    && !referenced.contains(&rel)
+                !is_meta_file(f) && !indexed.contains(&rel) && !referenced.contains(&rel)
             })
             .cloned()
             .collect()
@@ -158,6 +144,17 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
         domain_rules,
         root: root.to_path_buf(),
     })
+}
+
+fn is_meta_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|name| {
+            matches!(
+                name,
+                "INDEX.md" | "PROJECT.md" | "RULES.md" | "strata.toml" | ".gitignore"
+            )
+        })
 }
 
 fn is_scannable_file(path: &Path) -> bool {

@@ -1,10 +1,11 @@
+use crate::cli::OutputFormat;
 use crate::config::StrataConfig;
 use crate::error::{Result, StrataError};
 use crate::lint::{LintEngine, Severity};
 use crate::ui;
 use std::path::Path;
 
-pub fn run(path: &Path, rule: Option<&str>, quiet: bool, format: &str) -> Result<()> {
+pub fn run(path: &Path, rule: Option<&str>, quiet: bool, format: OutputFormat) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
     let (config, _) = StrataConfig::load(&root)?;
     let scan = crate::scanner::scan_project(&root, &config)?;
@@ -17,7 +18,7 @@ pub fn run(path: &Path, rule: Option<&str>, quiet: bool, format: &str) -> Result
         diagnostics.retain(|d| d.rule == rule_name);
     }
 
-    if format == "json" {
+    if matches!(format, OutputFormat::Json) {
         let json = serde_json::to_string_pretty(&diagnostics).unwrap_or_else(|_| "[]".to_string());
         println!("{json}");
     } else if !quiet {
@@ -51,7 +52,7 @@ pub fn run(path: &Path, rule: Option<&str>, quiet: bool, format: &str) -> Result
     if errors > 0 || (config.lint.strict && warnings > 0) {
         Err(StrataError::LintFailed { errors, warnings })
     } else {
-        if !quiet && format != "json" {
+        if !quiet && matches!(format, OutputFormat::Text) {
             if warnings > 0 {
                 ui::warning(&format!("{warnings} warning(s)"));
             }

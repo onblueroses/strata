@@ -36,6 +36,14 @@ pub struct LintEngine {
     rules: Vec<Box<dyn LintRule>>,
 }
 
+impl std::fmt::Debug for LintEngine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LintEngine")
+            .field("rules", &format!("[{} rules]", self.rules.len()))
+            .finish()
+    }
+}
+
 impl LintEngine {
     pub fn new(config: &StrataConfig) -> Self {
         let all_rules: Vec<Box<dyn LintRule>> = vec![
