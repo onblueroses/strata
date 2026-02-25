@@ -5,3 +5,8 @@
 *~
 .DS_Store
 Thumbs.db
+
+# Secrets and agent files
+.env
+.claude/
+CLAUDE.md
