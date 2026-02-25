@@ -55,7 +55,7 @@ pub fn run(path: &Path, dry_run: bool) -> Result<()> {
     }
 
     // Fix 3: Remove dead links
-    let dead_links = scan.dead_links();
+    let dead_links = scan.dead_links(config.structure.link_mode);
     if !dead_links.is_empty() {
         if dry_run {
             for (source, target) in &dead_links {

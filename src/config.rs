@@ -27,6 +27,16 @@ pub struct DomainConfig {
     pub prefix: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LinkMode {
+    /// Resolve links as relative paths from the source file (default for code projects).
+    #[default]
+    Path,
+    /// Resolve links by matching filename anywhere in the project (Obsidian/vault behavior).
+    Name,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructureConfig {
     /// Glob patterns for files/dirs to ignore during scanning.
@@ -36,6 +46,15 @@ pub struct StructureConfig {
     /// Whether to require frontmatter descriptions in all files.
     #[serde(default)]
     pub require_descriptions: bool,
+
+    /// How crosslinks are resolved: "path" (relative paths) or "name" (filename match).
+    #[serde(default)]
+    pub link_mode: LinkMode,
+
+    /// File extensions to scan for crosslinks and descriptions.
+    /// Overrides the built-in default list when specified.
+    #[serde(default = "default_scan_extensions")]
+    pub scan_extensions: Vec<String>,
 }
 
 impl Default for StructureConfig {
@@ -43,6 +62,8 @@ impl Default for StructureConfig {
         Self {
             ignore: default_ignore_patterns(),
             require_descriptions: false,
+            link_mode: LinkMode::default(),
+            scan_extensions: default_scan_extensions(),
         }
     }
 }
@@ -67,6 +88,16 @@ fn default_ignore_patterns() -> Vec<String> {
         ".DS_Store".to_string(),
         "Thumbs.db".to_string(),
     ]
+}
+
+fn default_scan_extensions() -> Vec<String> {
+    [
+        "md", "txt", "rs", "py", "js", "ts", "jsx", "tsx", "html", "css", "sh", "bash", "zsh",
+        "go", "rb", "java", "c", "cpp", "h", "hpp",
+    ]
+    .iter()
+    .map(|s| (*s).to_string())
+    .collect()
 }
 
 impl StrataConfig {

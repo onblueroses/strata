@@ -14,8 +14,8 @@ impl LintRule for DeadLinks {
         Severity::Error
     }
 
-    fn check(&self, scan: &ProjectScan, _root: &Path, _config: &StrataConfig) -> Vec<Diagnostic> {
-        scan.dead_links()
+    fn check(&self, scan: &ProjectScan, _root: &Path, config: &StrataConfig) -> Vec<Diagnostic> {
+        scan.dead_links(config.structure.link_mode)
             .iter()
             .map(|(source, target)| Diagnostic {
                 rule: self.name().to_string(),

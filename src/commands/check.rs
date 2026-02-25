@@ -42,7 +42,7 @@ pub fn run(path: &Path) -> Result<()> {
     }
 
     // Check 4: No dead crosslinks
-    let dead_links = scan.dead_links();
+    let dead_links = scan.dead_links(config.structure.link_mode);
     if dead_links.is_empty() {
         ui::success("No dead crosslinks");
     } else {

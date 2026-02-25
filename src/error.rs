@@ -40,12 +40,3 @@ impl From<dialoguer::Error> for StrataError {
         StrataError::General(format!("Prompt error: {e}"))
     }
 }
-
-impl From<walkdir::Error> for StrataError {
-    fn from(e: walkdir::Error) -> Self {
-        match e.into_io_error() {
-            Some(io_err) => StrataError::Io(io_err),
-            None => StrataError::General("walkdir error".to_string()),
-        }
-    }
-}

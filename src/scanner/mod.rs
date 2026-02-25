@@ -4,9 +4,9 @@ pub mod index;
 pub mod links;
 pub mod rules;
 
-use crate::config::StrataConfig;
+use crate::config::{LinkMode, StrataConfig};
 use crate::error::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Result of scanning an entire project.
@@ -28,21 +28,65 @@ pub struct ProjectScan {
 
 impl ProjectScan {
     /// Find crosslinks that point to non-existent files.
-    /// Resolves link targets relative to the source file's directory.
-    pub fn dead_links(&self) -> Vec<(PathBuf, String)> {
+    /// Resolution strategy depends on `link_mode`:
+    /// - `Path`: resolve relative to source file's directory (default for code projects)
+    /// - `Name`: search by filename anywhere in the project (Obsidian/vault behavior)
+    ///
+    /// In both modes, if a target doesn't resolve, tries appending `.md` extension.
+    pub fn dead_links(&self, link_mode: LinkMode) -> Vec<(PathBuf, String)> {
+        // Pre-build a filename lookup set for Name mode
+        let filename_set: HashSet<String> = if link_mode == LinkMode::Name {
+            self.files
+                .iter()
+                .filter_map(|f| {
+                    f.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(std::string::ToString::to_string)
+                })
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
         self.crosslinks
             .iter()
             .filter(|(source, target)| {
-                // Resolve relative to source file's parent directory
-                let source_dir = self
-                    .root
-                    .join(source)
-                    .parent()
-                    .map_or_else(|| self.root.clone(), std::path::Path::to_path_buf);
-                let resolved = source_dir.join(target);
-                // Canonicalize to handle ../ etc., fallback to simple exists check
-                let exists = resolved.canonicalize().is_ok() || resolved.exists();
-                !exists
+                match link_mode {
+                    LinkMode::Path => {
+                        let source_dir = self
+                            .root
+                            .join(source)
+                            .parent()
+                            .map_or_else(|| self.root.clone(), Path::to_path_buf);
+                        let resolved = source_dir.join(target);
+                        // Try exact path, then with .md extension
+                        let exists = resolved.canonicalize().is_ok()
+                            || resolved.exists()
+                            || {
+                                let with_md =
+                                    resolved.with_file_name(format!(
+                                        "{}.md",
+                                        resolved
+                                            .file_name()
+                                            .unwrap_or_default()
+                                            .to_string_lossy()
+                                    ));
+                                with_md.canonicalize().is_ok() || with_md.exists()
+                            };
+                        !exists
+                    }
+                    LinkMode::Name => {
+                        // Try exact filename match, then with .md extension
+                        let name = Path::new(target)
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
+                        let exists = filename_set.contains(&name)
+                            || filename_set.contains(&format!("{name}.md"));
+                        !exists
+                    }
+                }
             })
             .map(|(source, target)| (source.clone(), target.clone()))
             .collect()
@@ -107,9 +151,10 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
     let mut crosslinks = Vec::new();
     let mut descriptions = HashMap::new();
 
+    let scan_exts = &config.structure.scan_extensions;
     for file in &files {
         let abs_path = root.join(file);
-        if abs_path.is_file() && is_scannable_file(file) {
+        if abs_path.is_file() && is_scannable_file(file, scan_exts) {
             if let Ok(content) = std::fs::read_to_string(&abs_path) {
                 // Parse crosslinks
                 let file_links = links::parse_links(&content);
@@ -157,33 +202,9 @@ fn is_meta_file(path: &Path) -> bool {
         })
 }
 
-fn is_scannable_file(path: &Path) -> bool {
+fn is_scannable_file(path: &Path, scan_extensions: &[String]) -> bool {
     match path.extension().and_then(|e| e.to_str()) {
-        // Only scan files that plausibly contain markdown crosslinks.
-        // Exclude config formats (toml, yaml, json) - they use [[]] and []() for
-        // different purposes and generate false positive crosslinks.
-        Some(ext) => matches!(
-            ext,
-            "md" | "txt"
-                | "rs"
-                | "py"
-                | "js"
-                | "ts"
-                | "jsx"
-                | "tsx"
-                | "html"
-                | "css"
-                | "sh"
-                | "bash"
-                | "zsh"
-                | "go"
-                | "rb"
-                | "java"
-                | "c"
-                | "cpp"
-                | "h"
-                | "hpp"
-        ),
+        Some(ext) => scan_extensions.iter().any(|allowed| allowed == ext),
         None => false,
     }
 }

@@ -1,39 +1,62 @@
 /// Parse crosslinks from file content.
 /// Supports:
-/// - Markdown links: [text](path)
-/// - Wiki links: [[path]]
+/// - Markdown links: `[text](path)`
+/// - Wiki links: `[[path]]`
+///
+/// Skips links inside fenced code blocks and inline code spans.
+/// Skips absolute URL-style paths (starting with `/`).
 pub fn parse_links(content: &str) -> Vec<String> {
+    let cleaned = strip_code_regions(content);
     let mut links = Vec::new();
 
-    // Markdown links: [text](path)
-    // Skip external URLs (http://, https://, mailto:)
-    let chars = content.char_indices().peekable();
-    for (i, ch) in chars {
-        if ch == '[' {
-            // Find closing ]
+    let bytes = cleaned.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        if bytes[i] == b'[' {
+            // Wiki links: [[path]] or [[path|display]]
+            if i + 1 < len && bytes[i + 1] == b'[' {
+                if let Some(end) = cleaned[i + 2..].find("]]") {
+                    let target = &cleaned[i + 2..i + 2 + end];
+                    if !target.is_empty() && !target.contains("://") {
+                        let target = target.split('|').next().unwrap_or(target);
+                        if !target.starts_with('/') {
+                            links.push(target.to_string());
+                        }
+                    }
+                    i = i + 2 + end + 2;
+                    continue;
+                }
+            }
+
+            // Markdown links: [text](path)
+            // Find matching closing ]
             let mut depth = 1;
             let mut j = i + 1;
-            for (idx, c) in content[i + 1..].char_indices() {
-                match c {
-                    '[' => depth += 1,
-                    ']' => {
+            while j < len {
+                match bytes[j] {
+                    b'[' => depth += 1,
+                    b']' => {
                         depth -= 1;
                         if depth == 0 {
-                            j = i + 1 + idx;
                             break;
                         }
                     }
                     _ => {}
                 }
+                j += 1;
             }
+
             // Check for ( immediately after ]
-            if j + 1 < content.len() && content.as_bytes()[j + 1] == b'(' {
-                if let Some(end) = content[j + 2..].find(')') {
-                    let target = &content[j + 2..j + 2 + end];
+            if depth == 0 && j + 1 < len && bytes[j + 1] == b'(' {
+                if let Some(end) = cleaned[j + 2..].find(')') {
+                    let target = &cleaned[j + 2..j + 2 + end];
                     if !target.starts_with("http://")
                         && !target.starts_with("https://")
                         && !target.starts_with("mailto:")
                         && !target.starts_with('#')
+                        && !target.starts_with('/')
                         && !target.is_empty()
                     {
                         // Strip any anchor
@@ -42,25 +65,130 @@ pub fn parse_links(content: &str) -> Vec<String> {
                             links.push(target.to_string());
                         }
                     }
-                }
-            }
-            // Wiki links: [[path]]
-            if i + 1 < content.len() && content.as_bytes()[i + 1] == b'[' {
-                if let Some(end) = content[i + 2..].find("]]") {
-                    let target = &content[i + 2..i + 2 + end];
-                    if !target.is_empty() && !target.contains("://") {
-                        // Strip any pipe display text: [[path|display]]
-                        let target = target.split('|').next().unwrap_or(target);
-                        links.push(target.to_string());
-                    }
+                    i = j + 2 + end + 1;
+                    continue;
                 }
             }
         }
+        i += 1;
     }
 
     links.sort();
     links.dedup();
     links
+}
+
+/// Remove fenced code blocks and inline code spans from content,
+/// replacing them with spaces to preserve character offsets.
+fn strip_code_regions(content: &str) -> String {
+    let mut result = String::with_capacity(content.len());
+    let lines: Vec<&str> = content.lines().collect();
+    let mut in_fence = false;
+    let mut fence_marker = "";
+
+    for (idx, line) in lines.iter().enumerate() {
+        if idx > 0 {
+            result.push('\n');
+        }
+
+        if in_fence {
+            if line.trim_start().starts_with(fence_marker)
+                && line.trim_start().trim_start_matches(fence_marker.chars().next().unwrap_or('`')).trim().is_empty()
+            {
+                in_fence = false;
+            }
+            // Replace fenced line with spaces
+            for ch in line.chars() {
+                if ch == '\t' {
+                    result.push('\t');
+                } else {
+                    result.push(' ');
+                }
+            }
+        } else {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("```") {
+                in_fence = true;
+                fence_marker = "```";
+                for ch in line.chars() {
+                    if ch == '\t' {
+                        result.push('\t');
+                    } else {
+                        result.push(' ');
+                    }
+                }
+            } else if trimmed.starts_with("~~~") {
+                in_fence = true;
+                fence_marker = "~~~";
+                for ch in line.chars() {
+                    if ch == '\t' {
+                        result.push('\t');
+                    } else {
+                        result.push(' ');
+                    }
+                }
+            } else {
+                // Strip inline code spans
+                result.push_str(&strip_inline_code(line));
+            }
+        }
+    }
+
+    result
+}
+
+/// Replace inline code spans (`...`) with spaces.
+fn strip_inline_code(line: &str) -> String {
+    let mut result = String::with_capacity(line.len());
+    let bytes = line.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        if bytes[i] == b'`' {
+            // Count consecutive backticks for the opening
+            let start = i;
+            while i < len && bytes[i] == b'`' {
+                i += 1;
+            }
+            let tick_count = i - start;
+
+            // Find matching closing backticks
+            let mut found_close = false;
+            let content_start = i;
+            while i <= len - tick_count {
+                if bytes[i] == b'`' {
+                    let mut count = 0;
+                    while i < len && bytes[i] == b'`' {
+                        count += 1;
+                        i += 1;
+                    }
+                    if count == tick_count {
+                        // Replace the entire code span with spaces
+                        for _ in 0..(i - start) {
+                            result.push(' ');
+                        }
+                        found_close = true;
+                        break;
+                    }
+                    // Not a match, continue searching
+                } else {
+                    i += 1;
+                }
+            }
+
+            if !found_close {
+                // No matching close - treat backticks as literal
+                result.push_str(&line[start..content_start]);
+                i = content_start;
+            }
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -102,5 +230,40 @@ mod tests {
         let content = "See [[path/to/file.md|Display Text]]";
         let links = parse_links(content);
         assert!(links.contains(&"path/to/file.md".to_string()));
+    }
+
+    #[test]
+    fn test_ignores_links_in_fenced_code_blocks() {
+        let content = "Before\n```\n[link](some/path.md)\n[[wiki-link]]\n```\nAfter [real](real.md)";
+        let links = parse_links(content);
+        assert_eq!(links, vec!["real.md"]);
+    }
+
+    #[test]
+    fn test_ignores_links_in_inline_code() {
+        let content = "Use `[link](some/path.md)` for links. See [real](real.md).";
+        let links = parse_links(content);
+        assert_eq!(links, vec!["real.md"]);
+    }
+
+    #[test]
+    fn test_ignores_absolute_url_paths() {
+        let content = "See [page](/wissen/denkmal-afa) and [local](docs/readme.md)";
+        let links = parse_links(content);
+        assert_eq!(links, vec!["docs/readme.md"]);
+    }
+
+    #[test]
+    fn test_ignores_wiki_links_with_absolute_paths() {
+        let content = "See [[/absolute/path]] and [[relative/path]]";
+        let links = parse_links(content);
+        assert_eq!(links, vec!["relative/path"]);
+    }
+
+    #[test]
+    fn test_tilde_fenced_code_blocks() {
+        let content = "~~~\n[link](hidden.md)\n~~~\n[visible](shown.md)";
+        let links = parse_links(content);
+        assert_eq!(links, vec!["shown.md"]);
     }
 }
