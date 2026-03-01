@@ -30,6 +30,9 @@ strata lint
 # Auto-repair issues
 strata fix
 
+# Generate context files for AI agents
+strata generate
+
 # Install git hooks
 strata install-hooks
 ```
@@ -49,6 +52,8 @@ my-project/
     RULES.md
   04-Scripts/
     RULES.md
+  skills/             # Reusable agent skills
+    README.md
   config/
   archive/
   .strata/
@@ -90,6 +95,9 @@ Quality diagnostics with severity levels.
 | `missing-descriptions` | Warning | Files without description in frontmatter/header |
 | `orphan-files` | Warning | Files not referenced anywhere |
 | `empty-folders` | Info | Domain folders with no content |
+| `context-budget` | Warning | Files exceeding character budget for AI context |
+| `context-freshness` | Info | Generated context files out of date with sources |
+| `skill-structure` | Warning | Skill directories missing SKILL.md or name field |
 
 ```bash
 # Run all rules
@@ -111,6 +119,7 @@ Auto-repair common issues:
 - Adds unindexed files to INDEX.md
 - Generates missing RULES.md stubs
 - Removes dead crosslinks
+- Regenerates INDEX.md from project files (with `--index`)
 
 ```bash
 # Preview changes
@@ -118,6 +127,22 @@ strata fix --dry-run
 
 # Apply fixes
 strata fix
+
+# Rebuild INDEX.md from scratch
+strata fix --index
+```
+
+### `strata generate`
+
+Generates context files for AI agent consumption under `.strata/`:
+
+- `.strata/context.md` - Project summary, domain map, skill index
+- `.strata/domains/<domain>.md` - Per-domain purpose, boundaries, and file listing
+
+Human content added above the `<!-- strata:generated -->` marker is preserved across regenerations.
+
+```bash
+strata generate
 ```
 
 ### `strata install-hooks`
@@ -148,15 +173,35 @@ require_descriptions = false
 [lint]
 disable = []    # Rule names to skip
 strict = false  # Treat warnings as errors
+
+[context]
+project_budget = 3000   # Max chars for PROJECT.md in context
+index_budget = 8000     # Max chars for INDEX.md in context
+rules_budget = 1500     # Max chars per RULES.md in context
+skill_budget = 5000     # Max chars per SKILL.md in context
 ```
+
+## Skills
+
+Skills are reusable procedural knowledge for AI agents. Each skill lives in `skills/<name>/SKILL.md` with YAML frontmatter:
+
+```yaml
+---
+name: my-skill
+description: One-line summary
+trigger: when to activate
+---
+
+Detailed instructions for the agent.
+```
+
+Skill names and descriptions are included in generated context. The `skill-structure` lint rule validates that each skill directory has a properly formatted SKILL.md.
 
 ## Why Five Layers?
 
 AI agents navigate projects by reading files. Without structure, they waste context window on irrelevant files, miss important ones, and make changes in the wrong places.
 
 The five layers solve this by giving every file a discoverable address (INDEX.md), every folder an explicit scope (RULES.md), and every file a one-line summary (frontmatter). An agent can navigate from PROJECT.md to the right domain in three hops.
-
-This pattern was battle-tested across production projects before being extracted into strata.
 
 ## License
 
