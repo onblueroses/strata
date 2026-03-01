@@ -8,6 +8,7 @@ use std::fs;
 
 /// End-to-end test: init -> add content -> add skill -> generate -> lint -> fix --index -> verify
 #[test]
+#[expect(clippy::too_many_lines, reason = "e2e test covers full workflow")]
 fn test_memory_system_workflow() {
     let dir = common::temp_project();
     let bin = common::strata_bin();

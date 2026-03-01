@@ -9,12 +9,11 @@ pub struct SkillMeta {
     /// One-line description from frontmatter `description:` field.
     pub description: Option<String>,
     /// Trigger condition from frontmatter `trigger:` field.
-    /// Parsed for future use (skill execution is out of scope for now).
     #[cfg_attr(
         not(test),
         expect(dead_code, reason = "parsed for future skill execution support")
     )]
-    trigger: Option<String>,
+    pub(crate) trigger: Option<String>,
     /// Relative path to SKILL.md from project root.
     pub path: PathBuf,
     /// Total character count of the SKILL.md file.

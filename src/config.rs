@@ -12,6 +12,8 @@ pub struct StrataConfig {
     pub lint: LintConfig,
     #[serde(default)]
     pub context: ContextConfig,
+    #[serde(default)]
+    pub memory: MemoryConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -110,6 +112,34 @@ impl Default for ContextConfig {
     }
 }
 
+/// Configuration for the memory layer (MEMORY.md, CLAUDE.md, etc.).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryConfig {
+    /// Which files count as memory layer files.
+    #[serde(default = "default_memory_files")]
+    pub files: Vec<String>,
+    /// Per-file character budget (~800 tokens at 4 chars/token).
+    #[serde(default = "default_memory_budget")]
+    pub budget: u32,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            files: default_memory_files(),
+            budget: default_memory_budget(),
+        }
+    }
+}
+
+pub(crate) fn default_memory_files() -> Vec<String> {
+    vec!["MEMORY.md".to_string()]
+}
+
+const fn default_memory_budget() -> u32 {
+    3200
+}
+
 const fn default_project_budget() -> u32 {
     3000
 }
@@ -206,6 +236,7 @@ mod tests {
             structure: StructureConfig::default(),
             lint: LintConfig::default(),
             context: ContextConfig::default(),
+            memory: MemoryConfig::default(),
         };
         let serialized = toml::to_string_pretty(&config).unwrap();
         let deserialized: StrataConfig = toml::from_str(&serialized).unwrap();

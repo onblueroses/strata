@@ -3,6 +3,8 @@ pub mod context_freshness;
 pub mod dead_links;
 pub mod empty_folders;
 pub mod index_freshness;
+pub mod memory_budget;
+pub mod memory_structure;
 pub mod missing_descriptions;
 pub mod orphan_files;
 pub mod rules_completeness;
@@ -59,6 +61,8 @@ impl LintEngine {
             Box::new(context_budget::ContextBudget),
             Box::new(context_freshness::ContextFreshness),
             Box::new(skill_structure::SkillStructure),
+            Box::new(memory_budget::MemoryBudget),
+            Box::new(memory_structure::MemoryStructure),
         ];
 
         let disabled = &config.lint.disable;

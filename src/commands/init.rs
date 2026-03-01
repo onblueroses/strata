@@ -1,5 +1,6 @@
 use crate::config::{
-    ContextConfig, DomainConfig, LintConfig, ProjectConfig, StrataConfig, StructureConfig,
+    ContextConfig, DomainConfig, LintConfig, MemoryConfig, ProjectConfig, StrataConfig,
+    StructureConfig,
 };
 use crate::error::{Result, StrataError};
 use crate::templates;
@@ -57,6 +58,7 @@ pub fn run(path: &Path, name: Option<String>, domains: Option<Vec<String>>) -> R
         structure: StructureConfig::default(),
         lint: LintConfig::default(),
         context: ContextConfig::default(),
+        memory: MemoryConfig::default(),
     };
     config.save(&path.join("strata.toml"))?;
     ui::file_action("create", "strata.toml");

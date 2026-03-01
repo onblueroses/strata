@@ -2,6 +2,7 @@ pub mod frontmatter;
 pub mod fs;
 pub mod index;
 pub mod links;
+pub mod memory;
 pub mod rules;
 pub mod skills;
 
@@ -25,6 +26,8 @@ pub struct ProjectScan {
     pub domain_rules: HashMap<PathBuf, rules::DomainRules>,
     /// Skill metadata from skills/*/SKILL.md.
     pub skills: Vec<skills::SkillMeta>,
+    /// Memory layer file metadata.
+    pub memory_files: Vec<memory::MemoryFileMeta>,
     /// Project root.
     pub root: PathBuf,
 }
@@ -181,6 +184,9 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
     // Scan skills
     let skills = skills::scan_skills(root);
 
+    // Scan memory layer files
+    let memory_files = memory::scan_memory_files(root, &config.memory);
+
     Ok(ProjectScan {
         files,
         index_entries,
@@ -188,6 +194,7 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
         descriptions,
         domain_rules,
         skills,
+        memory_files,
         root: root.to_path_buf(),
     })
 }
