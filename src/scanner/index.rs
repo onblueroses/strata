@@ -5,9 +5,9 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub struct IndexEntry {
     pub path: String,
-    #[expect(
-        dead_code,
-        reason = "used in tests and available for future lint rules"
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "available for future lint rules")
     )]
     pub description: String,
 }
@@ -60,6 +60,7 @@ pub fn parse_index(index_path: &Path) -> Result<Vec<IndexEntry>> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test code")]
 mod tests {
     use super::*;
     use std::io::Write;

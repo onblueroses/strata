@@ -29,6 +29,11 @@ predicates = "3"
 tempfile = "3"
 assert_fs = "1"
 
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false
+features = ["precommit-hook", "user-hooks"]
+
 [profile.release]
 lto = true
 strip = true
@@ -43,6 +48,7 @@ panic_in_result_fn = "deny"
 todo = "deny"
 unimplemented = "deny"
 dbg_macro = "deny"
+allow_attributes = "deny"
 # CLI tool - stdout/stderr is the primary output, not a mistake
 print_stdout = "allow"
 print_stderr = "allow"

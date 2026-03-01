@@ -1,3 +1,6 @@
+#![expect(clippy::unwrap_used, reason = "test code - unwrap is acceptable")]
+#![expect(clippy::expect_used, reason = "test code - expect is acceptable")]
+
 mod common;
 
 use assert_fs::prelude::*;
@@ -124,5 +127,5 @@ fn test_full_workflow() {
         .output()
         .expect("lint json failed");
     let stdout = String::from_utf8_lossy(&result.stdout);
-    assert!(stdout.starts_with('['), "JSON output: {}", stdout);
+    assert!(stdout.starts_with('['), "JSON output: {stdout}");
 }

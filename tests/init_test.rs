@@ -1,3 +1,6 @@
+#![expect(clippy::unwrap_used, reason = "test code - unwrap is acceptable")]
+#![expect(clippy::expect_used, reason = "test code - expect is acceptable")]
+
 mod common;
 
 use assert_fs::prelude::*;
@@ -24,9 +27,7 @@ fn test_init_non_interactive() {
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
         result.status.success(),
-        "stdout: {}\nstderr: {}",
-        stdout,
-        stderr
+        "stdout: {stdout}\nstderr: {stderr}"
     );
 
     // Check strata.toml exists
@@ -102,8 +103,7 @@ fn test_init_already_initialized() {
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
         stderr.contains("already initialized"),
-        "Expected 'already initialized' error, got: {}",
-        stderr
+        "Expected 'already initialized' error, got: {stderr}"
     );
 }
 
@@ -137,8 +137,6 @@ fn test_init_creates_valid_project() {
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
         result.status.success(),
-        "Check failed on fresh project:\nstdout: {}\nstderr: {}",
-        stdout,
-        stderr
+        "Check failed on fresh project:\nstdout: {stdout}\nstderr: {stderr}"
     );
 }

@@ -93,7 +93,11 @@ fn strip_code_regions(content: &str) -> String {
 
         if in_fence {
             if line.trim_start().starts_with(fence_marker)
-                && line.trim_start().trim_start_matches(fence_marker.chars().next().unwrap_or('`')).trim().is_empty()
+                && line
+                    .trim_start()
+                    .trim_start_matches(fence_marker.chars().next().unwrap_or('`'))
+                    .trim()
+                    .is_empty()
             {
                 in_fence = false;
             }
@@ -234,7 +238,8 @@ mod tests {
 
     #[test]
     fn test_ignores_links_in_fenced_code_blocks() {
-        let content = "Before\n```\n[link](some/path.md)\n[[wiki-link]]\n```\nAfter [real](real.md)";
+        let content =
+            "Before\n```\n[link](some/path.md)\n[[wiki-link]]\n```\nAfter [real](real.md)";
         let links = parse_links(content);
         assert_eq!(links, vec!["real.md"]);
     }

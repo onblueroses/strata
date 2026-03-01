@@ -3,6 +3,7 @@ pub mod fs;
 pub mod index;
 pub mod links;
 pub mod rules;
+pub mod skills;
 
 use crate::config::{LinkMode, StrataConfig};
 use crate::error::Result;
@@ -22,6 +23,8 @@ pub struct ProjectScan {
     pub descriptions: HashMap<PathBuf, Option<String>>,
     /// RULES.md parse results per domain directory.
     pub domain_rules: HashMap<PathBuf, rules::DomainRules>,
+    /// Skill metadata from skills/*/SKILL.md.
+    pub skills: Vec<skills::SkillMeta>,
     /// Project root.
     pub root: PathBuf,
 }
@@ -60,19 +63,13 @@ impl ProjectScan {
                             .map_or_else(|| self.root.clone(), Path::to_path_buf);
                         let resolved = source_dir.join(target);
                         // Try exact path, then with .md extension
-                        let exists = resolved.canonicalize().is_ok()
-                            || resolved.exists()
-                            || {
-                                let with_md =
-                                    resolved.with_file_name(format!(
-                                        "{}.md",
-                                        resolved
-                                            .file_name()
-                                            .unwrap_or_default()
-                                            .to_string_lossy()
-                                    ));
-                                with_md.canonicalize().is_ok() || with_md.exists()
-                            };
+                        let exists = resolved.canonicalize().is_ok() || resolved.exists() || {
+                            let with_md = resolved.with_file_name(format!(
+                                "{}.md",
+                                resolved.file_name().unwrap_or_default().to_string_lossy()
+                            ));
+                            with_md.canonicalize().is_ok() || with_md.exists()
+                        };
                         !exists
                     }
                     LinkMode::Name => {
@@ -181,17 +178,21 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
         }
     }
 
+    // Scan skills
+    let skills = skills::scan_skills(root);
+
     Ok(ProjectScan {
         files,
         index_entries,
         crosslinks,
         descriptions,
         domain_rules,
+        skills,
         root: root.to_path_buf(),
     })
 }
 
-fn is_meta_file(path: &Path) -> bool {
+pub fn is_meta_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|n| n.to_str())
         .is_some_and(|name| {

@@ -7,7 +7,10 @@ pub fn temp_project() -> TempDir {
 }
 
 /// Get the strata binary path for integration tests.
-#[allow(deprecated)]
+#[expect(
+    deprecated,
+    reason = "cargo_bin API is deprecated but still the standard way to locate test binaries"
+)]
 pub fn strata_bin() -> PathBuf {
     assert_cmd::cargo::cargo_bin("strata")
 }

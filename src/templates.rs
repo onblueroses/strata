@@ -6,6 +6,7 @@ const INDEX_MD_TMPL: &str = include_str!("../templates/INDEX.md.tmpl");
 const RULES_MD_TMPL: &str = include_str!("../templates/RULES.md.tmpl");
 const GITIGNORE_TMPL: &str = include_str!("../templates/gitignore.tmpl");
 const PRE_COMMIT_TMPL: &str = include_str!("../templates/pre-commit.sh.tmpl");
+const SKILLS_README_TMPL: &str = include_str!("../templates/skills-readme.md.tmpl");
 
 pub fn render_project_md(project_name: &str) -> String {
     PROJECT_MD_TMPL.replace("{{PROJECT_NAME}}", project_name)
@@ -37,4 +38,8 @@ pub fn render_gitignore() -> String {
 
 pub fn render_pre_commit() -> String {
     PRE_COMMIT_TMPL.to_string()
+}
+
+pub fn render_skills_readme() -> String {
+    SKILLS_README_TMPL.to_string()
 }

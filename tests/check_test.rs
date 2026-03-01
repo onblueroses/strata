@@ -1,3 +1,6 @@
+#![expect(clippy::unwrap_used, reason = "test code - unwrap is acceptable")]
+#![expect(clippy::expect_used, reason = "test code - expect is acceptable")]
+
 mod common;
 
 use assert_fs::prelude::*;
@@ -6,7 +9,7 @@ use assert_fs::prelude::*;
 fn combined_output(result: &std::process::Output) -> String {
     let stdout = String::from_utf8_lossy(&result.stdout);
     let stderr = String::from_utf8_lossy(&result.stderr);
-    format!("{}{}", stdout, stderr)
+    format!("{stdout}{stderr}")
 }
 
 #[test]
@@ -32,8 +35,7 @@ name = "test"
     let output = combined_output(&result);
     assert!(
         output.contains("INDEX.md"),
-        "Expected INDEX.md mention in: {}",
-        output
+        "Expected INDEX.md mention in: {output}"
     );
 }
 
@@ -62,8 +64,7 @@ name = "test"
     let output = combined_output(&result);
     assert!(
         output.contains("PROJECT.md"),
-        "Expected PROJECT.md mention in: {}",
-        output
+        "Expected PROJECT.md mention in: {output}"
     );
 }
 
@@ -98,8 +99,7 @@ prefix = "01"
     let output = combined_output(&result);
     assert!(
         output.contains("01-Core/RULES.md"),
-        "Expected RULES.md mention in: {}",
-        output
+        "Expected RULES.md mention in: {output}"
     );
 }
 

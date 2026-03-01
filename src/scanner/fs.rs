@@ -1,6 +1,6 @@
 use crate::error::Result;
-use ignore::overrides::OverrideBuilder;
 use ignore::WalkBuilder;
+use ignore::overrides::OverrideBuilder;
 use std::path::{Path, PathBuf};
 
 /// Walk the project tree, returning relative paths of all files.
@@ -36,9 +36,8 @@ pub fn walk_project(root: &Path, ignore_patterns: &[String]) -> Result<Vec<PathB
 
     let mut files = Vec::new();
     for result in builder.build() {
-        let entry = result.map_err(|e| {
-            crate::error::StrataError::General(format!("Walk error: {e}"))
-        })?;
+        let entry =
+            result.map_err(|e| crate::error::StrataError::General(format!("Walk error: {e}")))?;
 
         if !entry.file_type().is_some_and(|ft| ft.is_file()) {
             continue;

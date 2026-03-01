@@ -1,3 +1,6 @@
+#![expect(clippy::unwrap_used, reason = "test code - unwrap is acceptable")]
+#![expect(clippy::expect_used, reason = "test code - expect is acceptable")]
+
 mod common;
 
 use assert_fs::prelude::*;
@@ -105,7 +108,6 @@ fn test_fix_adds_unindexed_files() {
     let index = fs::read_to_string(dir.child("INDEX.md").path()).unwrap();
     assert!(
         index.contains("01-Core/guide.md"),
-        "INDEX.md should contain the added file. Content: {}",
-        index
+        "INDEX.md should contain the added file. Content: {index}"
     );
 }

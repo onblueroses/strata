@@ -1,3 +1,6 @@
+#![expect(clippy::unwrap_used, reason = "test code - unwrap is acceptable")]
+#![expect(clippy::expect_used, reason = "test code - expect is acceptable")]
+
 mod common;
 
 use assert_fs::prelude::*;
@@ -25,8 +28,7 @@ name = "test"
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
         stderr.contains("git") || stderr.contains("Not a git"),
-        "Expected git error, got: {}",
-        stderr
+        "Expected git error, got: {stderr}"
     );
 }
 

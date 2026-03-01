@@ -28,7 +28,12 @@ fn main() {
             quiet,
             format,
         } => commands::lint::run(Path::new(&path), rule.as_deref(), quiet, format),
-        Command::Fix { path, dry_run } => commands::fix::run(Path::new(&path), dry_run),
+        Command::Fix {
+            path,
+            dry_run,
+            index,
+        } => commands::fix::run(Path::new(&path), dry_run, index),
+        Command::Generate { path } => commands::generate::run(Path::new(&path)),
         Command::InstallHooks { path } => commands::hooks::run(Path::new(&path)),
     };
 

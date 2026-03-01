@@ -1,4 +1,6 @@
-use crate::config::{DomainConfig, LintConfig, ProjectConfig, StrataConfig, StructureConfig};
+use crate::config::{
+    ContextConfig, DomainConfig, LintConfig, ProjectConfig, StrataConfig, StructureConfig,
+};
 use crate::error::{Result, StrataError};
 use crate::templates;
 use crate::ui;
@@ -54,6 +56,7 @@ pub fn run(path: &Path, name: Option<String>, domains: Option<Vec<String>>) -> R
         },
         structure: StructureConfig::default(),
         lint: LintConfig::default(),
+        context: ContextConfig::default(),
     };
     config.save(&path.join("strata.toml"))?;
     ui::file_action("create", "strata.toml");
@@ -116,6 +119,10 @@ fn create_directories(root: &Path, domains: &[DomainConfig]) -> Result<()> {
     fs::create_dir_all(root.join("archive"))?;
     ui::file_action("create", "archive/");
 
+    // Create skills directory
+    fs::create_dir_all(root.join("skills"))?;
+    ui::file_action("create", "skills/");
+
     // Create domain directories
     for domain in domains {
         let dir_name = format!("{}-{}", domain.prefix, domain.name);
@@ -144,6 +151,11 @@ fn generate_files(root: &Path, project_name: &str, domains: &[DomainConfig]) -> 
         fs::write(root.join(&dir_name).join("RULES.md"), rules_md)?;
         ui::file_action("create", &format!("{dir_name}/RULES.md"));
     }
+
+    // Skills README
+    let skills_readme = templates::render_skills_readme();
+    fs::write(root.join("skills").join("README.md"), skills_readme)?;
+    ui::file_action("create", "skills/README.md");
 
     // Default .gitignore
     let gitignore = templates::render_gitignore();

@@ -79,6 +79,17 @@ pub enum Command {
         /// Show what would be fixed without making changes
         #[arg(long)]
         dry_run: bool,
+
+        /// Regenerate INDEX.md from project files
+        #[arg(long)]
+        index: bool,
+    },
+
+    /// Generate context files for AI agent consumption
+    Generate {
+        /// Project directory (defaults to current directory)
+        #[arg(default_value = ".")]
+        path: String,
     },
 
     /// Install git pre-commit hooks for drift prevention

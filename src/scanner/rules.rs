@@ -3,10 +3,6 @@ use std::path::Path;
 
 /// Parsed content of a RULES.md file.
 #[derive(Debug, Clone)]
-#[expect(
-    dead_code,
-    reason = "purpose_text and boundaries_text are public API for future lint rules"
-)]
 pub struct DomainRules {
     pub has_purpose: bool,
     pub has_boundaries: bool,
@@ -72,6 +68,7 @@ pub fn parse_rules(path: &Path) -> Result<DomainRules> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test code")]
 mod tests {
     use super::*;
 
@@ -81,7 +78,7 @@ mod tests {
         let path = dir.path().join("RULES.md");
         std::fs::write(
             &path,
-            r#"# Rules: Core
+            r"# Rules: Core
 
 ## Purpose
 This domain contains the core business logic.
@@ -89,7 +86,7 @@ This domain contains the core business logic.
 ## Boundaries
 - Only pure functions, no IO
 - No external dependencies
-"#,
+",
         )
         .unwrap();
 

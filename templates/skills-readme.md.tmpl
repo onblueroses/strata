@@ -1,0 +1,35 @@
+# Skills
+
+Reusable procedural knowledge for AI agents working in this project.
+
+## Structure
+
+Each skill lives in its own directory with a `SKILL.md` file:
+
+```
+skills/
+  my-skill/
+    SKILL.md       # Required: name, description, trigger in frontmatter
+    references/    # Optional: supporting files
+    scripts/       # Optional: executable scripts
+```
+
+## SKILL.md Format
+
+```yaml
+---
+name: my-skill
+description: One-line summary of what this skill does
+trigger: when to activate this skill
+---
+
+# My Skill
+
+Detailed instructions for the agent.
+```
+
+## Progressive Disclosure
+
+- Skill names and descriptions are always loaded into agent context
+- Full skill body is loaded only when the skill is activated
+- Keep descriptions concise (one line) for efficient context usage

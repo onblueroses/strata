@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-pub fn run(path: &Path, dry_run: bool) -> Result<()> {
+pub fn run(path: &Path, dry_run: bool, regenerate_index: bool) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
     let (config, _) = StrataConfig::load(&root)?;
     let scan = scanner::scan_project(&root, &config)?;
@@ -78,6 +78,17 @@ pub fn run(path: &Path, dry_run: bool) -> Result<()> {
         fixes += dead_links.len();
     }
 
+    // Fix 4: Regenerate INDEX.md (when --index flag is passed)
+    if regenerate_index {
+        if dry_run {
+            ui::info("Would regenerate INDEX.md");
+        } else {
+            regenerate_index_md(&root, &scan, &config)?;
+            ui::success("Regenerated INDEX.md");
+        }
+        fixes += 1;
+    }
+
     println!();
     if fixes == 0 {
         ui::success("Nothing to fix");
@@ -87,6 +98,51 @@ pub fn run(path: &Path, dry_run: bool) -> Result<()> {
         ui::success(&format!("{fixes} fix(es) applied"));
     }
 
+    Ok(())
+}
+
+/// Regenerate INDEX.md from scratch based on current project files.
+pub fn regenerate_index_md(
+    root: &Path,
+    scan: &scanner::ProjectScan,
+    config: &StrataConfig,
+) -> Result<()> {
+    let mut content = String::from("# Index\n\n| File | Description |\n|------|-------------|\n");
+
+    // Group files by domain, then remaining
+    for domain in &config.project.domains {
+        let dir_name = format!("{}-{}", domain.prefix, domain.name);
+        for file in &scan.files {
+            let rel = file.to_string_lossy().replace('\\', "/");
+            if rel.starts_with(&dir_name) && !scanner::is_meta_file(file) {
+                let desc = scan
+                    .descriptions
+                    .get(file)
+                    .and_then(|d| d.as_deref())
+                    .unwrap_or("*TODO: add description*");
+                let _ = writeln!(content, "| `{rel}` | {desc} |");
+            }
+        }
+    }
+
+    // Non-domain files
+    for file in &scan.files {
+        let rel = file.to_string_lossy().replace('\\', "/");
+        let in_domain = config.project.domains.iter().any(|d| {
+            let dir_name = format!("{}-{}", d.prefix, d.name);
+            rel.starts_with(&dir_name)
+        });
+        if !in_domain && !scanner::is_meta_file(file) {
+            let desc = scan
+                .descriptions
+                .get(file)
+                .and_then(|d| d.as_deref())
+                .unwrap_or("*TODO: add description*");
+            let _ = writeln!(content, "| `{rel}` | {desc} |");
+        }
+    }
+
+    fs::write(root.join("INDEX.md"), content)?;
     Ok(())
 }
 

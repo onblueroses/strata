@@ -1,3 +1,6 @@
+#![expect(clippy::unwrap_used, reason = "test code - unwrap is acceptable")]
+#![expect(clippy::expect_used, reason = "test code - expect is acceptable")]
+
 mod common;
 
 use assert_fs::prelude::*;
@@ -64,10 +67,9 @@ prefix = "01"
     );
     assert!(
         combined.contains("rules-completeness"),
-        "Output: {}",
-        combined
+        "Output: {combined}"
     );
-    assert!(combined.contains("Purpose"), "Output: {}", combined);
+    assert!(combined.contains("Purpose"), "Output: {combined}");
 }
 
 #[test]
@@ -102,8 +104,7 @@ fn test_lint_json_output() {
     // Should be valid JSON (array)
     assert!(
         stdout.starts_with('['),
-        "Expected JSON array, got: {}",
-        stdout
+        "Expected JSON array, got: {stdout}"
     );
 }
 

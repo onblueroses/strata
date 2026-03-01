@@ -1,0 +1,8 @@
+[profile.default]
+# Catch tests that spawn processes/threads without cleanup
+leak-timeout = { period = "500ms", result = "fail" }
+
+[[profile.default.overrides]]
+filter = 'all()'
+# Kill runaway tests - prevent accidental infinite loops
+slow-timeout = { period = "10s", terminate-after = 3 }

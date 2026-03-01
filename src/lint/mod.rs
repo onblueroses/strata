@@ -1,9 +1,12 @@
+pub mod context_budget;
+pub mod context_freshness;
 pub mod dead_links;
 pub mod empty_folders;
 pub mod index_freshness;
 pub mod missing_descriptions;
 pub mod orphan_files;
 pub mod rules_completeness;
+pub mod skill_structure;
 
 use crate::config::StrataConfig;
 use crate::scanner::ProjectScan;
@@ -53,6 +56,9 @@ impl LintEngine {
             Box::new(missing_descriptions::MissingDescriptions),
             Box::new(orphan_files::OrphanFiles),
             Box::new(empty_folders::EmptyFolders),
+            Box::new(context_budget::ContextBudget),
+            Box::new(context_freshness::ContextFreshness),
+            Box::new(skill_structure::SkillStructure),
         ];
 
         let disabled = &config.lint.disable;

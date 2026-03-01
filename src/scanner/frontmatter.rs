@@ -55,12 +55,12 @@ mod tests {
 
     #[test]
     fn test_yaml_frontmatter() {
-        let content = r#"---
+        let content = r"---
 title: My File
 description: This is a test file
 ---
 # Content here
-"#;
+";
         assert_eq!(
             extract_description(content),
             Some("This is a test file".to_string())

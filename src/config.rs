@@ -10,6 +10,8 @@ pub struct StrataConfig {
     pub structure: StructureConfig,
     #[serde(default)]
     pub lint: LintConfig,
+    #[serde(default)]
+    pub context: ContextConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +81,48 @@ pub struct LintConfig {
     pub strict: bool,
 }
 
+/// Character budgets for context generation.
+/// Controls how much content is loaded into AI agent context windows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "all fields represent distinct budgets; the _budget suffix is intentional"
+)]
+pub struct ContextConfig {
+    #[serde(default = "default_project_budget")]
+    pub project_budget: u32,
+    #[serde(default = "default_index_budget")]
+    pub index_budget: u32,
+    #[serde(default = "default_rules_budget")]
+    pub rules_budget: u32,
+    #[serde(default = "default_skill_budget")]
+    pub skill_budget: u32,
+}
+
+impl Default for ContextConfig {
+    fn default() -> Self {
+        Self {
+            project_budget: default_project_budget(),
+            index_budget: default_index_budget(),
+            rules_budget: default_rules_budget(),
+            skill_budget: default_skill_budget(),
+        }
+    }
+}
+
+const fn default_project_budget() -> u32 {
+    3000
+}
+const fn default_index_budget() -> u32 {
+    8000
+}
+const fn default_rules_budget() -> u32 {
+    1500
+}
+const fn default_skill_budget() -> u32 {
+    5000
+}
+
 fn default_ignore_patterns() -> Vec<String> {
     vec![
         ".git".to_string(),
@@ -144,6 +188,7 @@ fn find_config(dir: &Path) -> Result<PathBuf> {
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test code")]
 mod tests {
     use super::*;
 
@@ -160,6 +205,7 @@ mod tests {
             },
             structure: StructureConfig::default(),
             lint: LintConfig::default(),
+            context: ContextConfig::default(),
         };
         let serialized = toml::to_string_pretty(&config).unwrap();
         let deserialized: StrataConfig = toml::from_str(&serialized).unwrap();

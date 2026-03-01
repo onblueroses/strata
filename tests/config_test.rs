@@ -1,3 +1,6 @@
+#![expect(clippy::unwrap_used, reason = "test code - unwrap is acceptable")]
+#![expect(clippy::expect_used, reason = "test code - expect is acceptable")]
+
 mod common;
 
 use assert_fs::prelude::*;
@@ -15,8 +18,7 @@ fn test_config_not_found() {
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
         stderr.contains("Not a strata project") || stderr.contains("strata.toml"),
-        "Expected 'Not a strata project' error, got: {}",
-        stderr
+        "Expected 'Not a strata project' error, got: {stderr}"
     );
 }
 
