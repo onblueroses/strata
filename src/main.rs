@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod config;
 mod error;
+mod eval;
 mod lint;
 mod scanner;
 mod targets;
@@ -9,7 +10,7 @@ mod templates;
 mod ui;
 
 use clap::Parser;
-use cli::{Cli, Command, SessionAction, SpecAction};
+use cli::{Cli, Command, EvalSetAction, SessionAction, SkillAction, SpecAction};
 use std::path::Path;
 use std::process;
 
@@ -61,6 +62,51 @@ fn main() {
             SessionAction::Save { session } => {
                 commands::session::run_save(Path::new("."), session.as_deref())
             }
+        },
+        Command::Skill { action } => match action {
+            SkillAction::Eval {
+                name,
+                eval_set,
+                workers,
+                timeout,
+                runs_per_query,
+                trigger_threshold,
+                format,
+                description,
+            } => commands::skill::run_skill_eval(
+                Path::new("."),
+                &name,
+                &eval_set,
+                workers,
+                timeout,
+                runs_per_query,
+                trigger_threshold,
+                format,
+                description.as_deref(),
+            ),
+            SkillAction::Optimize {
+                name,
+                eval_set,
+                max_iterations,
+                holdout,
+                runs_per_query,
+                report,
+                apply,
+            } => commands::skill::run_skill_optimize(
+                Path::new("."),
+                &name,
+                &eval_set,
+                max_iterations,
+                holdout,
+                runs_per_query,
+                report,
+                apply,
+            ),
+            SkillAction::EvalSet { action } => match action {
+                EvalSetAction::Init { name, output } => {
+                    commands::skill::run_eval_set_init(Path::new("."), &name, output.as_deref())
+                }
+            },
         },
     };
 

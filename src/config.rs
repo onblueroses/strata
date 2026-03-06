@@ -22,6 +22,8 @@ pub struct StrataConfig {
     pub sessions: SessionsConfig,
     #[serde(default)]
     pub targets: TargetsConfig,
+    #[serde(default)]
+    pub skills: SkillsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -218,6 +220,78 @@ impl Default for TargetsConfig {
     }
 }
 
+/// Skill eval/optimize configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillsConfig {
+    /// Backend CLI to use for trigger testing (e.g. "claude-code").
+    #[serde(default = "default_eval_backend")]
+    pub eval_backend: String,
+    /// Number of parallel worker threads for eval.
+    #[serde(default = "default_eval_workers")]
+    pub eval_workers: u32,
+    /// Timeout in seconds per query.
+    #[serde(default = "default_eval_timeout")]
+    pub eval_timeout: u64,
+    /// Minimum trigger rate for positive queries to pass.
+    #[serde(default = "default_trigger_threshold")]
+    pub trigger_threshold: f64,
+    /// How many times each query is run (higher = more stable signal).
+    #[serde(default = "default_runs_per_query")]
+    pub runs_per_query: u32,
+    /// Fraction of eval set held out as test set during optimization.
+    #[serde(default = "default_holdout")]
+    pub holdout: f64,
+    /// Maximum optimization iterations.
+    #[serde(default = "default_max_iterations")]
+    pub max_iterations: u32,
+    /// Optional model override passed to backend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+impl Default for SkillsConfig {
+    fn default() -> Self {
+        Self {
+            eval_backend: default_eval_backend(),
+            eval_workers: default_eval_workers(),
+            eval_timeout: default_eval_timeout(),
+            trigger_threshold: default_trigger_threshold(),
+            runs_per_query: default_runs_per_query(),
+            holdout: default_holdout(),
+            max_iterations: default_max_iterations(),
+            model: None,
+        }
+    }
+}
+
+fn default_eval_backend() -> String {
+    "claude-code".to_string()
+}
+
+const fn default_eval_workers() -> u32 {
+    4
+}
+
+const fn default_eval_timeout() -> u64 {
+    30
+}
+
+const fn default_trigger_threshold() -> f64 {
+    0.5
+}
+
+const fn default_runs_per_query() -> u32 {
+    1
+}
+
+const fn default_holdout() -> f64 {
+    0.4
+}
+
+const fn default_max_iterations() -> u32 {
+    5
+}
+
 /// Supported AI agent targets for context generation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
@@ -393,6 +467,7 @@ mod tests {
             specs: SpecsConfig::default(),
             sessions: SessionsConfig::default(),
             targets: TargetsConfig::default(),
+            skills: SkillsConfig::default(),
         };
         let serialized = toml::to_string_pretty(&config).unwrap();
         let deserialized: StrataConfig = toml::from_str(&serialized).unwrap();

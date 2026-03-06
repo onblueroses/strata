@@ -1,6 +1,6 @@
 use crate::config::{
     ContextConfig, DomainConfig, HooksConfig, LintConfig, MemoryConfig, Preset, ProjectConfig,
-    SessionsConfig, SpecsConfig, StrataConfig, StructureConfig, TargetsConfig,
+    SessionsConfig, SkillsConfig, SpecsConfig, StrataConfig, StructureConfig, TargetsConfig,
 };
 use crate::error::{Result, StrataError};
 use crate::templates;
@@ -82,6 +82,7 @@ pub fn run(
         specs,
         sessions,
         targets: TargetsConfig::default(),
+        skills: SkillsConfig::default(),
     };
     config.save(&path.join("strata.toml"))?;
     ui::file_action("create", "strata.toml");

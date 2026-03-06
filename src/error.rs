@@ -31,6 +31,17 @@ pub enum StrataError {
     #[error("Not a git repository (no .git directory found)")]
     NotAGitRepo,
 
+    #[error("Eval: {0}")]
+    Eval(String),
+
+    #[error("Subprocess `{command}` exited with {status}")]
+    #[expect(dead_code, reason = "available for backend implementations")]
+    Subprocess { command: String, status: i32 },
+
+    #[error("Subprocess `{command}` timed out after {timeout_secs}s")]
+    #[expect(dead_code, reason = "available for backend implementations")]
+    Timeout { command: String, timeout_secs: u64 },
+
     #[error("{0}")]
     General(String),
 }

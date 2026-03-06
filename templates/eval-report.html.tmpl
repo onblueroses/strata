@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill Eval Report</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --yellow: #d29922;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); padding: 2rem; line-height: 1.5; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  h2 { font-size: 1.2rem; margin: 1.5rem 0 0.75rem; color: var(--blue); }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1rem 0; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+  .card .label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .card .value { font-size: 1.5rem; font-weight: 600; margin-top: 0.25rem; }
+  .pass { color: var(--green); }
+  .fail { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; margin: 0.5rem 0; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-size: 0.8rem; text-transform: uppercase; }
+  .query-text { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+  .badge-pass { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+  .badge-fail { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+  .iter-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 0.75rem 0; }
+  .iter-card.best { border-color: var(--green); }
+  .iter-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+  .description-box { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.75rem; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-break: break-word; margin-top: 0.5rem; max-height: 200px; overflow-y: auto; }
+  .meter { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 0.25rem; }
+  .meter-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+</style>
+</head>
+<body>
+<h1 id="title">Skill Eval Report</h1>
+<div class="summary" id="summary"></div>
+<h2>Iterations</h2>
+<div id="iterations"></div>
+<h2>Best Description</h2>
+<div class="description-box" id="best-desc"></div>
+<h2>Baseline Test Results</h2>
+<table id="baseline-table"><thead><tr><th>Query</th><th>Expected</th><th>Rate</th><th>Result</th></tr></thead><tbody></tbody></table>
+
+<script>
+const DATA = {{DATA_JSON}};
+
+document.getElementById('title').textContent = `Eval Report: ${DATA.skill_name}`;
+
+const summary = document.getElementById('summary');
+summary.innerHTML = `
+  <div class="card"><div class="label">Skill</div><div class="value">${DATA.skill_name}</div></div>
+  <div class="card"><div class="label">Iterations</div><div class="value">${DATA.iterations.length}</div></div>
+  <div class="card"><div class="label">Best Iteration</div><div class="value">${DATA.best_iteration}</div></div>
+  <div class="card"><div class="label">Baseline Test</div><div class="value ${DATA.baseline_test.accuracy >= 0.8 ? 'pass' : 'fail'}">${(DATA.baseline_test.accuracy * 100).toFixed(0)}%</div></div>
+  <div class="card"><div class="label">Best Test</div><div class="value pass">${bestTestAcc()}%</div></div>
+`;
+
+function bestTestAcc() {
+  const best = DATA.iterations.find(i => i.iteration === DATA.best_iteration);
+  return best ? (best.test_result.accuracy * 100).toFixed(0) : 'N/A';
+}
+
+const iterDiv = document.getElementById('iterations');
+DATA.iterations.forEach(iter => {
+  const isBest = iter.iteration === DATA.best_iteration;
+  const card = document.createElement('div');
+  card.className = `iter-card${isBest ? ' best' : ''}`;
+  card.innerHTML = `
+    <div class="iter-header">
+      <strong>Iteration ${iter.iteration}${isBest ? ' (best)' : ''}</strong>
+      <span>Train: <span class="${iter.train_result.accuracy >= 0.8 ? 'pass' : 'fail'}">${(iter.train_result.accuracy * 100).toFixed(0)}%</span> | Test: <span class="${iter.test_result.accuracy >= 0.8 ? 'pass' : 'fail'}">${(iter.test_result.accuracy * 100).toFixed(0)}%</span></span>
+    </div>
+    <div class="meter"><div class="meter-fill" style="width:${iter.test_result.accuracy * 100}%;background:${iter.test_result.accuracy >= 0.8 ? 'var(--green)' : 'var(--red)'}"></div></div>
+    <div class="description-box">${escapeHtml(iter.description)}</div>
+  `;
+  iterDiv.appendChild(card);
+});
+
+document.getElementById('best-desc').textContent = DATA.best_description;
+
+const tbody = document.querySelector('#baseline-table tbody');
+DATA.baseline_test.results.forEach(r => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="query-text" title="${escapeHtml(r.query.query)}">${escapeHtml(r.query.query)}</td>
+    <td>${r.query.should_trigger ? 'trigger' : 'no trigger'}</td>
+    <td>${(r.trigger_rate * 100).toFixed(0)}%</td>
+    <td><span class="badge ${r.passed ? 'badge-pass' : 'badge-fail'}">${r.passed ? 'PASS' : 'FAIL'}</span></td>
+  `;
+  tbody.appendChild(tr);
+});
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

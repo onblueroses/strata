@@ -1,4 +1,5 @@
 use crate::config::{AgentTarget, Preset};
+use crate::eval::OutputFormat as EvalOutputFormat;
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -123,6 +124,12 @@ pub enum Command {
         #[command(subcommand)]
         action: SessionAction,
     },
+
+    /// Skill evaluation and optimization
+    Skill {
+        #[command(subcommand)]
+        action: SkillAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -154,6 +161,92 @@ pub enum SpecAction {
     Complete {
         /// Spec name
         name: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SkillAction {
+    /// Test whether a skill triggers correctly against an eval set
+    Eval {
+        /// Skill name (directory under skills/)
+        name: String,
+
+        /// Path to eval set JSON file
+        #[arg(long)]
+        eval_set: String,
+
+        /// Number of parallel workers
+        #[arg(long)]
+        workers: Option<u32>,
+
+        /// Timeout per query in seconds
+        #[arg(long)]
+        timeout: Option<u64>,
+
+        /// Number of runs per query
+        #[arg(long)]
+        runs_per_query: Option<u32>,
+
+        /// Minimum trigger rate for positive queries
+        #[arg(long)]
+        trigger_threshold: Option<f64>,
+
+        /// Output format
+        #[arg(long, default_value_t = EvalOutputFormat::Text)]
+        format: EvalOutputFormat,
+
+        /// Override skill description (instead of reading from SKILL.md)
+        #[arg(long)]
+        description: Option<String>,
+    },
+
+    /// Iteratively optimize a skill's description for better triggering
+    Optimize {
+        /// Skill name (directory under skills/)
+        name: String,
+
+        /// Path to eval set JSON file
+        #[arg(long)]
+        eval_set: String,
+
+        /// Maximum optimization iterations
+        #[arg(long)]
+        max_iterations: Option<u32>,
+
+        /// Fraction of eval set held out for testing
+        #[arg(long)]
+        holdout: Option<f64>,
+
+        /// Runs per query (higher = more stable signal)
+        #[arg(long)]
+        runs_per_query: Option<u32>,
+
+        /// Generate HTML report
+        #[arg(long)]
+        report: bool,
+
+        /// Apply best description to SKILL.md
+        #[arg(long)]
+        apply: bool,
+    },
+
+    /// Manage eval sets
+    EvalSet {
+        #[command(subcommand)]
+        action: EvalSetAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum EvalSetAction {
+    /// Create a starter eval set with placeholder queries
+    Init {
+        /// Skill name to create eval set for
+        name: String,
+
+        /// Output path (defaults to skills/<name>/eval-set.json)
+        #[arg(long)]
+        output: Option<String>,
     },
 }
 

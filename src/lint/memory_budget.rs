@@ -38,7 +38,7 @@ mod tests {
     use super::*;
     use crate::config::{
         ContextConfig, HooksConfig, LintConfig, MemoryConfig, ProjectConfig, SessionsConfig,
-        SpecsConfig, StructureConfig, TargetsConfig,
+        SkillsConfig, SpecsConfig, StructureConfig, TargetsConfig,
     };
     use crate::scanner::memory::MemoryFileMeta;
     use std::collections::HashMap;
@@ -62,6 +62,7 @@ mod tests {
             specs: SpecsConfig::default(),
             sessions: SessionsConfig::default(),
             targets: TargetsConfig::default(),
+            skills: SkillsConfig::default(),
         }
     }
 

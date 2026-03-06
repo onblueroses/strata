@@ -22,6 +22,7 @@ const RELEASE_SKILL_TMPL: &str = include_str!("../templates/skills/release.md.tm
 const SECURITY_SKILL_TMPL: &str = include_str!("../templates/skills/security.md.tmpl");
 const OPTIMIZE_SKILL_TMPL: &str = include_str!("../templates/skills/optimize.md.tmpl");
 const MEMORY_STARTER_TMPL: &str = include_str!("../templates/memory.md.tmpl");
+const EVAL_SET_TMPL: &str = include_str!("../templates/eval-set.json.tmpl");
 
 pub fn render_project_md(project_name: &str) -> String {
     PROJECT_MD_TMPL.replace("{{PROJECT_NAME}}", project_name)
@@ -121,4 +122,11 @@ pub fn render_optimize_skill() -> String {
 
 pub fn render_memory_starter() -> String {
     MEMORY_STARTER_TMPL.to_string()
+}
+
+pub fn render_eval_set(skill_name: &str) -> String {
+    EVAL_SET_TMPL.replace(
+        "Review this code",
+        &format!("A query that should trigger {skill_name}"),
+    )
 }

@@ -31,6 +31,15 @@ pub fn dim(msg: &str) {
     println!("  {}", style.apply_to(msg));
 }
 
+pub fn progress(msg: &str) {
+    let style = Style::new().cyan().bold();
+    eprint!("\r{} {}", style.apply_to("⟳"), msg);
+}
+
+pub fn clear_progress() {
+    eprint!("\r\x1b[2K");
+}
+
 pub fn file_action(action: &str, path: &str) {
     let action_style = Style::new().green();
     let path_style = Style::new().dim();
