@@ -1,7 +1,8 @@
 ---
 name: commit
-description: Conventional commit message format and guidelines
-trigger: when creating a git commit
+description: >
+  Conventional commit message format. Use when creating any git commit to
+  ensure consistent, meaningful messages that explain why, not what.
 ---
 
 # Commit
@@ -15,6 +16,7 @@ trigger: when creating a git commit
 ```
 
 ## Types
+
 - **feat**: new feature or capability
 - **fix**: bug fix
 - **refactor**: restructure without behavior change
@@ -23,7 +25,17 @@ trigger: when creating a git commit
 - **chore**: build, CI, dependency updates
 
 ## Rules
+
 - Subject line: imperative mood, lowercase, no period, under 72 chars
 - Body: explain *why*, not *what*. The diff shows what changed.
 - One logical change per commit. If you need "and" in the subject, split it.
 - Reference issue numbers when applicable
+
+## Good vs Bad
+
+| Bad | Why | Good |
+|-----|-----|------|
+| `update code` | Says nothing useful | `fix(auth): reject expired tokens in middleware` |
+| `fix bug and add tests and refactor utils` | Three commits in one | Split into three commits |
+| `Fixed the login` | Past tense, no scope | `fix(login): handle empty password field` |
+| `refactor: make code better` | No specificity | `refactor(api): extract validation into middleware` |

@@ -18,12 +18,18 @@ pub struct SkillMeta {
     pub path: PathBuf,
     /// Total character count of the SKILL.md file.
     pub char_count: usize,
+    /// Total line count of the SKILL.md file.
+    pub line_count: usize,
+    /// Whether a `references/` subdirectory exists alongside SKILL.md.
+    pub has_references_dir: bool,
 }
 
 /// Parse a single SKILL.md file into `SkillMeta`.
 pub fn parse_skill(path: &Path, relative_path: PathBuf) -> Result<SkillMeta> {
     let content = std::fs::read_to_string(path)?;
     let char_count = content.len();
+    let line_count = content.lines().count();
+    let has_references_dir = path.parent().is_some_and(|p| p.join("references").is_dir());
 
     let mut name = None;
     let mut description = None;
@@ -80,6 +86,8 @@ pub fn parse_skill(path: &Path, relative_path: PathBuf) -> Result<SkillMeta> {
         trigger,
         path: relative_path,
         char_count,
+        line_count,
+        has_references_dir,
     })
 }
 
@@ -155,6 +163,24 @@ Body content here.
             Some("when user asks about testing")
         );
         assert!(meta.char_count > 0);
+        assert!(meta.line_count > 0);
+        assert!(!meta.has_references_dir);
+    }
+
+    #[test]
+    fn test_parse_skill_with_references_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path().join("my-skill");
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        let skill_md = skill_dir.join("SKILL.md");
+        std::fs::write(
+            &skill_md,
+            "---\nname: my-skill\ndescription: Has refs\n---\n",
+        )
+        .unwrap();
+
+        let meta = parse_skill(&skill_md, PathBuf::from("skills/my-skill/SKILL.md")).unwrap();
+        assert!(meta.has_references_dir);
     }
 
     #[test]

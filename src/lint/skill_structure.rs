@@ -84,11 +84,82 @@ impl LintRule for SkillStructure {
                         location: format!("skills/{dir_name}/SKILL.md"),
                     });
                 }
+
+                let Some(meta) = skill_meta else {
+                    continue;
+                };
+
+                // Name must be kebab-case and <= 64 chars
+                if let Some(name) = &meta.name {
+                    if name.len() > 64 {
+                        diagnostics.push(Diagnostic {
+                            rule: self.name().to_string(),
+                            severity: self.severity(),
+                            message: format!(
+                                "Skill name '{name}' exceeds 64 characters ({} chars)",
+                                name.len()
+                            ),
+                            location: format!("skills/{dir_name}/SKILL.md"),
+                        });
+                    }
+                    if !is_kebab_case(name) {
+                        diagnostics.push(Diagnostic {
+                            rule: self.name().to_string(),
+                            severity: self.severity(),
+                            message: format!(
+                                "Skill name '{name}' is not kebab-case (use lowercase letters, digits, and hyphens)"
+                            ),
+                            location: format!("skills/{dir_name}/SKILL.md"),
+                        });
+                    }
+                }
+
+                // Description should be <= 1024 chars (Claude Code limit)
+                if let Some(desc) = &meta.description {
+                    if desc.len() > 1024 {
+                        diagnostics.push(Diagnostic {
+                            rule: self.name().to_string(),
+                            severity: self.severity(),
+                            message: format!(
+                                "Skill description for '{dir_name}' exceeds 1024 characters ({} chars) - Claude Code truncates beyond this",
+                                desc.len()
+                            ),
+                            location: format!("skills/{dir_name}/SKILL.md"),
+                        });
+                    }
+                }
+
+                // Body size tiers: 500+ lines without references/ is a warning
+                if meta.line_count > 500 && !meta.has_references_dir {
+                    diagnostics.push(Diagnostic {
+                        rule: self.name().to_string(),
+                        severity: self.severity(),
+                        message: format!(
+                            "SKILL.md for '{dir_name}' is {} lines - consider splitting detail into a references/ subdirectory",
+                            meta.line_count
+                        ),
+                        location: format!("skills/{dir_name}/SKILL.md"),
+                    });
+                }
             }
         }
 
         diagnostics
     }
+}
+
+/// Returns true if the string is valid kebab-case: lowercase ASCII letters,
+/// digits, and hyphens, not starting or ending with a hyphen.
+fn is_kebab_case(s: &str) -> bool {
+    if s.is_empty() {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    if bytes[0] == b'-' || bytes[bytes.len() - 1] == b'-' {
+        return false;
+    }
+    s.bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 #[cfg(test)]
@@ -161,6 +232,8 @@ mod tests {
                 trigger: None,
                 path: PathBuf::from("skills/my-skill/SKILL.md"),
                 char_count: 30,
+                line_count: 5,
+                has_references_dir: false,
             }],
         );
 
@@ -193,6 +266,8 @@ mod tests {
                 trigger: None,
                 path: PathBuf::from("skills/my-skill/SKILL.md"),
                 char_count: 50,
+                line_count: 5,
+                has_references_dir: false,
             }],
         );
 
@@ -202,5 +277,156 @@ mod tests {
             .filter(|d| d.severity == Severity::Info)
             .collect();
         assert!(info_diags.is_empty());
+    }
+
+    #[test]
+    fn skill_name_not_kebab_case_warns() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills_dir = dir.path().join("skills").join("MySkill");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(
+            skills_dir.join("SKILL.md"),
+            "---\nname: MySkill\ndescription: Bad name\n---\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("skills").join("README.md"), "# Skills\n").unwrap();
+
+        let scan = scan_with_skills(
+            dir.path().to_path_buf(),
+            vec![SkillMeta {
+                name: Some("MySkill".to_string()),
+                description: Some("Bad name".to_string()),
+                trigger: None,
+                path: PathBuf::from("skills/MySkill/SKILL.md"),
+                char_count: 50,
+                line_count: 5,
+                has_references_dir: false,
+            }],
+        );
+
+        let diags = SkillStructure.check(&scan, dir.path(), &empty_config());
+        assert!(diags.iter().any(|d| d.message.contains("kebab-case")));
+    }
+
+    #[test]
+    fn skill_name_too_long_warns() {
+        let dir = tempfile::tempdir().unwrap();
+        let long_name = "a".repeat(65);
+        let skills_dir = dir.path().join("skills").join(&long_name);
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(
+            skills_dir.join("SKILL.md"),
+            format!("---\nname: {long_name}\ndescription: Long\n---\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("skills").join("README.md"), "# Skills\n").unwrap();
+
+        let scan = scan_with_skills(
+            dir.path().to_path_buf(),
+            vec![SkillMeta {
+                name: Some(long_name.clone()),
+                description: Some("Long".to_string()),
+                trigger: None,
+                path: PathBuf::from(format!("skills/{long_name}/SKILL.md")),
+                char_count: 80,
+                line_count: 5,
+                has_references_dir: false,
+            }],
+        );
+
+        let diags = SkillStructure.check(&scan, dir.path(), &empty_config());
+        assert!(diags.iter().any(|d| d.message.contains("exceeds 64")));
+    }
+
+    #[test]
+    fn skill_description_over_1024_warns() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills_dir = dir.path().join("skills").join("verbose");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        let long_desc = "x".repeat(1025);
+        std::fs::write(
+            skills_dir.join("SKILL.md"),
+            format!("---\nname: verbose\ndescription: {long_desc}\n---\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("skills").join("README.md"), "# Skills\n").unwrap();
+
+        let scan = scan_with_skills(
+            dir.path().to_path_buf(),
+            vec![SkillMeta {
+                name: Some("verbose".to_string()),
+                description: Some(long_desc),
+                trigger: None,
+                path: PathBuf::from("skills/verbose/SKILL.md"),
+                char_count: 1100,
+                line_count: 5,
+                has_references_dir: false,
+            }],
+        );
+
+        let diags = SkillStructure.check(&scan, dir.path(), &empty_config());
+        assert!(diags.iter().any(|d| d.message.contains("1024 characters")));
+    }
+
+    #[test]
+    fn large_skill_without_references_warns() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills_dir = dir.path().join("skills").join("big-skill");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(skills_dir.join("SKILL.md"), "---\nname: big-skill\n---\n").unwrap();
+        std::fs::write(dir.path().join("skills").join("README.md"), "# Skills\n").unwrap();
+
+        let scan = scan_with_skills(
+            dir.path().to_path_buf(),
+            vec![SkillMeta {
+                name: Some("big-skill".to_string()),
+                description: None,
+                trigger: None,
+                path: PathBuf::from("skills/big-skill/SKILL.md"),
+                char_count: 20_000,
+                line_count: 550,
+                has_references_dir: false,
+            }],
+        );
+
+        let diags = SkillStructure.check(&scan, dir.path(), &empty_config());
+        assert!(diags.iter().any(|d| d.message.contains("references/")));
+    }
+
+    #[test]
+    fn large_skill_with_references_no_warning() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills_dir = dir.path().join("skills").join("big-skill");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(skills_dir.join("SKILL.md"), "---\nname: big-skill\n---\n").unwrap();
+        std::fs::write(dir.path().join("skills").join("README.md"), "# Skills\n").unwrap();
+
+        let scan = scan_with_skills(
+            dir.path().to_path_buf(),
+            vec![SkillMeta {
+                name: Some("big-skill".to_string()),
+                description: None,
+                trigger: None,
+                path: PathBuf::from("skills/big-skill/SKILL.md"),
+                char_count: 20_000,
+                line_count: 550,
+                has_references_dir: true,
+            }],
+        );
+
+        let diags = SkillStructure.check(&scan, dir.path(), &empty_config());
+        assert!(!diags.iter().any(|d| d.message.contains("references/")));
+    }
+
+    #[test]
+    fn test_is_kebab_case() {
+        assert!(is_kebab_case("my-skill"));
+        assert!(is_kebab_case("review"));
+        assert!(is_kebab_case("code-review-2"));
+        assert!(!is_kebab_case("MySkill"));
+        assert!(!is_kebab_case("my_skill"));
+        assert!(!is_kebab_case("-leading"));
+        assert!(!is_kebab_case("trailing-"));
+        assert!(!is_kebab_case(""));
     }
 }

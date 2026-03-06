@@ -1,27 +1,73 @@
 ---
 name: review
-description: Pre-commit review checklist for code quality and security
-trigger: before any git commit
+description: >
+  Pre-commit review. Run before every git commit to catch security issues,
+  style violations, and code quality problems in staged changes. Reads the
+  full file for context, not just the diff.
 ---
 
 # Review
 
-Run this checklist before committing changes.
+Run this before committing changes. Read every changed file in full (not just the diff).
 
 ## Security
-- [ ] No secrets, keys, or tokens in committed files
-- [ ] No SQL injection, XSS, or command injection vectors
-- [ ] Auth checks present on protected routes
-- [ ] Sensitive data not logged or exposed in error messages
+
+- No secrets, keys, or tokens in committed files
+- No SQL injection, XSS, or command injection vectors
+- Auth checks present on protected routes
+- Sensitive data not logged or exposed in error messages
+
+**Test:** grep the diff for `sk-`, `ghp_`, `AKIA`, `Bearer `, or any 32+ char hex/base64 near a key-like variable name.
 
 ## Correctness
-- [ ] Edge cases handled (empty input, nulls, boundary values)
-- [ ] Error paths tested - failures don't silently corrupt state
-- [ ] Types match across file boundaries (API contracts, shared interfaces)
-- [ ] No leftover debug code, TODO placeholders, or template values
+
+- Edge cases handled (empty input, nulls, boundary values)
+- Error paths tested - failures don't silently corrupt state
+- Types match across file boundaries (API contracts, shared interfaces)
+- No leftover debug code, TODO placeholders, or template values
+
+**Test:** any added `console.log(`, `debugger`, or `print(` in non-test files?
 
 ## Maintainability
-- [ ] Changes are minimal - no unrelated refactors bundled in
-- [ ] New abstractions justified by multiple use sites
-- [ ] Comments explain *why*, not *what*
-- [ ] Test coverage for new behavior
+
+- Changes are minimal - no unrelated refactors bundled in
+- New abstractions justified by multiple use sites
+- Comments explain *why*, not *what*
+- Test coverage for new behavior
+
+## Common AI Code Mistakes
+
+| Bad (AI tends to write) | Why it's bad |
+|------------------------|--------------|
+| Bare `except:` or empty `catch {}` | Silently swallows errors, hides bugs |
+| `as any` or `@ts-ignore` | Defeats type safety, creates time bombs |
+| Comments restating the code | Noise that rots when code changes |
+| Try/catch around code that cannot throw | Defensive theater, obscures real error paths |
+| Mutable default args `def f(items=[])` | Shared state across calls, classic Python bug |
+
+## Report Format
+
+```
+REVIEW: [N files changed]
+========================================
+
+[PASS] No issues found
+--- or ---
+[WARN] N issues found
+
+  [CRITICAL] file.ts:42 - Hardcoded API key (sk-...)
+  [MEDIUM]   utils.ts:89 - console.log left in production code
+
+Recommendation: [ready to commit / fix N issues first]
+```
+
+CRITICAL = security or data loss only. Don't inflate severity.
+Clean diff = PASS. Don't invent issues to justify the review.
+
+## Quality Self-Check
+
+Before reporting, verify:
+1. Read every changed file (not just the diff)?
+2. Checked for security issues even in "boring" changes?
+3. All findings backed by a specific rule or concrete test?
+4. Correct severity? CRITICAL = security/data loss only.

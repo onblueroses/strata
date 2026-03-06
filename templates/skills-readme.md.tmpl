@@ -9,9 +9,9 @@ Each skill lives in its own directory with a `SKILL.md` file:
 ```
 skills/
   my-skill/
-    SKILL.md       # Required: name, description, trigger in frontmatter
-    references/    # Optional: supporting files
-    scripts/       # Optional: executable scripts
+    SKILL.md       # Required: name, description in frontmatter
+    references/    # Optional: detail files loaded on demand
+    scripts/       # Optional: executable scripts bundled with the skill
 ```
 
 ## SKILL.md Format
@@ -19,8 +19,10 @@ skills/
 ```yaml
 ---
 name: my-skill
-description: One-line summary of what this skill does
-trigger: when to activate this skill
+description: >
+  Use this skill when deploying, updating, or checking status of services,
+  even if the user doesn't explicitly say "deploy". Covers nginx, PM2, and
+  systemd operations.
 ---
 
 # My Skill
@@ -30,6 +32,36 @@ Detailed instructions for the agent.
 
 ## Progressive Disclosure
 
-- Skill names and descriptions are always loaded into agent context
-- Full skill body is loaded only when the skill is activated
-- Keep descriptions concise (one line) for efficient context usage
+Skills load in three tiers to minimize token cost:
+
+1. **Metadata** (name + description) - always in agent context. This is the trigger mechanism.
+2. **SKILL.md body** - loaded only when the skill activates.
+3. **references/ and scripts/** - loaded on demand from within the body.
+
+Keep descriptions under 1024 characters. The body can be any length, but if it exceeds
+500 lines, split detail into `references/` files and load them selectively.
+
+## Writing Good Skills
+
+**Descriptions are triggers.** The agent decides whether to use a skill based on
+name + description alone. Be pushy - list the specific situations that should activate
+the skill, not just what it does.
+
+**Anti-examples prevent failures.** List the 3-5 most common mistakes the agent
+makes for this task, with reasoning for why each is wrong. A model that understands
+the reasoning generalizes better than one following bare prohibitions.
+
+**Concrete tests beat abstract rules.** Instead of "the output must be high quality,"
+give a mechanical test: "cover the summary with your hand and read the takeaway alone -
+does it teach something useful on its own?"
+
+**Quality self-check.** End with a 3-5 point checklist the agent verifies after
+producing output but before reporting done. Target the highest error rates.
+
+## Size Budget
+
+| Lines | Guidance |
+|-------|----------|
+| < 200 | Lightweight, no concern |
+| 200-500 | Every section should earn its place |
+| 500+ | Split detail into `references/` files with pointers about when to read them |
