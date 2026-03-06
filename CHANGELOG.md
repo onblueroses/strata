@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **10 starter skills** in standard/full presets (was 2: review, commit)
+  - debug, test, plan, pr, explore, release, security, optimize
+  - Each follows skill-design-principles: pushy descriptions, anti-examples with reasoning, concrete mechanical tests, quality self-checks
+- Skill validation enhancements in `skill-structure` lint rule:
+  - Name must be kebab-case and <= 64 characters
+  - Description warns if > 1024 characters (Claude Code truncation limit)
+  - Body > 500 lines without `references/` subdirectory warns
+- `SkillMeta` now tracks `line_count` and `has_references_dir`
+- Improved starter skill templates (review, commit) with anti-example tables and concrete tests
+- Enhanced `skills/README.md` template with progressive disclosure tiers and size budget guidance
+
 ## [0.2.0] - 2026-03-04
 
 ### Added
