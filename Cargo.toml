@@ -1,8 +1,8 @@
 [package]
 name = "strata-cli"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-description = "Scaffold and validate AI-navigable project structures"
+description = "AI workspace manager for agent-navigable project structures"
 license = "MIT"
 repository = "https://github.com/onblueroses/strata"
 keywords = ["cli", "scaffolding", "project-structure", "ai", "documentation"]

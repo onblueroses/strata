@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Session stop hook - runs when an AI agent session ends.
+# Customize this to sync state, commit work, clean up, etc.
+
+set -euo pipefail
+
+echo "Session stopped: $(date -u +%Y-%m-%dT%H:%M:%SZ)"

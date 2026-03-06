@@ -95,7 +95,10 @@ impl LintRule for SkillStructure {
 #[expect(clippy::unwrap_used, reason = "test code")]
 mod tests {
     use super::*;
-    use crate::config::{ContextConfig, LintConfig, MemoryConfig, ProjectConfig, StructureConfig};
+    use crate::config::{
+        ContextConfig, HooksConfig, LintConfig, MemoryConfig, ProjectConfig, SessionsConfig,
+        SpecsConfig, StructureConfig, TargetsConfig,
+    };
     use crate::scanner::skills::SkillMeta;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -111,6 +114,10 @@ mod tests {
             lint: LintConfig::default(),
             context: ContextConfig::default(),
             memory: MemoryConfig::default(),
+            hooks: HooksConfig::default(),
+            specs: SpecsConfig::default(),
+            sessions: SessionsConfig::default(),
+            targets: TargetsConfig::default(),
         }
     }
 
@@ -123,6 +130,9 @@ mod tests {
             domain_rules: HashMap::new(),
             skills,
             memory_files: vec![],
+            hooks: vec![],
+            specs: vec![],
+            sessions: vec![],
             root,
         }
     }

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Pre-compact hook - runs before context window compression.
+# Customize this to save working state, update specs, etc.
+
+set -euo pipefail
+
+echo "Pre-compact: saving context at $(date -u +%Y-%m-%dT%H:%M:%SZ)"

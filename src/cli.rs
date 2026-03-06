@@ -1,3 +1,4 @@
+use crate::config::{AgentTarget, Preset};
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -42,6 +43,10 @@ pub enum Command {
         /// Directory to initialize in (defaults to current directory)
         #[arg(long, default_value = ".")]
         path: String,
+
+        /// Preset tier: minimal (structure only), standard (+hooks, skills, memory), full (+specs, sessions)
+        #[arg(long, default_value_t = Preset::Minimal)]
+        preset: Preset,
     },
 
     /// Check structural integrity (pass/fail)
@@ -90,6 +95,14 @@ pub enum Command {
         /// Project directory (defaults to current directory)
         #[arg(default_value = ".")]
         path: String,
+
+        /// Target agent format
+        #[arg(long)]
+        target: Option<AgentTarget>,
+
+        /// Install starter skill templates
+        #[arg(long)]
+        skills: bool,
     },
 
     /// Install git pre-commit hooks for drift prevention
@@ -97,5 +110,73 @@ pub enum Command {
         /// Project directory (defaults to current directory)
         #[arg(default_value = ".")]
         path: String,
+    },
+
+    /// Manage implementation specs
+    Spec {
+        #[command(subcommand)]
+        action: SpecAction,
+    },
+
+    /// Manage agent sessions
+    Session {
+        #[command(subcommand)]
+        action: SessionAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SpecAction {
+    /// Create a new spec from template
+    New {
+        /// Spec name (used as filename)
+        name: String,
+
+        /// Session ID to assign ownership
+        #[arg(long)]
+        session: Option<String>,
+    },
+
+    /// List all specs
+    List {
+        /// Filter by status (in-progress, complete, abandoned)
+        #[arg(long)]
+        status: Option<String>,
+    },
+
+    /// Show current step of active specs
+    Status {
+        /// Spec name (shows all in-progress if omitted)
+        name: Option<String>,
+    },
+
+    /// Mark a spec as complete
+    Complete {
+        /// Spec name
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SessionAction {
+    /// Start a new session
+    Start {
+        /// Descriptive session name
+        #[arg(long)]
+        name: Option<String>,
+    },
+
+    /// List recent sessions
+    List {
+        /// Max sessions to show
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
+
+    /// Save context for the current session
+    Save {
+        /// Session ID (uses current session if omitted)
+        #[arg(long)]
+        session: Option<String>,
     },
 }

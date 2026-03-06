@@ -1,0 +1,27 @@
+---
+name: review
+description: Pre-commit review checklist for code quality and security
+trigger: before any git commit
+---
+
+# Review
+
+Run this checklist before committing changes.
+
+## Security
+- [ ] No secrets, keys, or tokens in committed files
+- [ ] No SQL injection, XSS, or command injection vectors
+- [ ] Auth checks present on protected routes
+- [ ] Sensitive data not logged or exposed in error messages
+
+## Correctness
+- [ ] Edge cases handled (empty input, nulls, boundary values)
+- [ ] Error paths tested - failures don't silently corrupt state
+- [ ] Types match across file boundaries (API contracts, shared interfaces)
+- [ ] No leftover debug code, TODO placeholders, or template values
+
+## Maintainability
+- [ ] Changes are minimal - no unrelated refactors bundled in
+- [ ] New abstractions justified by multiple use sites
+- [ ] Comments explain *why*, not *what*
+- [ ] Test coverage for new behavior

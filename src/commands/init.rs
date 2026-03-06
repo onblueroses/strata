@@ -1,6 +1,6 @@
 use crate::config::{
-    ContextConfig, DomainConfig, LintConfig, MemoryConfig, ProjectConfig, StrataConfig,
-    StructureConfig,
+    ContextConfig, DomainConfig, HooksConfig, LintConfig, MemoryConfig, Preset, ProjectConfig,
+    SessionsConfig, SpecsConfig, StrataConfig, StructureConfig, TargetsConfig,
 };
 use crate::error::{Result, StrataError};
 use crate::templates;
@@ -9,7 +9,12 @@ use dialoguer::{Input, MultiSelect};
 use std::fs;
 use std::path::Path;
 
-pub fn run(path: &Path, name: Option<String>, domains: Option<Vec<String>>) -> Result<()> {
+pub fn run(
+    path: &Path,
+    name: Option<String>,
+    domains: Option<Vec<String>>,
+    preset: Preset,
+) -> Result<()> {
     let path = if path == Path::new(".") {
         std::env::current_dir()?
     } else {
@@ -48,6 +53,20 @@ pub fn run(path: &Path, name: Option<String>, domains: Option<Vec<String>>) -> R
     // Create directory structure
     create_directories(&path, &domain_configs)?;
 
+    // Build hooks config based on preset
+    let hooks = match preset {
+        Preset::Standard | Preset::Full => HooksConfig {
+            session_start: ".strata/hooks/session-start.sh".to_string(),
+            session_stop: ".strata/hooks/session-stop.sh".to_string(),
+            pre_compact: ".strata/hooks/pre-compact.sh".to_string(),
+            ..HooksConfig::default()
+        },
+        Preset::Minimal => HooksConfig::default(),
+    };
+
+    let specs = SpecsConfig::default();
+    let sessions = SessionsConfig::default();
+
     // Generate config
     let config = StrataConfig {
         project: ProjectConfig {
@@ -59,6 +78,10 @@ pub fn run(path: &Path, name: Option<String>, domains: Option<Vec<String>>) -> R
         lint: LintConfig::default(),
         context: ContextConfig::default(),
         memory: MemoryConfig::default(),
+        hooks,
+        specs,
+        sessions,
+        targets: TargetsConfig::default(),
     };
     config.save(&path.join("strata.toml"))?;
     ui::file_action("create", "strata.toml");
@@ -66,8 +89,16 @@ pub fn run(path: &Path, name: Option<String>, domains: Option<Vec<String>>) -> R
     // Generate files from templates
     generate_files(&path, &project_name, &domain_configs)?;
 
+    // Preset-specific scaffolding
+    if matches!(preset, Preset::Standard | Preset::Full) {
+        scaffold_standard(&path)?;
+    }
+    if preset == Preset::Full {
+        scaffold_full(&path)?;
+    }
+
     ui::success(&format!(
-        "Project '{}' initialized with {} domain(s)",
+        "Project '{}' initialized ({preset} preset, {} domain(s))",
         project_name,
         domain_configs.len()
     ));
@@ -166,6 +197,71 @@ fn generate_files(root: &Path, project_name: &str, domains: &[DomainConfig]) -> 
         fs::write(&gitignore_path, gitignore)?;
         ui::file_action("create", ".gitignore");
     }
+
+    Ok(())
+}
+
+/// Scaffold standard preset: hooks, starter skills, MEMORY.md.
+fn scaffold_standard(root: &Path) -> Result<()> {
+    // Hooks directory with 3 scripts
+    let hooks_dir = root.join(".strata").join("hooks");
+    fs::create_dir_all(&hooks_dir)?;
+    ui::file_action("create", ".strata/hooks/");
+
+    fs::write(
+        hooks_dir.join("session-start.sh"),
+        templates::render_session_start_hook(),
+    )?;
+    ui::file_action("create", ".strata/hooks/session-start.sh");
+
+    fs::write(
+        hooks_dir.join("session-stop.sh"),
+        templates::render_session_stop_hook(),
+    )?;
+    ui::file_action("create", ".strata/hooks/session-stop.sh");
+
+    fs::write(
+        hooks_dir.join("pre-compact.sh"),
+        templates::render_pre_compact_hook(),
+    )?;
+    ui::file_action("create", ".strata/hooks/pre-compact.sh");
+
+    // Starter skills
+    let review_dir = root.join("skills").join("review");
+    fs::create_dir_all(&review_dir)?;
+    fs::write(
+        review_dir.join("SKILL.md"),
+        templates::render_review_skill(),
+    )?;
+    ui::file_action("create", "skills/review/SKILL.md");
+
+    let commit_dir = root.join("skills").join("commit");
+    fs::create_dir_all(&commit_dir)?;
+    fs::write(
+        commit_dir.join("SKILL.md"),
+        templates::render_commit_skill(),
+    )?;
+    ui::file_action("create", "skills/commit/SKILL.md");
+
+    // MEMORY.md starter
+    let memory_path = root.join("MEMORY.md");
+    if !memory_path.exists() {
+        fs::write(&memory_path, templates::render_memory_starter())?;
+        ui::file_action("create", "MEMORY.md");
+    }
+
+    Ok(())
+}
+
+/// Scaffold full preset additions: specs dir, sessions dir.
+fn scaffold_full(root: &Path) -> Result<()> {
+    let specs_dir = root.join(".strata").join("specs");
+    fs::create_dir_all(&specs_dir)?;
+    ui::file_action("create", ".strata/specs/");
+
+    let sessions_dir = root.join(".strata").join("sessions");
+    fs::create_dir_all(&sessions_dir)?;
+    ui::file_action("create", ".strata/sessions/");
 
     Ok(())
 }

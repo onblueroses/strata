@@ -1,0 +1,29 @@
+---
+name: commit
+description: Conventional commit message format and guidelines
+trigger: when creating a git commit
+---
+
+# Commit
+
+## Format
+
+```
+<type>(<scope>): <subject>
+
+<body>
+```
+
+## Types
+- **feat**: new feature or capability
+- **fix**: bug fix
+- **refactor**: restructure without behavior change
+- **docs**: documentation only
+- **test**: add or update tests
+- **chore**: build, CI, dependency updates
+
+## Rules
+- Subject line: imperative mood, lowercase, no period, under 72 chars
+- Body: explain *why*, not *what*. The diff shows what changed.
+- One logical change per commit. If you need "and" in the subject, split it.
+- Reference issue numbers when applicable

@@ -14,6 +14,14 @@ pub struct StrataConfig {
     pub context: ContextConfig,
     #[serde(default)]
     pub memory: MemoryConfig,
+    #[serde(default)]
+    pub hooks: HooksConfig,
+    #[serde(default)]
+    pub specs: SpecsConfig,
+    #[serde(default)]
+    pub sessions: SessionsConfig,
+    #[serde(default)]
+    pub targets: TargetsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,6 +140,150 @@ impl Default for MemoryConfig {
     }
 }
 
+/// Lifecycle hook configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HooksConfig {
+    #[serde(default)]
+    pub session_start: String,
+    #[serde(default)]
+    pub session_stop: String,
+    #[serde(default)]
+    pub pre_compact: String,
+    #[serde(default)]
+    pub post_edit: String,
+    #[serde(default)]
+    pub notification: String,
+}
+
+/// Spec system configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecsConfig {
+    #[serde(default = "default_specs_dir")]
+    pub dir: String,
+    #[serde(default = "default_true")]
+    pub require_session_ownership: bool,
+    #[serde(default = "default_max_steps_per_phase")]
+    pub max_steps_per_phase: u32,
+}
+
+impl Default for SpecsConfig {
+    fn default() -> Self {
+        Self {
+            dir: default_specs_dir(),
+            require_session_ownership: true,
+            max_steps_per_phase: default_max_steps_per_phase(),
+        }
+    }
+}
+
+/// Session tracking configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionsConfig {
+    #[serde(default = "default_sessions_dir")]
+    pub dir: String,
+    #[serde(default = "default_true")]
+    pub daily_notes: bool,
+    #[serde(default = "default_true")]
+    pub context_save: bool,
+    #[serde(default = "default_session_id_length")]
+    pub session_id_length: u32,
+    #[serde(default = "default_staleness_days")]
+    pub staleness_days: u32,
+}
+
+impl Default for SessionsConfig {
+    fn default() -> Self {
+        Self {
+            dir: default_sessions_dir(),
+            daily_notes: true,
+            context_save: true,
+            session_id_length: default_session_id_length(),
+            staleness_days: default_staleness_days(),
+        }
+    }
+}
+
+/// Agent target output configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TargetsConfig {
+    #[serde(default)]
+    pub default: AgentTarget,
+}
+
+impl Default for TargetsConfig {
+    fn default() -> Self {
+        Self {
+            default: AgentTarget::Generic,
+        }
+    }
+}
+
+/// Supported AI agent targets for context generation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentTarget {
+    #[default]
+    Generic,
+    Claude,
+    Cursor,
+    Copilot,
+}
+
+impl std::fmt::Display for AgentTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Generic => write!(f, "generic"),
+            Self::Claude => write!(f, "claude"),
+            Self::Cursor => write!(f, "cursor"),
+            Self::Copilot => write!(f, "copilot"),
+        }
+    }
+}
+
+/// Init preset tiers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum Preset {
+    #[default]
+    Minimal,
+    Standard,
+    Full,
+}
+
+impl std::fmt::Display for Preset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Minimal => write!(f, "minimal"),
+            Self::Standard => write!(f, "standard"),
+            Self::Full => write!(f, "full"),
+        }
+    }
+}
+
+fn default_specs_dir() -> String {
+    ".strata/specs".to_string()
+}
+
+fn default_sessions_dir() -> String {
+    ".strata/sessions".to_string()
+}
+
+const fn default_max_steps_per_phase() -> u32 {
+    6
+}
+
+const fn default_session_id_length() -> u32 {
+    8
+}
+
+const fn default_staleness_days() -> u32 {
+    7
+}
+
+const fn default_true() -> bool {
+    true
+}
+
 pub(crate) fn default_memory_files() -> Vec<String> {
     vec!["MEMORY.md".to_string()]
 }
@@ -237,6 +389,10 @@ mod tests {
             lint: LintConfig::default(),
             context: ContextConfig::default(),
             memory: MemoryConfig::default(),
+            hooks: HooksConfig::default(),
+            specs: SpecsConfig::default(),
+            sessions: SessionsConfig::default(),
+            targets: TargetsConfig::default(),
         };
         let serialized = toml::to_string_pretty(&config).unwrap();
         let deserialized: StrataConfig = toml::from_str(&serialized).unwrap();

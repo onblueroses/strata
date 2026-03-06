@@ -2,13 +2,20 @@ pub mod context_budget;
 pub mod context_freshness;
 pub mod dead_links;
 pub mod empty_folders;
+pub mod hook_budget;
+pub mod hook_structure;
 pub mod index_freshness;
 pub mod memory_budget;
 pub mod memory_structure;
 pub mod missing_descriptions;
 pub mod orphan_files;
 pub mod rules_completeness;
+pub mod session_structure;
 pub mod skill_structure;
+pub mod spec_ownership;
+pub mod spec_stale;
+pub mod spec_structure;
+pub mod starter_skills;
 
 use crate::config::StrataConfig;
 use crate::scanner::ProjectScan;
@@ -63,6 +70,13 @@ impl LintEngine {
             Box::new(skill_structure::SkillStructure),
             Box::new(memory_budget::MemoryBudget),
             Box::new(memory_structure::MemoryStructure),
+            Box::new(hook_structure::HookStructure),
+            Box::new(hook_budget::HookBudget),
+            Box::new(spec_structure::SpecStructure),
+            Box::new(spec_stale::SpecStale),
+            Box::new(spec_ownership::SpecOwnership),
+            Box::new(session_structure::SessionStructure),
+            Box::new(starter_skills::StarterSkills),
         ];
 
         let disabled = &config.lint.disable;

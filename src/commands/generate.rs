@@ -1,4 +1,4 @@
-use crate::config::StrataConfig;
+use crate::config::{AgentTarget, StrataConfig};
 use crate::error::Result;
 use crate::scanner::ProjectScan;
 use crate::ui;
@@ -8,10 +8,12 @@ use std::path::Path;
 
 const GENERATED_MARKER: &str = "<!-- strata:generated -->";
 
-pub fn run(path: &Path) -> Result<()> {
+pub fn run(path: &Path, target: Option<AgentTarget>, install_skills: bool) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
     let (config, _) = StrataConfig::load(&root)?;
     let scan = crate::scanner::scan_project(&root, &config)?;
+
+    let resolved_target = target.unwrap_or(config.targets.default);
 
     ui::header("Generating context files");
 
@@ -38,10 +40,52 @@ pub fn run(path: &Path) -> Result<()> {
         ui::file_action("generate", &format!(".strata/domains/{filename}"));
     }
 
-    ui::success(&format!(
-        "Generated {} context file(s)",
-        1 + tier2_files.len()
-    ));
+    // Write agent-specific target file
+    if let Some(target_output) = crate::targets::resolve_target(resolved_target) {
+        let target_path = root.join(&target_output.path);
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let rendered = crate::targets::render_target(&config.project.name, &tier1, &target_output);
+        fs::write(&target_path, rendered)?;
+        let rel = target_output.path.to_string_lossy().replace('\\', "/");
+        ui::file_action("generate", &rel);
+    }
+
+    // Install starter skills if requested
+    if install_skills {
+        install_starter_skills(&root)?;
+    }
+
+    let mut count = 1 + tier2_files.len();
+    if crate::targets::resolve_target(resolved_target).is_some() {
+        count += 1;
+    }
+
+    ui::success(&format!("Generated {count} context file(s)"));
+
+    Ok(())
+}
+
+/// Install starter skill templates (review + commit).
+fn install_starter_skills(root: &Path) -> Result<()> {
+    let skills_dir = root.join("skills");
+
+    let review_dir = skills_dir.join("review");
+    let review_path = review_dir.join("SKILL.md");
+    if !review_path.exists() {
+        fs::create_dir_all(&review_dir)?;
+        fs::write(&review_path, crate::templates::render_review_skill())?;
+        ui::file_action("create", "skills/review/SKILL.md");
+    }
+
+    let commit_dir = skills_dir.join("commit");
+    let commit_path = commit_dir.join("SKILL.md");
+    if !commit_path.exists() {
+        fs::create_dir_all(&commit_dir)?;
+        fs::write(&commit_path, crate::templates::render_commit_skill())?;
+        ui::file_action("create", "skills/commit/SKILL.md");
+    }
 
     Ok(())
 }

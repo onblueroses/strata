@@ -1,8 +1,51 @@
 # strata
 
-Scaffold and validate AI-navigable project structures.
+AI workspace manager for agent-navigable project structures.
 
-strata encodes a five-layer navigation architecture that makes complex projects navigable by both humans and AI agents. It generates the scaffolding, validates structural integrity, and auto-repairs drift.
+strata encodes a five-layer navigation architecture and manages the full AI agent workspace: lifecycle hooks, specs, sessions, multi-agent target generation. It scaffolds the structure, validates integrity, and auto-repairs drift.
+
+## Quick Start
+
+```bash
+# Install from source
+cargo install --path .
+
+# Initialize (choose a preset tier)
+strata init --name my-project --domains Core,Docs --preset standard
+
+# Check structural integrity
+strata check
+
+# Run quality diagnostics (18 lint rules)
+strata lint
+
+# Generate context files for your AI agent
+strata generate --target claude
+
+# Manage implementation specs
+strata spec new my-feature --session abc12345
+strata spec list
+strata spec status
+strata spec complete my-feature
+
+# Track sessions
+strata session start --name feature-work
+strata session save
+strata session list
+```
+
+## Presets
+
+`strata init --preset <tier>` controls what gets scaffolded:
+
+| Feature | minimal | standard | full |
+|---------|---------|----------|------|
+| PROJECT.md, INDEX.md, domains, skills/ | x | x | x |
+| .strata/hooks/ (session-start, session-stop, pre-compact) | | x | x |
+| Starter skills (review, commit) | | x | x |
+| MEMORY.md template | | x | x |
+| .strata/specs/ directory | | | x |
+| .strata/sessions/ directory | | | x |
 
 ## The Five Layers
 
@@ -12,142 +55,111 @@ strata encodes a five-layer navigation architecture that makes complex projects 
 4. **Crosslink Mesh** (See Also sections) - Lateral navigation between related files
 5. **Per-File Descriptions** (frontmatter/headers) - Retrieval without full file load
 
-## Quick Start
+## Agent Targets
 
-```bash
-# Install from source
-cargo install --path .
+`strata generate --target <agent>` writes agent-specific context files:
 
-# Initialize a new project
-strata init --name my-project --domains Core,Docs,Config,Scripts
+| Target | Output file |
+|--------|-------------|
+| generic (default) | `.strata/context.md` |
+| claude | `CLAUDE.md` |
+| cursor | `.cursorrules` |
+| copilot | `.github/copilot-instructions.md` |
 
-# Check structural integrity
-strata check
-
-# Run quality diagnostics
-strata lint
-
-# Auto-repair issues
-strata fix
-
-# Generate context files for AI agents
-strata generate
-
-# Install git hooks
-strata install-hooks
-```
-
-## What `strata init` Creates
-
-```
-my-project/
-  PROJECT.md          # Layer 1: Constitution
-  INDEX.md            # Layer 2: Global index
-  strata.toml         # Configuration
-  01-Core/
-    RULES.md          # Layer 3: Domain boundary
-  02-Docs/
-    RULES.md
-  03-Config/
-    RULES.md
-  04-Scripts/
-    RULES.md
-  skills/             # Reusable agent skills
-    README.md
-  config/
-  archive/
-  .strata/
-```
+All targets also generate `.strata/context.md` and per-domain files. Human content above the `<!-- strata:generated -->` marker is preserved across regenerations.
 
 ## Commands
 
 ### `strata init`
 
-Interactive project scaffolding. Prompts for project name and domains, then generates the full five-layer structure with numbered domain folders.
+Interactive project scaffolding with preset tiers.
 
 ```bash
-# Interactive
-strata init
-
-# Non-interactive
-strata init --name my-project --domains Core,Docs,Scripts
+strata init                                          # interactive
+strata init --name my-project --domains Core,Docs    # non-interactive, minimal
+strata init --preset full --name my-project          # full workspace
 ```
 
 ### `strata check`
 
-Structural integrity validation. Pass/fail with exit code 1 on failure.
-
-Checks:
-- INDEX.md exists
-- PROJECT.md exists
-- Every configured domain has RULES.md
-- No dead crosslinks
+Structural integrity validation. Exit code 1 on failure.
 
 ### `strata lint`
 
-Quality diagnostics with severity levels.
+Quality diagnostics with 18 rules across Error/Warning/Info severity.
 
 | Rule | Severity | Catches |
 |------|----------|---------|
-| `rules-completeness` | Error | RULES.md missing Purpose or Boundaries section |
-| `index-freshness` | Warning | Files not listed in INDEX.md |
-| `dead-links` | Error | Crosslinks pointing to non-existent files |
-| `missing-descriptions` | Warning | Files without description in frontmatter/header |
-| `orphan-files` | Warning | Files not referenced anywhere |
+| `rules-completeness` | Error | RULES.md missing Purpose or Boundaries |
+| `dead-links` | Error | Crosslinks to non-existent files |
+| `index-freshness` | Warning | Files not in INDEX.md |
+| `missing-descriptions` | Warning | No frontmatter description |
+| `orphan-files` | Warning | Unreferenced files |
+| `context-budget` | Warning | Files exceeding char budget |
+| `skill-structure` | Warning | Malformed SKILL.md |
+| `memory-budget` | Warning | Memory files over budget |
+| `hook-structure` | Warning | Hook configured but missing/not executable |
+| `hook-budget` | Warning | Hook script too large |
+| `spec-structure` | Warning | Missing Status or Current Step |
+| `memory-structure` | Info | Memory files without headings |
 | `empty-folders` | Info | Domain folders with no content |
-| `context-budget` | Warning | Files exceeding character budget for AI context |
-| `context-freshness` | Info | Generated context files out of date with sources |
-| `skill-structure` | Warning | Skill directories missing SKILL.md or name field |
+| `context-freshness` | Info | Generated context out of date |
+| `spec-stale` | Info | In-progress spec not modified recently |
+| `spec-ownership` | Info | In-progress spec with no session ID |
+| `session-structure` | Info | Malformed daily note or context save |
+| `starter-skills` | Info | Hooks configured but no skills installed |
 
 ```bash
-# Run all rules
-strata lint
-
-# Single rule
-strata lint --rule dead-links
-
-# JSON output for CI
-strata lint --format json
-
-# Exit code only
-strata lint --quiet
+strata lint                    # all rules
+strata lint --rule dead-links  # single rule
+strata lint --format json      # CI output
+strata lint --quiet            # exit code only
 ```
 
 ### `strata fix`
 
-Auto-repair common issues:
-- Adds unindexed files to INDEX.md
-- Generates missing RULES.md stubs
-- Removes dead crosslinks
-- Regenerates INDEX.md from project files (with `--index`)
+Auto-repair: add unindexed files to INDEX.md, generate missing RULES.md, remove dead links.
 
 ```bash
-# Preview changes
-strata fix --dry-run
-
-# Apply fixes
-strata fix
-
-# Rebuild INDEX.md from scratch
-strata fix --index
+strata fix --dry-run    # preview
+strata fix              # apply
+strata fix --index      # rebuild INDEX.md
 ```
 
 ### `strata generate`
 
-Generates context files for AI agent consumption under `.strata/`:
-
-- `.strata/context.md` - Project summary, domain map, skill index
-- `.strata/domains/<domain>.md` - Per-domain purpose, boundaries, and file listing
-
-Human content added above the `<!-- strata:generated -->` marker is preserved across regenerations.
+Generate context files for AI agents.
 
 ```bash
-strata generate
+strata generate                  # generic target
+strata generate --target claude  # writes CLAUDE.md
+strata generate --skills         # install starter skills
+```
+
+### `strata spec`
+
+Manage implementation specs in `.strata/specs/`.
+
+```bash
+strata spec new my-feature --session abc12345
+strata spec list --status in-progress
+strata spec status my-feature
+strata spec complete my-feature
+```
+
+### `strata session`
+
+Track AI agent sessions.
+
+```bash
+strata session start --name feature-work
+strata session list --limit 20
+strata session save --session abc12345
 ```
 
 ### `strata install-hooks`
 
-Installs a git pre-commit hook that runs `strata check` before each commit.
+Install git pre-commit hook that runs `strata check`.
 
 ## Configuration
 
@@ -162,46 +174,50 @@ description = "What this project does"
 name = "Core"
 prefix = "01"
 
-[[project.domains]]
-name = "Docs"
-prefix = "02"
-
 [structure]
 ignore = [".git", ".strata", "node_modules", "target"]
-require_descriptions = false
+link_mode = "path"  # or "name" for vault-style
 
 [lint]
-disable = []    # Rule names to skip
-strict = false  # Treat warnings as errors
+disable = []
+strict = false
 
 [context]
-project_budget = 3000   # Max chars for PROJECT.md in context
-index_budget = 8000     # Max chars for INDEX.md in context
-rules_budget = 1500     # Max chars per RULES.md in context
-skill_budget = 5000     # Max chars per SKILL.md in context
+project_budget = 3000
+index_budget = 8000
+rules_budget = 1500
+skill_budget = 5000
+
+[memory]
+files = ["MEMORY.md"]
+budget = 3200
+
+[hooks]
+session_start = ".strata/hooks/session-start.sh"
+session_stop = ".strata/hooks/session-stop.sh"
+pre_compact = ".strata/hooks/pre-compact.sh"
+
+[specs]
+dir = ".strata/specs"
+require_session_ownership = true
+max_steps_per_phase = 6
+
+[sessions]
+dir = ".strata/sessions"
+daily_notes = true
+context_save = true
+staleness_days = 7
+
+[targets]
+default = "generic"  # generic | claude | cursor | copilot
 ```
 
-## Skills
+## Design Principles
 
-Skills are reusable procedural knowledge for AI agents. Each skill lives in `skills/<name>/SKILL.md` with YAML frontmatter:
-
-```yaml
----
-name: my-skill
-description: One-line summary
-trigger: when to activate
----
-
-Detailed instructions for the agent.
-```
-
-Skill names and descriptions are included in generated context. The `skill-structure` lint rule validates that each skill directory has a properly formatted SKILL.md.
-
-## Why Five Layers?
-
-AI agents navigate projects by reading files. Without structure, they waste context window on irrelevant files, miss important ones, and make changes in the wrong places.
-
-The five layers solve this by giving every file a discoverable address (INDEX.md), every folder an explicit scope (RULES.md), and every file a one-line summary (frontmatter). An agent can navigate from PROJECT.md to the right domain in three hops.
+- **Agent-agnostic**: Works with Claude, Cursor, Copilot, or any agent that reads markdown
+- **Tiered presets**: Start minimal, grow into full workspace management
+- **No external dependencies for core**: Session IDs use timestamp hashing, dates use manual epoch math
+- **Canonical representation**: `.strata/` is the source of truth; `--target` translates to agent-specific formats
 
 ## License
 

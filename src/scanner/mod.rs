@@ -1,10 +1,13 @@
 pub mod frontmatter;
 pub mod fs;
+pub mod hooks;
 pub mod index;
 pub mod links;
 pub mod memory;
 pub mod rules;
+pub mod sessions;
 pub mod skills;
+pub mod specs;
 
 use crate::config::{LinkMode, StrataConfig};
 use crate::error::Result;
@@ -28,6 +31,12 @@ pub struct ProjectScan {
     pub skills: Vec<skills::SkillMeta>,
     /// Memory layer file metadata.
     pub memory_files: Vec<memory::MemoryFileMeta>,
+    /// Lifecycle hook metadata.
+    pub hooks: Vec<hooks::HookMeta>,
+    /// Spec file metadata.
+    pub specs: Vec<specs::SpecMeta>,
+    /// Session file metadata.
+    pub sessions: Vec<sessions::SessionMeta>,
     /// Project root.
     pub root: PathBuf,
 }
@@ -187,6 +196,15 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
     // Scan memory layer files
     let memory_files = memory::scan_memory_files(root, &config.memory);
 
+    // Scan lifecycle hooks
+    let hook_metas = hooks::scan_hooks(root, &config.hooks);
+
+    // Scan specs
+    let spec_metas = specs::scan_specs(root, &config.specs);
+
+    // Scan sessions
+    let session_metas = sessions::scan_sessions(root, &config.sessions);
+
     Ok(ProjectScan {
         files,
         index_entries,
@@ -195,17 +213,26 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
         domain_rules,
         skills,
         memory_files,
+        hooks: hook_metas,
+        specs: spec_metas,
+        sessions: session_metas,
         root: root.to_path_buf(),
     })
 }
 
 pub fn is_meta_file(path: &Path) -> bool {
+    let path_str = path.to_string_lossy();
+    // Everything under .strata/ is meta
+    if path_str.starts_with(".strata/") || path_str.starts_with(".strata\\") {
+        return true;
+    }
+
     path.file_name()
         .and_then(|n| n.to_str())
         .is_some_and(|name| {
             matches!(
                 name,
-                "INDEX.md" | "PROJECT.md" | "RULES.md" | "strata.toml" | ".gitignore"
+                "INDEX.md" | "PROJECT.md" | "RULES.md" | "strata.toml" | ".gitignore" | "MEMORY.md"
             )
         })
 }

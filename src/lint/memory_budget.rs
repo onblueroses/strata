@@ -36,7 +36,10 @@ impl LintRule for MemoryBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ContextConfig, LintConfig, MemoryConfig, ProjectConfig, StructureConfig};
+    use crate::config::{
+        ContextConfig, HooksConfig, LintConfig, MemoryConfig, ProjectConfig, SessionsConfig,
+        SpecsConfig, StructureConfig, TargetsConfig,
+    };
     use crate::scanner::memory::MemoryFileMeta;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -55,6 +58,10 @@ mod tests {
                 files: vec!["MEMORY.md".to_string()],
                 budget,
             },
+            hooks: HooksConfig::default(),
+            specs: SpecsConfig::default(),
+            sessions: SessionsConfig::default(),
+            targets: TargetsConfig::default(),
         }
     }
 
@@ -67,6 +74,9 @@ mod tests {
             domain_rules: HashMap::new(),
             skills: vec![],
             memory_files,
+            hooks: vec![],
+            specs: vec![],
+            sessions: vec![],
             root: PathBuf::from("/tmp/test"),
         }
     }

@@ -7,6 +7,13 @@ const RULES_MD_TMPL: &str = include_str!("../templates/RULES.md.tmpl");
 const GITIGNORE_TMPL: &str = include_str!("../templates/gitignore.tmpl");
 const PRE_COMMIT_TMPL: &str = include_str!("../templates/pre-commit.sh.tmpl");
 const SKILLS_README_TMPL: &str = include_str!("../templates/skills-readme.md.tmpl");
+const SESSION_START_HOOK_TMPL: &str = include_str!("../templates/hooks/session-start.sh.tmpl");
+const SESSION_STOP_HOOK_TMPL: &str = include_str!("../templates/hooks/session-stop.sh.tmpl");
+const PRE_COMPACT_HOOK_TMPL: &str = include_str!("../templates/hooks/pre-compact.sh.tmpl");
+const SPEC_TMPL: &str = include_str!("../templates/spec.md.tmpl");
+const REVIEW_SKILL_TMPL: &str = include_str!("../templates/skills/review.md.tmpl");
+const COMMIT_SKILL_TMPL: &str = include_str!("../templates/skills/commit.md.tmpl");
+const MEMORY_STARTER_TMPL: &str = include_str!("../templates/memory.md.tmpl");
 
 pub fn render_project_md(project_name: &str) -> String {
     PROJECT_MD_TMPL.replace("{{PROJECT_NAME}}", project_name)
@@ -42,4 +49,36 @@ pub fn render_pre_commit() -> String {
 
 pub fn render_skills_readme() -> String {
     SKILLS_README_TMPL.to_string()
+}
+
+pub fn render_session_start_hook() -> String {
+    SESSION_START_HOOK_TMPL.to_string()
+}
+
+pub fn render_session_stop_hook() -> String {
+    SESSION_STOP_HOOK_TMPL.to_string()
+}
+
+pub fn render_pre_compact_hook() -> String {
+    PRE_COMPACT_HOOK_TMPL.to_string()
+}
+
+pub fn render_spec(name: &str, session_id: &str, date: &str) -> String {
+    SPEC_TMPL
+        .replace("{{SPEC_NAME}}", name)
+        .replace("{{SESSION_ID}}", session_id)
+        .replace("{{DATE}}", date)
+        .replace("{{PHASE_NAME}}", "Setup")
+}
+
+pub fn render_review_skill() -> String {
+    REVIEW_SKILL_TMPL.to_string()
+}
+
+pub fn render_commit_skill() -> String {
+    COMMIT_SKILL_TMPL.to_string()
+}
+
+pub fn render_memory_starter() -> String {
+    MEMORY_STARTER_TMPL.to_string()
 }
