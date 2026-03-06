@@ -84,8 +84,8 @@ impl EvalBackend for ClaudeCodeBackend {
              it for unrelated requests."
         );
 
-        // Build command
-        let mut cmd = Command::new(&self.claude_bin);
+        // Build command - .cmd files on Windows need cmd.exe /C wrapper
+        let mut cmd = build_command(&self.claude_bin);
         cmd.arg("-p")
             .arg(query)
             .arg("--output-format")
@@ -200,7 +200,7 @@ impl EvalBackend for ClaudeCodeBackend {
             history,
         );
 
-        let mut cmd = Command::new(&self.claude_bin);
+        let mut cmd = build_command(&self.claude_bin);
         cmd.arg("-p")
             .arg(&prompt)
             .arg("--output-format")
@@ -417,6 +417,19 @@ impl StreamParser {
                 }
             }
         }
+    }
+}
+
+/// Build a Command that handles .cmd files on Windows.
+/// Windows .cmd files break when arguments contain special characters unless
+/// run through cmd.exe /C.
+fn build_command(bin: &Path) -> Command {
+    if bin.extension().and_then(|e| e.to_str()) == Some("cmd") {
+        let mut cmd = Command::new("cmd.exe");
+        cmd.arg("/C").arg(bin);
+        cmd
+    } else {
+        Command::new(bin)
     }
 }
 
