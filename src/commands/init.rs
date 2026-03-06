@@ -243,6 +243,22 @@ fn scaffold_standard(root: &Path) -> Result<()> {
     )?;
     ui::file_action("create", "skills/commit/SKILL.md");
 
+    for (name, content) in [
+        ("debug", templates::render_debug_skill()),
+        ("test", templates::render_test_skill()),
+        ("plan", templates::render_plan_skill()),
+        ("pr", templates::render_pr_skill()),
+        ("explore", templates::render_explore_skill()),
+        ("release", templates::render_release_skill()),
+        ("security", templates::render_security_skill()),
+        ("optimize", templates::render_optimize_skill()),
+    ] {
+        let skill_dir = root.join("skills").join(name);
+        fs::create_dir_all(&skill_dir)?;
+        fs::write(skill_dir.join("SKILL.md"), content)?;
+        ui::file_action("create", &format!("skills/{name}/SKILL.md"));
+    }
+
     // MEMORY.md starter
     let memory_path = root.join("MEMORY.md");
     if !memory_path.exists() {

@@ -1,0 +1,61 @@
+---
+name: release
+description: >
+  Version bump, changelog, tag, and publish checklist. Use when preparing a
+  release, cutting a new version, or publishing a package. Prevents forgotten
+  changelog entries, mismatched version numbers, and broken releases.
+---
+
+# Release
+
+A release is a promise to users. Don't ship broken promises.
+
+## Steps
+
+1. **Decide version** - Follow semver: breaking change = major, new feature = minor,
+   bug fix = patch. When in doubt, it's a minor.
+2. **Update changelog** - Add entry for the new version with date. Group changes
+   by type (Added, Changed, Fixed, Removed). Every user-visible change needs an entry.
+3. **Bump version** - Update version in all relevant files (package.json, Cargo.toml,
+   pyproject.toml, etc). Search for the old version string to find all locations.
+4. **Verify** - Run the full test suite. Build the release artifact. Test it locally
+   as a consumer would use it.
+5. **Tag** - Create a git tag matching the version: `git tag v1.2.3`.
+6. **Publish** - Push the tag. Publish to package registry if applicable.
+7. **Announce** - Update release notes. Notify users of breaking changes.
+
+## Changelog Format
+
+```markdown
+## [1.2.3] - 2025-03-06
+
+### Added
+- New feature X that does Y
+
+### Changed
+- Updated behavior of Z to handle edge case
+
+### Fixed
+- Bug where A caused B under condition C
+
+### Removed
+- Deprecated function `oldThing()` (use `newThing()` instead)
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Bumping version without updating changelog | Users can't tell what changed | Changelog entry for every version bump |
+| Version in package.json but not in lock file | Mismatched versions cause install issues | Run the package manager's install after bumping |
+| "Various bug fixes" as a changelog entry | Useless to users deciding whether to upgrade | List each fix specifically |
+| Tagging before tests pass | Broken release that users will install | Tag only after full verification |
+| Major version bump for a non-breaking change | Unnecessary upgrade anxiety | Follow semver strictly |
+
+## Quality Self-Check
+
+Before publishing:
+1. Version number updated in ALL relevant files (search for old version)?
+2. Changelog entry exists with specific, user-facing descriptions?
+3. Full test suite passes on the release commit?
+4. Git tag matches the version exactly?

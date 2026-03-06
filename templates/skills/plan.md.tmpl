@@ -1,0 +1,51 @@
+---
+name: plan
+description: >
+  Break down implementation tasks before coding. Use before starting any
+  non-trivial feature, refactor, or multi-file change. Prevents scope creep,
+  missed edge cases, and "I'll figure it out as I go" on complex work.
+---
+
+# Plan
+
+Think before typing. A 10-minute plan prevents hours of rework.
+
+## Steps
+
+1. **Scope** - What exactly needs to change? What does NOT change? Write both down.
+   The "does not change" list prevents scope creep.
+2. **Inventory** - List every file that needs modification. Read each one.
+   Understand existing patterns before introducing new ones.
+3. **Design** - Sketch the approach. For each file: what changes, what's added,
+   what's removed. Identify the riskiest part and address it first.
+4. **Edge cases** - List inputs, states, and conditions that could break the design.
+   Empty collections, concurrent access, missing config, partial failures.
+5. **Order** - Sequence the work so each step is independently testable.
+   If step 3 breaks, steps 1-2 should still be valid.
+6. **Define done** - What must be true when complete? Tests pass, docs updated,
+   no regressions, specific acceptance criteria met.
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| "Step 1: implement the feature" | Not a plan, just restating the goal | Break into specific file changes with acceptance criteria |
+| Planning for 2 hours on a 30-minute task | Over-planning wastes more time than under-planning | If it touches <3 files with clear requirements, just do it |
+| "We might need X later, so build it now" | Speculative complexity, root of over-engineering | Build for current requirements; refactor when the need is real |
+| Skipping the file inventory step | Discover mid-implementation that your approach conflicts with existing code | Always read before write |
+| Starting with the easy parts | Risky parts discovered late when you're committed to the approach | Address the riskiest unknown first |
+
+## Concrete Tests
+
+- Can you explain the plan in under 2 minutes?
+- Does every step have a clear "done" signal?
+- Is the riskiest part addressed in the first 1-2 steps (not saved for last)?
+- Could you hand this plan to another developer and they'd know what to do?
+
+## Quality Self-Check
+
+Before starting implementation:
+1. Scope explicitly states what's in AND out?
+2. Every affected file listed and read?
+3. Edge cases identified for each design decision?
+4. Steps ordered so each is independently verifiable?

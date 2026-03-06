@@ -13,6 +13,14 @@ const PRE_COMPACT_HOOK_TMPL: &str = include_str!("../templates/hooks/pre-compact
 const SPEC_TMPL: &str = include_str!("../templates/spec.md.tmpl");
 const REVIEW_SKILL_TMPL: &str = include_str!("../templates/skills/review.md.tmpl");
 const COMMIT_SKILL_TMPL: &str = include_str!("../templates/skills/commit.md.tmpl");
+const DEBUG_SKILL_TMPL: &str = include_str!("../templates/skills/debug.md.tmpl");
+const TEST_SKILL_TMPL: &str = include_str!("../templates/skills/test.md.tmpl");
+const PLAN_SKILL_TMPL: &str = include_str!("../templates/skills/plan.md.tmpl");
+const PR_SKILL_TMPL: &str = include_str!("../templates/skills/pr.md.tmpl");
+const EXPLORE_SKILL_TMPL: &str = include_str!("../templates/skills/explore.md.tmpl");
+const RELEASE_SKILL_TMPL: &str = include_str!("../templates/skills/release.md.tmpl");
+const SECURITY_SKILL_TMPL: &str = include_str!("../templates/skills/security.md.tmpl");
+const OPTIMIZE_SKILL_TMPL: &str = include_str!("../templates/skills/optimize.md.tmpl");
 const MEMORY_STARTER_TMPL: &str = include_str!("../templates/memory.md.tmpl");
 
 pub fn render_project_md(project_name: &str) -> String {
@@ -77,6 +85,38 @@ pub fn render_review_skill() -> String {
 
 pub fn render_commit_skill() -> String {
     COMMIT_SKILL_TMPL.to_string()
+}
+
+pub fn render_debug_skill() -> String {
+    DEBUG_SKILL_TMPL.to_string()
+}
+
+pub fn render_test_skill() -> String {
+    TEST_SKILL_TMPL.to_string()
+}
+
+pub fn render_plan_skill() -> String {
+    PLAN_SKILL_TMPL.to_string()
+}
+
+pub fn render_pr_skill() -> String {
+    PR_SKILL_TMPL.to_string()
+}
+
+pub fn render_explore_skill() -> String {
+    EXPLORE_SKILL_TMPL.to_string()
+}
+
+pub fn render_release_skill() -> String {
+    RELEASE_SKILL_TMPL.to_string()
+}
+
+pub fn render_security_skill() -> String {
+    SECURITY_SKILL_TMPL.to_string()
+}
+
+pub fn render_optimize_skill() -> String {
+    OPTIMIZE_SKILL_TMPL.to_string()
 }
 
 pub fn render_memory_starter() -> String {
