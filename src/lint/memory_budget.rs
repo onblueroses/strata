@@ -22,12 +22,12 @@ impl LintRule for MemoryBudget {
             .filter(|m| m.char_count > budget)
             .map(|m| {
                 let location = m.path.to_string_lossy().replace('\\', "/");
-                Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!("{location} is {} chars, budget is {budget}", m.char_count),
+                Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!("{location} is {} chars, budget is {budget}", m.char_count),
                     location,
-                }
+                )
             })
             .collect()
     }

@@ -27,22 +27,22 @@ impl LintRule for MemoryStructure {
 
             match scanned {
                 None if !abs_path.exists() && is_explicitly_configured => {
-                    diagnostics.push(Diagnostic {
-                        rule: self.name().to_string(),
-                        severity: self.severity(),
-                        message: format!("{filename} is configured but does not exist"),
-                        location: filename.clone(),
-                    });
+                    diagnostics.push(Diagnostic::new(
+                        self.name(),
+                        self.severity(),
+                        format!("{filename} is configured but does not exist"),
+                        filename.clone(),
+                    ));
                 }
                 Some(meta) if !meta.has_headings => {
-                    diagnostics.push(Diagnostic {
-                        rule: self.name().to_string(),
-                        severity: self.severity(),
-                        message: format!(
+                    diagnostics.push(Diagnostic::new(
+                        self.name(),
+                        self.severity(),
+                        format!(
                             "{filename} has no markdown headings - flat text is harder for agents to navigate"
                         ),
-                        location: filename.clone(),
-                    });
+                        filename.clone(),
+                    ));
                 }
                 _ => {}
             }

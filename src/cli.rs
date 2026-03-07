@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand};
 pub enum OutputFormat {
     Text,
     Json,
+    Sarif,
 }
 
 impl std::fmt::Display for OutputFormat {
@@ -13,6 +14,7 @@ impl std::fmt::Display for OutputFormat {
         match self {
             OutputFormat::Text => write!(f, "text"),
             OutputFormat::Json => write!(f, "json"),
+            OutputFormat::Sarif => write!(f, "sarif"),
         }
     }
 }
@@ -71,7 +73,7 @@ pub enum Command {
         #[arg(long)]
         quiet: bool,
 
-        /// Output format (text or json)
+        /// Output format (text, json, or sarif)
         #[arg(long, default_value_t = OutputFormat::Text)]
         format: OutputFormat,
     },

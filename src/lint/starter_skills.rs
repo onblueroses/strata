@@ -26,12 +26,12 @@ impl LintRule for StarterSkills {
 
         let skills_dir = root.join("skills");
         if !skills_dir.is_dir() || scan.skills.is_empty() {
-            return vec![Diagnostic {
-                rule: self.name().to_string(),
-                severity: self.severity(),
-                message: "Hooks are configured but no skills are installed. Consider adding starter skills with `strata init --preset standard` or `strata generate --skills`.".to_string(),
-                location: "skills/".to_string(),
-            }];
+            return vec![Diagnostic::new(
+                self.name(),
+                self.severity(),
+                "Hooks are configured but no skills are installed. Consider adding starter skills with `strata init --preset standard` or `strata generate --skills`.",
+                "skills/",
+            )];
         }
 
         Vec::new()

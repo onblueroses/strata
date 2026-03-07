@@ -55,10 +55,10 @@ Fix false positives, modernize internals, make strata pleasant to use on real pr
 | 0.1 | Replace `walkdir`+`globset` with `ignore` crate (gitignore-aware, parallel-ready) | Done |
 | 0.2 | Fix link resolution (wiki-name mode, implicit .md, URL path filtering, code block skipping) | Done |
 | 0.3 | Configurable `scan_extensions` in strata.toml | Done |
-| 0.4 | Switch to `miette` for rich error diagnostics with source spans | |
-| 0.5 | Add SARIF v2.1.0 output (`strata lint --format sarif`) | |
-| 0.6 | Snapshot tests with `insta` + `insta-cmd` | |
-| 0.7 | Parallel scanning with `rayon` | |
+| 0.4 | Switch to `miette` for rich error diagnostics with source spans | Done |
+| 0.5 | Add SARIF v2.1.0 output (`strata lint --format sarif`) | Done |
+| 0.6 | Snapshot tests with `insta` + `insta-cmd` | Done |
+| 0.7 | Parallel scanning with `rayon` | Done |
 
 ### Phase 0.5: Memory System + Workspace Expansion (complete)
 
@@ -115,16 +115,16 @@ strata gets smarter over time by watching project evolution and suggesting struc
 | Decision | Choice | Rationale | Status |
 |----------|--------|-----------|--------|
 | File walker | `ignore` crate | gitignore-aware, parallel-ready, BurntSushi quality | Implemented |
-| Error display | `thiserror` + `console` (planned: `miette`) | Current: works. Future: source spans, actionable help | Implemented (basic) |
+| Error display | `thiserror` + `miette` | Rich diagnostics with source spans, diagnostic codes, actionable help text | Implemented |
 | Template engine | `{{KEY}}` marker-based (planned: `minijinja`) | Current: simple replacement. Future: conditionals, loops | Implemented (basic) |
 | Config format | TOML | Rust ecosystem standard, already in use | Implemented |
 | Link mode | Config-driven (`path` vs `name`) | Code projects use paths, vaults use filename matching | Implemented |
 | Generation markers | `<!-- strata:generated -->` | Single marker: above = human-owned, below = regenerated | Implemented |
 | Budget unit | Characters (not tokens) | Deterministic, zero-dependency, ~4 chars/token | Implemented |
 | MCP | Separate feature flag | Keep core CLI simple, MCP is additive | Planned |
-| Structured output | SARIF v2.1.0 | Industry standard, VS Code + GitHub Actions | Planned |
-| Parallel scanning | `rayon` | Standard for data parallelism, deterministic with sort | Planned |
-| Snapshot testing | `insta` + `insta-cmd` | De facto standard, interactive review | Planned |
+| Structured output | SARIF v2.1.0 (`serde-sarif`) | Industry standard, VS Code + GitHub Actions | Implemented |
+| Parallel scanning | `rayon` | Standard for data parallelism in file content scanning | Implemented |
+| Snapshot testing | `insta` + `insta-cmd` | De facto standard, interactive review | Implemented |
 | Content hashing | `blake3` | SIMD-accelerated, 3x faster than SHA-256 | Planned |
 | File watching | `notify` v8 | Cross-platform, proven, debounced | Planned |
 

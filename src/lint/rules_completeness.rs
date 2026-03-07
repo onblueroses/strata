@@ -23,35 +23,35 @@ impl LintRule for RulesCompleteness {
 
             match scan.domain_rules.get(&dir_path) {
                 None => {
-                    diagnostics.push(Diagnostic {
-                        rule: self.name().to_string(),
-                        severity: self.severity(),
-                        message: format!("RULES.md missing for domain '{}'", domain.name),
-                        location: format!("{dir_name}/RULES.md"),
-                    });
+                    diagnostics.push(Diagnostic::new(
+                        self.name(),
+                        self.severity(),
+                        format!("RULES.md missing for domain '{}'", domain.name),
+                        format!("{dir_name}/RULES.md"),
+                    ));
                 }
                 Some(rules) => {
                     if !rules.has_purpose {
-                        diagnostics.push(Diagnostic {
-                            rule: self.name().to_string(),
-                            severity: self.severity(),
-                            message: format!(
+                        diagnostics.push(Diagnostic::new(
+                            self.name(),
+                            self.severity(),
+                            format!(
                                 "RULES.md for '{}' is missing a Purpose section",
                                 domain.name
                             ),
-                            location: format!("{dir_name}/RULES.md"),
-                        });
+                            format!("{dir_name}/RULES.md"),
+                        ));
                     }
                     if !rules.has_boundaries {
-                        diagnostics.push(Diagnostic {
-                            rule: self.name().to_string(),
-                            severity: self.severity(),
-                            message: format!(
+                        diagnostics.push(Diagnostic::new(
+                            self.name(),
+                            self.severity(),
+                            format!(
                                 "RULES.md for '{}' is missing a Boundaries section",
                                 domain.name
                             ),
-                            location: format!("{dir_name}/RULES.md"),
-                        });
+                            format!("{dir_name}/RULES.md"),
+                        ));
                     }
                 }
             }

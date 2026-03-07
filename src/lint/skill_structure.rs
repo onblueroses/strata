@@ -24,12 +24,12 @@ impl LintRule for SkillStructure {
 
         // Check for README.md in skills/
         if !skills_dir.join("README.md").exists() {
-            diagnostics.push(Diagnostic {
-                rule: self.name().to_string(),
-                severity: self.severity(),
-                message: "skills/ directory is missing README.md".to_string(),
-                location: "skills/README.md".to_string(),
-            });
+            diagnostics.push(Diagnostic::new(
+                self.name(),
+                self.severity(),
+                "skills/ directory is missing README.md",
+                "skills/README.md",
+            ));
         }
 
         // Check each subdirectory of skills/ for SKILL.md
@@ -45,12 +45,12 @@ impl LintRule for SkillStructure {
                 let skill_md_path = path.join("SKILL.md");
 
                 if !skill_md_path.exists() {
-                    diagnostics.push(Diagnostic {
-                        rule: self.name().to_string(),
-                        severity: self.severity(),
-                        message: format!("Skill '{dir_name}' is missing SKILL.md"),
-                        location: format!("skills/{dir_name}/SKILL.md"),
-                    });
+                    diagnostics.push(Diagnostic::new(
+                        self.name(),
+                        self.severity(),
+                        format!("Skill '{dir_name}' is missing SKILL.md"),
+                        format!("skills/{dir_name}/SKILL.md"),
+                    ));
                     continue;
                 }
 
@@ -62,27 +62,27 @@ impl LintRule for SkillStructure {
                 // Check that SKILL.md has a name field
                 let has_name = skill_meta.is_some_and(|s| s.name.is_some());
                 if !has_name {
-                    diagnostics.push(Diagnostic {
-                        rule: self.name().to_string(),
-                        severity: self.severity(),
-                        message: format!(
+                    diagnostics.push(Diagnostic::new(
+                        self.name(),
+                        self.severity(),
+                        format!(
                             "SKILL.md for '{dir_name}' is missing a 'name' field in frontmatter"
                         ),
-                        location: format!("skills/{dir_name}/SKILL.md"),
-                    });
+                        format!("skills/{dir_name}/SKILL.md"),
+                    ));
                 }
 
                 // Check that SKILL.md has a description field
                 let has_description = skill_meta.is_some_and(|s| s.description.is_some());
                 if !has_description {
-                    diagnostics.push(Diagnostic {
-                        rule: self.name().to_string(),
-                        severity: Severity::Info,
-                        message: format!(
+                    diagnostics.push(Diagnostic::new(
+                        self.name(),
+                        Severity::Info,
+                        format!(
                             "SKILL.md for '{dir_name}' is missing a 'description' field in frontmatter"
                         ),
-                        location: format!("skills/{dir_name}/SKILL.md"),
-                    });
+                        format!("skills/{dir_name}/SKILL.md"),
+                    ));
                 }
 
                 let Some(meta) = skill_meta else {
@@ -92,54 +92,54 @@ impl LintRule for SkillStructure {
                 // Name must be kebab-case and <= 64 chars
                 if let Some(name) = &meta.name {
                     if name.len() > 64 {
-                        diagnostics.push(Diagnostic {
-                            rule: self.name().to_string(),
-                            severity: self.severity(),
-                            message: format!(
+                        diagnostics.push(Diagnostic::new(
+                            self.name(),
+                            self.severity(),
+                            format!(
                                 "Skill name '{name}' exceeds 64 characters ({} chars)",
                                 name.len()
                             ),
-                            location: format!("skills/{dir_name}/SKILL.md"),
-                        });
+                            format!("skills/{dir_name}/SKILL.md"),
+                        ));
                     }
                     if !is_kebab_case(name) {
-                        diagnostics.push(Diagnostic {
-                            rule: self.name().to_string(),
-                            severity: self.severity(),
-                            message: format!(
+                        diagnostics.push(Diagnostic::new(
+                            self.name(),
+                            self.severity(),
+                            format!(
                                 "Skill name '{name}' is not kebab-case (use lowercase letters, digits, and hyphens)"
                             ),
-                            location: format!("skills/{dir_name}/SKILL.md"),
-                        });
+                            format!("skills/{dir_name}/SKILL.md"),
+                        ));
                     }
                 }
 
                 // Description should be <= 1024 chars (Claude Code limit)
                 if let Some(desc) = &meta.description {
                     if desc.len() > 1024 {
-                        diagnostics.push(Diagnostic {
-                            rule: self.name().to_string(),
-                            severity: self.severity(),
-                            message: format!(
+                        diagnostics.push(Diagnostic::new(
+                            self.name(),
+                            self.severity(),
+                            format!(
                                 "Skill description for '{dir_name}' exceeds 1024 characters ({} chars) - Claude Code truncates beyond this",
                                 desc.len()
                             ),
-                            location: format!("skills/{dir_name}/SKILL.md"),
-                        });
+                            format!("skills/{dir_name}/SKILL.md"),
+                        ));
                     }
                 }
 
                 // Body size tiers: 500+ lines without references/ is a warning
                 if meta.line_count > 500 && !meta.has_references_dir {
-                    diagnostics.push(Diagnostic {
-                        rule: self.name().to_string(),
-                        severity: self.severity(),
-                        message: format!(
+                    diagnostics.push(Diagnostic::new(
+                        self.name(),
+                        self.severity(),
+                        format!(
                             "SKILL.md for '{dir_name}' is {} lines - consider splitting detail into a references/ subdirectory",
                             meta.line_count
                         ),
-                        location: format!("skills/{dir_name}/SKILL.md"),
-                    });
+                        format!("skills/{dir_name}/SKILL.md"),
+                    ));
                 }
             }
         }

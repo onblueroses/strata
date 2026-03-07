@@ -1,0 +1,37 @@
+---
+source: tests/lint_test.rs
+assertion_line: 128
+expression: json
+---
+{
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "01-Core/"
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Domain 'Core' has no content files"
+          },
+          "ruleId": "empty-folders"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/onblueroses/strata",
+          "name": "strata",
+          "version": "[version]"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

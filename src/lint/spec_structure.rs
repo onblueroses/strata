@@ -23,38 +23,38 @@ impl LintRule for SpecStructure {
             let loc = spec.path.to_string_lossy().to_string();
 
             if spec.status.is_none() {
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!("Spec '{}' is missing a Status field", spec.name),
-                    location: loc.clone(),
-                });
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!("Spec '{}' is missing a Status field", spec.name),
+                    loc.clone(),
+                ));
             }
 
             if spec.status == Some(SpecStatus::InProgress) && !spec.has_current_step {
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!(
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!(
                         "In-progress spec '{}' is missing a '>> Current Step' section",
                         spec.name
                     ),
-                    location: loc.clone(),
-                });
+                    loc.clone(),
+                ));
             }
 
             // Check steps per phase (rough: total_steps / phase_count)
             if spec.phase_count > 0 && spec.total_steps > max_steps * spec.phase_count {
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!(
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!(
                         "Spec '{}' averages {} steps/phase (max: {max_steps})",
                         spec.name,
                         spec.total_steps / spec.phase_count
                     ),
-                    location: loc,
-                });
+                    loc,
+                ));
             }
         }
 

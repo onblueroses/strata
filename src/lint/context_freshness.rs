@@ -56,14 +56,14 @@ impl LintRule for ContextFreshness {
             return Vec::new();
         }
 
-        vec![Diagnostic {
-            rule: self.name().to_string(),
-            severity: self.severity(),
-            message: format!(
+        vec![Diagnostic::new(
+            self.name(),
+            self.severity(),
+            format!(
                 ".strata/context.md is stale (modified sources: {}). Run `strata generate` to refresh.",
                 stale_sources.join(", ")
             ),
-            location: ".strata/context.md".to_string(),
-        }]
+            ".strata/context.md",
+        )]
     }
 }

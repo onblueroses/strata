@@ -17,11 +17,14 @@ impl LintRule for DeadLinks {
     fn check(&self, scan: &ProjectScan, _root: &Path, config: &StrataConfig) -> Vec<Diagnostic> {
         scan.dead_links(config.structure.link_mode)
             .iter()
-            .map(|(source, target)| Diagnostic {
-                rule: self.name().to_string(),
-                severity: self.severity(),
-                message: format!("Dead crosslink to '{target}'"),
-                location: source.to_string_lossy().replace('\\', "/"),
+            .map(|(source, link)| {
+                Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!("Dead crosslink to '{}'", link.target),
+                    source.to_string_lossy().replace('\\', "/"),
+                )
+                .with_span(link.line, link.column)
             })
             .collect()
     }

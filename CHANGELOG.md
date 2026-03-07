@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **miette rich error diagnostics** - `StrataError` now derives `miette::Diagnostic` with diagnostic codes and actionable help text
+- **SARIF v2.1.0 output** - `strata lint --format sarif` for CI integration (GitHub Code Scanning, VS Code)
+- **Snapshot tests** with `insta` for JSON and SARIF lint output
+- **Parallel file scanning** with `rayon` in `scan_project()`
+- Diagnostic struct extended with optional `line`, `column`, `end_line`, `end_column` fields for source spans
+- `LinkInfo` struct in scanner with line/column tracking for crosslinks
+- Lint text output now shows `file:line:col` when span info is available
+- `dead-links` lint rule now reports the line/column of the broken link
 - **10 starter skills** in standard/full presets (was 2: review, commit)
   - debug, test, plan, pr, explore, release, security, optimize
   - Each follows skill-design-principles: pushy descriptions, anti-examples with reasoning, concrete mechanical tests, quality self-checks

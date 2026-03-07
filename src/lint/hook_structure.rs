@@ -21,37 +21,37 @@ impl LintRule for HookStructure {
             let loc = hook.path.to_string_lossy().to_string();
 
             if !hook.exists {
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!(
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!(
                         "Hook '{}' is configured but file does not exist",
                         hook.event
                     ),
-                    location: loc,
-                });
+                    loc,
+                ));
                 continue;
             }
 
             if !hook.has_shebang {
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!(
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!(
                         "Hook '{}' is missing a shebang line (#!/usr/bin/env bash)",
                         hook.event
                     ),
-                    location: loc.clone(),
-                });
+                    loc.clone(),
+                ));
             }
 
             if !hook.is_executable {
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!("Hook '{}' is not executable (chmod +x)", hook.event),
-                    location: loc,
-                });
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!("Hook '{}' is not executable (chmod +x)", hook.event),
+                    loc,
+                ));
             }
         }
 

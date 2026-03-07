@@ -27,12 +27,12 @@ impl LintRule for EmptyFolders {
             });
 
             if !has_content {
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!("Domain '{}' has no content files", domain.name),
-                    location: format!("{dir_name}/"),
-                });
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!("Domain '{}' has no content files", domain.name),
+                    format!("{dir_name}/"),
+                ));
             }
         }
 

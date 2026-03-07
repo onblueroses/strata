@@ -19,13 +19,12 @@ impl LintRule for OrphanFiles {
             .iter()
             .map(|path| {
                 let rel = path.to_string_lossy().replace('\\', "/");
-                Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: "File not referenced anywhere (not in INDEX.md or any crosslink)"
-                        .to_string(),
-                    location: rel,
-                }
+                Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    "File not referenced anywhere (not in INDEX.md or any crosslink)",
+                    rel,
+                )
             })
             .collect()
     }

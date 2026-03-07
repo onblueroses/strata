@@ -47,7 +47,11 @@ pub fn run(path: &Path) -> Result<()> {
         ui::success("No dead crosslinks");
     } else {
         for (source, target) in &dead_links {
-            ui::error(&format!("Dead link: {} -> {}", source.display(), target));
+            ui::error(&format!(
+                "Dead link: {} -> {}",
+                source.display(),
+                target.target
+            ));
         }
         issues += dead_links.len();
     }

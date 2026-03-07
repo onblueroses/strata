@@ -23,14 +23,16 @@ impl LintRule for SpecOwnership {
         scan.specs
             .iter()
             .filter(|s| s.status == Some(SpecStatus::InProgress) && s.session_id.is_none())
-            .map(|s| Diagnostic {
-                rule: self.name().to_string(),
-                severity: self.severity(),
-                message: format!(
-                    "In-progress spec '{}' has no Session field - ownership cannot be tracked",
-                    s.name
-                ),
-                location: s.path.to_string_lossy().to_string(),
+            .map(|s| {
+                Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!(
+                        "In-progress spec '{}' has no Session field - ownership cannot be tracked",
+                        s.name
+                    ),
+                    s.path.to_string_lossy().to_string(),
+                )
             })
             .collect()
     }

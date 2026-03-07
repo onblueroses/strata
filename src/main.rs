@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod eval;
 mod lint;
+mod sarif;
 mod scanner;
 mod targets;
 mod templates;
@@ -16,6 +17,16 @@ use std::path::Path;
 use std::process;
 
 fn main() {
+    miette::set_hook(Box::new(|_| {
+        Box::new(
+            miette::MietteHandlerOpts::new()
+                .terminal_links(true)
+                .context_lines(2)
+                .build(),
+        )
+    }))
+    .ok();
+
     let cli = Cli::parse();
 
     let result = match cli.command {
@@ -112,7 +123,9 @@ fn main() {
     };
 
     if let Err(e) = result {
-        ui::error(&e.to_string());
+        // Use miette rendering for diagnostic-rich errors, fall back to ui::error
+        let report: miette::Report = e.into();
+        eprintln!("{report:?}");
         process::exit(1);
     }
 }

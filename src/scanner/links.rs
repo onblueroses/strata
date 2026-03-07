@@ -1,13 +1,43 @@
-/// Parse crosslinks from file content.
+/// A parsed crosslink with its source location in the file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkInfo {
+    pub target: String,
+    pub line: u32,
+    pub column: u32,
+}
+
+/// Build a table mapping byte offset -> (1-based line, 1-based column).
+fn build_line_starts(content: &str) -> Vec<usize> {
+    let mut starts = vec![0];
+    for (i, b) in content.bytes().enumerate() {
+        if b == b'\n' {
+            starts.push(i + 1);
+        }
+    }
+    starts
+}
+
+fn offset_to_line_col(line_starts: &[usize], offset: usize) -> (u32, u32) {
+    let line_idx = match line_starts.binary_search(&offset) {
+        Ok(i) => i,
+        Err(i) => i.saturating_sub(1),
+    };
+    let col = offset - line_starts[line_idx];
+    ((line_idx + 1) as u32, (col + 1) as u32)
+}
+
+/// Parse crosslinks from file content, returning target paths with source positions.
 /// Supports:
 /// - Markdown links: `[text](path)`
 /// - Wiki links: `[[path]]`
 ///
 /// Skips links inside fenced code blocks and inline code spans.
 /// Skips absolute URL-style paths (starting with `/`).
-pub fn parse_links(content: &str) -> Vec<String> {
+pub fn parse_links(content: &str) -> Vec<LinkInfo> {
     let cleaned = strip_code_regions(content);
+    let line_starts = build_line_starts(content);
     let mut links = Vec::new();
+    let mut seen = std::collections::HashSet::new();
 
     let bytes = cleaned.as_bytes();
     let len = bytes.len();
@@ -15,14 +45,21 @@ pub fn parse_links(content: &str) -> Vec<String> {
 
     while i < len {
         if bytes[i] == b'[' {
+            let link_start = i;
+
             // Wiki links: [[path]] or [[path|display]]
             if i + 1 < len && bytes[i + 1] == b'[' {
                 if let Some(end) = cleaned[i + 2..].find("]]") {
                     let target = &cleaned[i + 2..i + 2 + end];
                     if !target.is_empty() && !target.contains("://") {
                         let target = target.split('|').next().unwrap_or(target);
-                        if !target.starts_with('/') {
-                            links.push(target.to_string());
+                        if !target.starts_with('/') && seen.insert(target.to_string()) {
+                            let (line, col) = offset_to_line_col(&line_starts, link_start);
+                            links.push(LinkInfo {
+                                target: target.to_string(),
+                                line,
+                                column: col,
+                            });
                         }
                     }
                     i = i + 2 + end + 2;
@@ -61,8 +98,13 @@ pub fn parse_links(content: &str) -> Vec<String> {
                     {
                         // Strip any anchor
                         let target = target.split('#').next().unwrap_or(target);
-                        if !target.is_empty() {
-                            links.push(target.to_string());
+                        if !target.is_empty() && seen.insert(target.to_string()) {
+                            let (line, col) = offset_to_line_col(&line_starts, link_start);
+                            links.push(LinkInfo {
+                                target: target.to_string(),
+                                line,
+                                column: col,
+                            });
                         }
                     }
                     i = j + 2 + end + 1;
@@ -73,8 +115,7 @@ pub fn parse_links(content: &str) -> Vec<String> {
         i += 1;
     }
 
-    links.sort();
-    links.dedup();
+    links.sort_by(|a, b| a.target.cmp(&b.target));
     links
 }
 
@@ -214,20 +255,26 @@ fn strip_inline_code(line: &str) -> String {
 mod tests {
     use super::*;
 
+    fn targets(links: &[LinkInfo]) -> Vec<&str> {
+        links.iter().map(|l| l.target.as_str()).collect()
+    }
+
     #[test]
     fn test_markdown_links() {
         let content = "See [config](config/settings.toml) and [docs](01-Core/README.md).";
         let links = parse_links(content);
-        assert!(links.contains(&"config/settings.toml".to_string()));
-        assert!(links.contains(&"01-Core/README.md".to_string()));
+        let t = targets(&links);
+        assert!(t.contains(&"config/settings.toml"));
+        assert!(t.contains(&"01-Core/README.md"));
     }
 
     #[test]
     fn test_wiki_links() {
         let content = "Related: [[01-Core/README.md]] and [[config/settings.toml]]";
         let links = parse_links(content);
-        assert!(links.contains(&"01-Core/README.md".to_string()));
-        assert!(links.contains(&"config/settings.toml".to_string()));
+        let t = targets(&links);
+        assert!(t.contains(&"01-Core/README.md"));
+        assert!(t.contains(&"config/settings.toml"));
     }
 
     #[test]
@@ -241,14 +288,14 @@ mod tests {
     fn test_strips_anchors() {
         let content = "See [section](README.md#installation)";
         let links = parse_links(content);
-        assert!(links.contains(&"README.md".to_string()));
+        assert!(targets(&links).contains(&"README.md"));
     }
 
     #[test]
     fn test_wiki_link_with_display() {
         let content = "See [[path/to/file.md|Display Text]]";
         let links = parse_links(content);
-        assert!(links.contains(&"path/to/file.md".to_string()));
+        assert!(targets(&links).contains(&"path/to/file.md"));
     }
 
     #[test]
@@ -256,34 +303,52 @@ mod tests {
         let content =
             "Before\n```\n[link](some/path.md)\n[[wiki-link]]\n```\nAfter [real](real.md)";
         let links = parse_links(content);
-        assert_eq!(links, vec!["real.md"]);
+        assert_eq!(targets(&links), vec!["real.md"]);
     }
 
     #[test]
     fn test_ignores_links_in_inline_code() {
         let content = "Use `[link](some/path.md)` for links. See [real](real.md).";
         let links = parse_links(content);
-        assert_eq!(links, vec!["real.md"]);
+        assert_eq!(targets(&links), vec!["real.md"]);
     }
 
     #[test]
     fn test_ignores_absolute_url_paths() {
         let content = "See [page](/wissen/denkmal-afa) and [local](docs/readme.md)";
         let links = parse_links(content);
-        assert_eq!(links, vec!["docs/readme.md"]);
+        assert_eq!(targets(&links), vec!["docs/readme.md"]);
     }
 
     #[test]
     fn test_ignores_wiki_links_with_absolute_paths() {
         let content = "See [[/absolute/path]] and [[relative/path]]";
         let links = parse_links(content);
-        assert_eq!(links, vec!["relative/path"]);
+        assert_eq!(targets(&links), vec!["relative/path"]);
     }
 
     #[test]
     fn test_tilde_fenced_code_blocks() {
         let content = "~~~\n[link](hidden.md)\n~~~\n[visible](shown.md)";
         let links = parse_links(content);
-        assert_eq!(links, vec!["shown.md"]);
+        assert_eq!(targets(&links), vec!["shown.md"]);
+    }
+
+    #[test]
+    fn test_link_positions() {
+        let content = "Line 1\n[link](target.md)\nLine 3";
+        let links = parse_links(content);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].line, 2);
+        assert_eq!(links[0].column, 1);
+    }
+
+    #[test]
+    fn test_wiki_link_position() {
+        let content = "Some text [[wiki-target]]";
+        let links = parse_links(content);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].line, 1);
+        assert_eq!(links[0].column, 11);
     }
 }

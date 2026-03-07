@@ -11,6 +11,7 @@ pub mod specs;
 
 use crate::config::{LinkMode, StrataConfig};
 use crate::error::Result;
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -21,8 +22,8 @@ pub struct ProjectScan {
     pub files: Vec<PathBuf>,
     /// Parsed INDEX.md entries.
     pub index_entries: Vec<index::IndexEntry>,
-    /// Crosslinks found: (`source_file`, `target_path_string`).
-    pub crosslinks: Vec<(PathBuf, String)>,
+    /// Crosslinks found: (`source_file`, link info with target and position).
+    pub crosslinks: Vec<(PathBuf, links::LinkInfo)>,
     /// Frontmatter/description per file.
     pub descriptions: HashMap<PathBuf, Option<String>>,
     /// RULES.md parse results per domain directory.
@@ -48,7 +49,7 @@ impl ProjectScan {
     /// - `Name`: search by filename anywhere in the project (Obsidian/vault behavior)
     ///
     /// In both modes, if a target doesn't resolve, tries appending `.md` extension.
-    pub fn dead_links(&self, link_mode: LinkMode) -> Vec<(PathBuf, String)> {
+    pub fn dead_links(&self, link_mode: LinkMode) -> Vec<(&PathBuf, &links::LinkInfo)> {
         // Pre-build a filename lookup set for Name mode
         let filename_set: HashSet<String> = if link_mode == LinkMode::Name {
             self.files
@@ -65,7 +66,8 @@ impl ProjectScan {
 
         self.crosslinks
             .iter()
-            .filter(|(source, target)| {
+            .filter(|(source, link)| {
+                let target = &link.target;
                 match link_mode {
                     LinkMode::Path => {
                         let source_dir = self
@@ -86,7 +88,7 @@ impl ProjectScan {
                     }
                     LinkMode::Name => {
                         // Try exact filename match, then with .md extension
-                        let name = Path::new(target)
+                        let name = Path::new(target.as_str())
                             .file_name()
                             .unwrap_or_default()
                             .to_string_lossy()
@@ -97,7 +99,7 @@ impl ProjectScan {
                     }
                 }
             })
-            .map(|(source, target)| (source.clone(), target.clone()))
+            .map(|(source, link)| (source, link))
             .collect()
     }
 
@@ -124,7 +126,7 @@ impl ProjectScan {
         let referenced: std::collections::HashSet<String> = self
             .crosslinks
             .iter()
-            .map(|(_, target)| target.replace('\\', "/"))
+            .map(|(_, link)| link.target.replace('\\', "/"))
             .collect();
 
         let indexed: std::collections::HashSet<String> = self
@@ -156,26 +158,31 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
         Vec::new()
     };
 
-    // Collect crosslinks and descriptions
+    // Collect crosslinks and descriptions (parallelized with rayon)
+    let scan_exts = &config.structure.scan_extensions;
+    let file_results: Vec<_> = files
+        .par_iter()
+        .filter_map(|file| {
+            let abs_path = root.join(file);
+            if abs_path.is_file() && is_scannable_file(file, scan_exts) {
+                if let Ok(content) = std::fs::read_to_string(&abs_path) {
+                    let file_links: Vec<_> = links::parse_links(&content)
+                        .into_iter()
+                        .map(|link_info| (file.clone(), link_info))
+                        .collect();
+                    let desc = frontmatter::extract_description(&content);
+                    return Some((file.clone(), file_links, desc));
+                }
+            }
+            None
+        })
+        .collect();
+
     let mut crosslinks = Vec::new();
     let mut descriptions = HashMap::new();
-
-    let scan_exts = &config.structure.scan_extensions;
-    for file in &files {
-        let abs_path = root.join(file);
-        if abs_path.is_file() && is_scannable_file(file, scan_exts) {
-            if let Ok(content) = std::fs::read_to_string(&abs_path) {
-                // Parse crosslinks
-                let file_links = links::parse_links(&content);
-                for link in file_links {
-                    crosslinks.push((file.clone(), link));
-                }
-
-                // Parse description
-                let desc = frontmatter::extract_description(&content);
-                descriptions.insert(file.clone(), desc);
-            }
-        }
+    for (file, file_links, desc) in file_results {
+        crosslinks.extend(file_links);
+        descriptions.insert(file, desc);
     }
 
     // Parse RULES.md files per domain

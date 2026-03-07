@@ -2,12 +2,13 @@ use std::path::PathBuf;
 
 pub type Result<T> = std::result::Result<T, StrataError>;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, miette::Diagnostic)]
 pub enum StrataError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
     #[error("Config error in {path}: {message}")]
+    #[diagnostic(code(strata::config))]
     Config { path: PathBuf, message: String },
 
     #[error("TOML parse error: {0}")]
@@ -20,12 +21,15 @@ pub enum StrataError {
     AlreadyInitialized(PathBuf),
 
     #[error("Not a strata project (no strata.toml found). Run `strata init` first.")]
+    #[diagnostic(help("Run `strata init` to create a new project in this directory"))]
     NotAProject,
 
     #[error("Structural check failed: {0} issue(s) found")]
+    #[diagnostic(code(strata::check))]
     CheckFailed(usize),
 
     #[error("Lint found {errors} error(s) and {warnings} warning(s)")]
+    #[diagnostic(code(strata::lint))]
     LintFailed { errors: usize, warnings: usize },
 
     #[error("Not a git repository (no .git directory found)")]
@@ -49,6 +53,7 @@ pub enum StrataError {
     SpecNotFound(String),
 
     #[error("No active session. Start one with `strata session start` or pass --session.")]
+    #[diagnostic(help("Run `strata session start` to begin a new session"))]
     NoActiveSession,
 
     #[error("Invalid ignore pattern '{pattern}': {reason}")]

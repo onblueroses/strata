@@ -23,15 +23,15 @@ impl LintRule for ContextBudget {
         if let Ok(content) = std::fs::read_to_string(&project_md) {
             let len = content.len();
             if len > budgets.project_budget as usize {
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!(
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!(
                         "PROJECT.md is {len} chars, budget is {}",
                         budgets.project_budget
                     ),
-                    location: "PROJECT.md".to_string(),
-                });
+                    "PROJECT.md",
+                ));
             }
         }
 
@@ -40,15 +40,15 @@ impl LintRule for ContextBudget {
         if let Ok(content) = std::fs::read_to_string(&index_md) {
             let len = content.len();
             if len > budgets.index_budget as usize {
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!(
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!(
                         "INDEX.md is {len} chars, budget is {}",
                         budgets.index_budget
                     ),
-                    location: "INDEX.md".to_string(),
-                });
+                    "INDEX.md",
+                ));
             }
         }
 
@@ -59,15 +59,15 @@ impl LintRule for ContextBudget {
                 let len = content.len();
                 if len > budgets.rules_budget as usize {
                     let location = format!("{}/RULES.md", domain_dir.display());
-                    diagnostics.push(Diagnostic {
-                        rule: self.name().to_string(),
-                        severity: self.severity(),
-                        message: format!(
+                    diagnostics.push(Diagnostic::new(
+                        self.name(),
+                        self.severity(),
+                        format!(
                             "{location} is {len} chars, budget is {}",
                             budgets.rules_budget
                         ),
                         location,
-                    });
+                    ));
                 }
             }
         }
@@ -76,15 +76,15 @@ impl LintRule for ContextBudget {
         for skill in &scan.skills {
             if skill.char_count > budgets.skill_budget as usize {
                 let location = skill.path.to_string_lossy().replace('\\', "/");
-                diagnostics.push(Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!(
+                diagnostics.push(Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!(
                         "{location} is {} chars, budget is {}",
                         skill.char_count, budgets.skill_budget
                     ),
                     location,
-                });
+                ));
             }
         }
 

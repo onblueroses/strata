@@ -96,16 +96,39 @@ fn test_lint_json_output() {
 
     let result = std::process::Command::new(common::strata_bin())
         .args(["lint", "--format", "json"])
+        .env("NO_COLOR", "1")
         .current_dir(dir.path())
         .output()
         .expect("Failed to run strata");
 
     let stdout = String::from_utf8_lossy(&result.stdout);
-    // Should be valid JSON (array)
-    assert!(
-        stdout.starts_with('['),
-        "Expected JSON array, got: {stdout}"
-    );
+    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Should be valid JSON");
+    insta::assert_json_snapshot!("lint_json_output", json);
+}
+
+#[test]
+fn test_lint_sarif_output() {
+    let dir = common::temp_project();
+    setup_project(&dir);
+
+    let result = std::process::Command::new(common::strata_bin())
+        .args(["lint", "--format", "sarif"])
+        .env("NO_COLOR", "1")
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to run strata");
+
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Should be valid SARIF JSON");
+
+    // Verify SARIF structure
+    assert_eq!(json["version"], "2.1.0");
+    assert!(json["runs"].is_array());
+    assert_eq!(json["runs"][0]["tool"]["driver"]["name"], "strata");
+    insta::assert_json_snapshot!("lint_sarif_output", json, {
+        ".runs[0].tool.driver.version" => "[version]",
+    });
 }
 
 #[test]

@@ -21,15 +21,15 @@ impl LintRule for HookBudget {
         scan.hooks
             .iter()
             .filter(|h| h.exists && h.char_count > HOOK_CHAR_BUDGET)
-            .map(|h| Diagnostic {
-                rule: self.name().to_string(),
-                severity: self.severity(),
-                message: format!(
+            .map(|h| Diagnostic::new(
+                self.name(),
+                self.severity(),
+                format!(
                     "Hook '{}' is {} chars (budget: {HOOK_CHAR_BUDGET}). Consider extracting logic to a separate script.",
                     h.event, h.char_count
                 ),
-                location: h.path.to_string_lossy().to_string(),
-            })
+                h.path.to_string_lossy().to_string(),
+            ))
             .collect()
     }
 }

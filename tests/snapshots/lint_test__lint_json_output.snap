@@ -1,0 +1,13 @@
+---
+source: tests/lint_test.rs
+assertion_line: 106
+expression: json
+---
+[
+  {
+    "location": "01-Core/",
+    "message": "Domain 'Core' has no content files",
+    "rule": "empty-folders",
+    "severity": "info"
+  }
+]

@@ -27,15 +27,15 @@ impl LintRule for SpecStale {
             .filter(|s| s.mtime_secs > 0 && now.saturating_sub(s.mtime_secs) > staleness_secs)
             .map(|s| {
                 let days = (now - s.mtime_secs) / 86400;
-                Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!(
+                Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!(
                         "In-progress spec '{}' has not been modified in {days} day(s)",
                         s.name
                     ),
-                    location: s.path.to_string_lossy().to_string(),
-                }
+                    s.path.to_string_lossy().to_string(),
+                )
             })
             .collect()
     }

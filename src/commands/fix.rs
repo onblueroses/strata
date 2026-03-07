@@ -62,16 +62,16 @@ pub fn run(path: &Path, dry_run: bool, regenerate_index: bool) -> Result<()> {
                 ui::info(&format!(
                     "Would remove dead link in {}: {}",
                     source.display(),
-                    target
+                    target.target
                 ));
             }
         } else {
             for (source, target) in &dead_links {
-                remove_link_from_file(&root.join(source), target)?;
+                remove_link_from_file(&root.join(source), &target.target)?;
                 ui::success(&format!(
                     "Removed dead link in {}: {}",
                     source.display(),
-                    target
+                    target.target
                 ));
             }
         }

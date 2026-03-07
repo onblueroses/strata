@@ -36,6 +36,47 @@ pub struct Diagnostic {
     pub severity: Severity,
     pub message: String,
     pub location: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_line: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_column: Option<u32>,
+}
+
+impl Diagnostic {
+    pub fn new(
+        rule: impl Into<String>,
+        severity: Severity,
+        message: impl Into<String>,
+        location: impl Into<String>,
+    ) -> Self {
+        Self {
+            rule: rule.into(),
+            severity,
+            message: message.into(),
+            location: location.into(),
+            line: None,
+            column: None,
+            end_line: None,
+            end_column: None,
+        }
+    }
+
+    pub fn with_span(mut self, line: u32, column: u32) -> Self {
+        self.line = Some(line);
+        self.column = Some(column);
+        self
+    }
+
+    #[expect(dead_code, reason = "used by SARIF output for region end positions")]
+    pub fn with_end_span(mut self, end_line: u32, end_column: u32) -> Self {
+        self.end_line = Some(end_line);
+        self.end_column = Some(end_column);
+        self
+    }
 }
 
 pub trait LintRule {

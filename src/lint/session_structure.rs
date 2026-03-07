@@ -27,15 +27,12 @@ impl LintRule for SessionStructure {
                     // Validate JSON is parseable
                     if let Ok(content) = std::fs::read_to_string(&abs) {
                         if serde_json::from_str::<serde_json::Value>(&content).is_err() {
-                            diagnostics.push(Diagnostic {
-                                rule: self.name().to_string(),
-                                severity: self.severity(),
-                                message: format!(
-                                    "Daily note '{}' contains invalid JSON",
-                                    session.name
-                                ),
-                                location: loc,
-                            });
+                            diagnostics.push(Diagnostic::new(
+                                self.name(),
+                                self.severity(),
+                                format!("Daily note '{}' contains invalid JSON", session.name),
+                                loc,
+                            ));
                         }
                     }
                 }
@@ -44,15 +41,15 @@ impl LintRule for SessionStructure {
                     if let Ok(content) = std::fs::read_to_string(&abs) {
                         let has_heading = content.lines().any(|l| l.starts_with('#'));
                         if !has_heading {
-                            diagnostics.push(Diagnostic {
-                                rule: self.name().to_string(),
-                                severity: self.severity(),
-                                message: format!(
+                            diagnostics.push(Diagnostic::new(
+                                self.name(),
+                                self.severity(),
+                                format!(
                                     "Context save for session '{}' has no markdown headings",
                                     session.session_id
                                 ),
-                                location: loc,
-                            });
+                                loc,
+                            ));
                         }
                     }
                 }

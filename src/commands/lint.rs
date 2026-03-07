@@ -2,8 +2,16 @@ use crate::cli::OutputFormat;
 use crate::config::StrataConfig;
 use crate::error::{Result, StrataError};
 use crate::lint::{LintEngine, Severity};
-use crate::ui;
+use crate::{sarif, ui};
 use std::path::Path;
+
+fn format_location(d: &crate::lint::Diagnostic) -> String {
+    match (d.line, d.column) {
+        (Some(line), Some(col)) => format!("{}:{line}:{col}", d.location),
+        (Some(line), None) => format!("{}:{line}", d.location),
+        _ => d.location.clone(),
+    }
+}
 
 pub fn run(path: &Path, rule: Option<&str>, quiet: bool, format: OutputFormat) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
@@ -18,26 +26,36 @@ pub fn run(path: &Path, rule: Option<&str>, quiet: bool, format: OutputFormat) -
         diagnostics.retain(|d| d.rule == rule_name);
     }
 
-    if matches!(format, OutputFormat::Json) {
-        let json = serde_json::to_string_pretty(&diagnostics).unwrap_or_else(|_| "[]".to_string());
-        println!("{json}");
-    } else if !quiet {
-        ui::header("Lint Diagnostics");
-
-        if diagnostics.is_empty() {
-            ui::success("No issues found");
-            return Ok(());
+    match format {
+        OutputFormat::Json => {
+            let json =
+                serde_json::to_string_pretty(&diagnostics).unwrap_or_else(|_| "[]".to_string());
+            println!("{json}");
         }
+        OutputFormat::Sarif => {
+            let sarif_json = sarif::diagnostics_to_sarif(&diagnostics);
+            println!("{sarif_json}");
+        }
+        OutputFormat::Text if !quiet => {
+            ui::header("Lint Diagnostics");
 
-        for d in &diagnostics {
-            let msg = format!("[{}] {}: {}", d.rule, d.location, d.message);
-            match d.severity {
-                Severity::Error => ui::error(&msg),
-                Severity::Warning => ui::warning(&msg),
-                Severity::Info => ui::info(&msg),
+            if diagnostics.is_empty() {
+                ui::success("No issues found");
+                return Ok(());
             }
+
+            for d in &diagnostics {
+                let loc = format_location(d);
+                let msg = format!("[{}] {loc}: {}", d.rule, d.message);
+                match d.severity {
+                    Severity::Error => ui::error(&msg),
+                    Severity::Warning => ui::warning(&msg),
+                    Severity::Info => ui::info(&msg),
+                }
+            }
+            println!();
         }
-        println!();
+        OutputFormat::Text => {}
     }
 
     let errors = diagnostics

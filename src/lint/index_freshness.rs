@@ -25,12 +25,12 @@ impl LintRule for IndexFreshness {
                     .unwrap_or(file)
                     .to_string_lossy()
                     .replace('\\', "/");
-                Diagnostic {
-                    rule: self.name().to_string(),
-                    severity: self.severity(),
-                    message: format!("File not listed in INDEX.md: {rel}"),
-                    location: "INDEX.md".to_string(),
-                }
+                Diagnostic::new(
+                    self.name(),
+                    self.severity(),
+                    format!("File not listed in INDEX.md: {rel}"),
+                    "INDEX.md",
+                )
             })
             .collect()
     }
