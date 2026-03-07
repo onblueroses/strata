@@ -237,7 +237,8 @@ fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}...", &s[..max.min(s.len())])
+        let end = crate::util::snap_to_char_floor(s, max);
+        format!("{}...", &s[..end])
     }
 }
 

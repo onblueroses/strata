@@ -42,6 +42,21 @@ pub enum StrataError {
     #[expect(dead_code, reason = "available for backend implementations")]
     Timeout { command: String, timeout_secs: u64 },
 
+    #[error("Spec '{0}' already exists")]
+    SpecAlreadyExists(String),
+
+    #[error("Spec '{0}' not found")]
+    SpecNotFound(String),
+
+    #[error("No active session. Start one with `strata session start` or pass --session.")]
+    NoActiveSession,
+
+    #[error("Invalid ignore pattern '{pattern}': {reason}")]
+    InvalidPattern { pattern: String, reason: String },
+
+    #[error("Walk error: {0}")]
+    WalkError(String),
+
     #[error("{0}")]
     General(String),
 }

@@ -18,9 +18,7 @@ pub fn run_new(path: &Path, name: &str, session_id: Option<&str>) -> Result<()> 
     let spec_path = specs_dir.join(&filename);
 
     if spec_path.exists() {
-        return Err(StrataError::General(format!(
-            "Spec '{name}' already exists"
-        )));
+        return Err(StrataError::SpecAlreadyExists(name.to_string()));
     }
 
     let sid = session_id.unwrap_or("unknown");
@@ -150,7 +148,7 @@ pub fn run_complete(path: &Path, name: &str) -> Result<()> {
 
     let spec_path = root.join(&config.specs.dir).join(format!("{name}.md"));
     if !spec_path.exists() {
-        return Err(StrataError::General(format!("Spec '{name}' not found")));
+        return Err(StrataError::SpecNotFound(name.to_string()));
     }
 
     let content = fs::read_to_string(&spec_path)?;

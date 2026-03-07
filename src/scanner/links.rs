@@ -78,6 +78,16 @@ pub fn parse_links(content: &str) -> Vec<String> {
     links
 }
 
+/// Determine the length (in bytes) of the UTF-8 character starting at `byte`.
+fn utf8_char_len(byte: u8) -> usize {
+    match byte {
+        0xC0..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        0xF0..=0xF7 => 4,
+        _ => 1, // ASCII or continuation byte (advance one to resync)
+    }
+}
+
 /// Remove fenced code blocks and inline code spans from content,
 /// replacing them with spaces to preserve character offsets.
 fn strip_code_regions(content: &str) -> String {
@@ -187,8 +197,13 @@ fn strip_inline_code(line: &str) -> String {
                 i = content_start;
             }
         } else {
-            result.push(bytes[i] as char);
-            i += 1;
+            // Safe: after stripping code spans the remaining chars are link syntax
+            // (ASCII brackets/parens/text). Non-ASCII bytes here are literal content
+            // that should be preserved as-is via the source string.
+            let ch_len = utf8_char_len(bytes[i]);
+            let end = (i + ch_len).min(len);
+            result.push_str(&line[i..end]);
+            i = end;
         }
     }
 

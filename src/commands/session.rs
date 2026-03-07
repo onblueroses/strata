@@ -96,10 +96,7 @@ pub fn run_save(path: &Path, session_id: Option<&str>) -> Result<()> {
         if marker.exists() {
             fs::read_to_string(&marker)?.trim().to_string()
         } else {
-            return Err(StrataError::General(
-                "No active session. Start one with `strata session start` or pass --session."
-                    .to_string(),
-            ));
+            return Err(StrataError::NoActiveSession);
         }
     };
 

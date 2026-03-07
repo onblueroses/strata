@@ -8,6 +8,7 @@ mod scanner;
 mod targets;
 mod templates;
 mod ui;
+mod util;
 
 use clap::Parser;
 use cli::{Cli, Command, EvalSetAction, SessionAction, SkillAction, SpecAction};

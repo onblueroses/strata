@@ -2,6 +2,7 @@ use crate::config::{AgentTarget, StrataConfig};
 use crate::error::Result;
 use crate::scanner::ProjectScan;
 use crate::ui;
+use crate::util::{snap_to_char_ceil, snap_to_char_floor};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -323,26 +324,6 @@ fn write_with_marker(path: &Path, generated: &str) -> Result<()> {
 
     fs::write(path, content)?;
     Ok(())
-}
-
-/// Find the largest index <= `pos` that falls on a UTF-8 char boundary.
-fn snap_to_char_floor(s: &str, pos: usize) -> usize {
-    let pos = pos.min(s.len());
-    let mut i = pos;
-    while i > 0 && !s.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
-}
-
-/// Find the smallest index >= `pos` that falls on a UTF-8 char boundary.
-fn snap_to_char_ceil(s: &str, pos: usize) -> usize {
-    let pos = pos.min(s.len());
-    let mut i = pos;
-    while i < s.len() && !s.is_char_boundary(i) {
-        i += 1;
-    }
-    i
 }
 
 #[cfg(test)]

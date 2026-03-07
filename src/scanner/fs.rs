@@ -23,21 +23,21 @@ pub fn walk_project(root: &Path, ignore_patterns: &[String]) -> Result<Vec<PathB
         let mut ob = OverrideBuilder::new(root);
         for pattern in ignore_patterns {
             ob.add(&format!("!{pattern}")).map_err(|e| {
-                crate::error::StrataError::General(format!(
-                    "Invalid ignore pattern '{pattern}': {e}"
-                ))
+                crate::error::StrataError::InvalidPattern {
+                    pattern: pattern.clone(),
+                    reason: e.to_string(),
+                }
             })?;
         }
         let overrides = ob.build().map_err(|e| {
-            crate::error::StrataError::General(format!("Failed to build ignore overrides: {e}"))
+            crate::error::StrataError::WalkError(format!("Failed to build ignore overrides: {e}"))
         })?;
         builder.overrides(overrides);
     }
 
     let mut files = Vec::new();
     for result in builder.build() {
-        let entry =
-            result.map_err(|e| crate::error::StrataError::General(format!("Walk error: {e}")))?;
+        let entry = result.map_err(|e| crate::error::StrataError::WalkError(e.to_string()))?;
 
         if !entry.file_type().is_some_and(|ft| ft.is_file()) {
             continue;

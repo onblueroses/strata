@@ -565,7 +565,8 @@ fn extract_new_description(response: &str) -> Result<String> {
 
     // Auto-shorten if too long
     if desc.len() > 1024 {
-        Ok(desc[..1024].to_string())
+        let end = crate::util::snap_to_char_floor(&desc, 1024);
+        Ok(desc[..end].to_string())
     } else {
         Ok(desc)
     }
