@@ -115,7 +115,6 @@ pub fn parse_links(content: &str) -> Vec<LinkInfo> {
         i += 1;
     }
 
-    links.sort_by(|a, b| a.target.cmp(&b.target));
     links
 }
 

@@ -71,7 +71,10 @@ impl Diagnostic {
         self
     }
 
-    #[expect(dead_code, reason = "used by SARIF output for region end positions")]
+    #[expect(
+        dead_code,
+        reason = "reserved for when lint rules provide end positions"
+    )]
     pub fn with_end_span(mut self, end_line: u32, end_column: u32) -> Self {
         self.end_line = Some(end_line);
         self.end_column = Some(end_column);
