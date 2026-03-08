@@ -4,6 +4,7 @@ pub mod hooks;
 pub mod index;
 pub mod links;
 pub mod memory;
+pub mod project_type;
 pub mod rules;
 pub mod sessions;
 pub mod skills;
@@ -38,6 +39,8 @@ pub struct ProjectScan {
     pub specs: Vec<specs::SpecMeta>,
     /// Session file metadata.
     pub sessions: Vec<sessions::SessionMeta>,
+    /// Detected project type (language, frameworks, build tool).
+    pub project_type: project_type::ProjectType,
     /// Project root.
     pub root: PathBuf,
 }
@@ -212,6 +215,9 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
     // Scan sessions
     let session_metas = sessions::scan_sessions(root, &config.sessions);
 
+    // Detect project type
+    let project_type = project_type::detect_project_type(root, &files);
+
     Ok(ProjectScan {
         files,
         index_entries,
@@ -223,6 +229,7 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
         hooks: hook_metas,
         specs: spec_metas,
         sessions: session_metas,
+        project_type,
         root: root.to_path_buf(),
     })
 }

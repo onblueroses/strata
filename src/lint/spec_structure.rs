@@ -105,6 +105,7 @@ mod tests {
             hooks: vec![],
             specs,
             sessions: vec![],
+            project_type: crate::scanner::project_type::ProjectType::unknown(),
             root,
         }
     }

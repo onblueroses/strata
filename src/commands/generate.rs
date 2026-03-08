@@ -1,8 +1,11 @@
 use crate::config::{AgentTarget, StrataConfig};
 use crate::error::Result;
 use crate::scanner::ProjectScan;
+use crate::scanner::project_type::Language;
+use crate::state::{self, FileState, GenerationState};
 use crate::ui;
 use crate::util::{snap_to_char_ceil, snap_to_char_floor};
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -11,7 +14,7 @@ const GENERATED_MARKER: &str = "<!-- strata:generated -->";
 
 pub fn run(path: &Path, target: Option<AgentTarget>, install_skills: bool) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
-    let (config, _) = StrataConfig::load(&root)?;
+    let (config, config_path) = StrataConfig::load(&root)?;
     let scan = crate::scanner::scan_project(&root, &config)?;
 
     let resolved_target = target.unwrap_or(config.targets.default);
@@ -22,49 +25,106 @@ pub fn run(path: &Path, target: Option<AgentTarget>, install_skills: bool) -> Re
     super::fix::regenerate_index_md(&root, &scan, &config)?;
     ui::file_action("refresh", "INDEX.md");
 
-    // Ensure output directories exist
-    let strata_dir = root.join(".strata");
-    fs::create_dir_all(&strata_dir)?;
-    let domains_dir = strata_dir.join("domains");
-    fs::create_dir_all(&domains_dir)?;
+    // Generate all content in memory
+    let files = generate_all(&root, &config, &scan, resolved_target)?;
 
-    // Tier 1: Project-level context
-    let tier1 = generate_tier1(&scan, &config, &root);
-    write_with_marker(&strata_dir.join("context.md"), &tier1)?;
-    ui::file_action("generate", ".strata/context.md");
+    // Write to disk
+    write_all(&root, &files)?;
 
-    // Tier 2: Per-domain context
-    let tier2_files = generate_tier2(&scan, &config, &root);
-    for (domain_name, content) in &tier2_files {
-        let filename = format!("{domain_name}.md");
-        write_with_marker(&domains_dir.join(&filename), content)?;
-        ui::file_action("generate", &format!(".strata/domains/{filename}"));
+    // Build and save state.json
+    let config_content = fs::read_to_string(&config_path).unwrap_or_default();
+    let mut file_states = HashMap::new();
+
+    for (rel_path, content) in &files {
+        let source_hash = if rel_path == ".strata/context.md" {
+            state::compute_context_source_hash(&root, &config)
+        } else if rel_path.starts_with(".strata/domains/") {
+            let domain_dir = rel_path
+                .strip_prefix(".strata/domains/")
+                .and_then(|s| s.strip_suffix(".md"))
+                .unwrap_or("");
+            state::compute_domain_source_hash(&root, domain_dir)
+        } else {
+            state::hash_content(content)
+        };
+
+        file_states.insert(
+            rel_path.clone(),
+            FileState {
+                content_hash: state::hash_content(content),
+                source_hash,
+            },
+        );
     }
 
-    // Write agent-specific target file
-    if let Some(target_output) = crate::targets::resolve_target(resolved_target) {
-        let target_path = root.join(&target_output.path);
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let rendered = crate::targets::render_target(&config.project.name, &tier1, &target_output);
-        fs::write(&target_path, rendered)?;
-        let rel = target_output.path.to_string_lossy().replace('\\', "/");
-        ui::file_action("generate", &rel);
-    }
+    let gen_state = GenerationState {
+        generated_at: now_iso(),
+        strata_version: env!("CARGO_PKG_VERSION").to_string(),
+        target: resolved_target.to_string(),
+        config_hash: state::hash_content(&config_content),
+        files: file_states,
+    };
+    state::save_state(&root, &gen_state)?;
 
     // Install starter skills if requested
     if install_skills {
         install_starter_skills(&root)?;
     }
 
-    let mut count = 1 + tier2_files.len();
-    if crate::targets::resolve_target(resolved_target).is_some() {
-        count += 1;
+    ui::success(&format!("Generated {} context file(s)", files.len()));
+
+    Ok(())
+}
+
+/// Generate all content in memory. Returns `Vec<(relative_path, content)>`.
+pub fn generate_all(
+    root: &Path,
+    config: &StrataConfig,
+    scan: &ProjectScan,
+    target: AgentTarget,
+) -> Result<Vec<(String, String)>> {
+    let mut files = Vec::new();
+
+    // Tier 1: Project-level context
+    let tier1 = generate_tier1(scan, config, root);
+    files.push((".strata/context.md".to_string(), tier1.clone()));
+
+    // Tier 2: Per-domain context
+    let tier2_files = generate_tier2(scan, config, root);
+    for (domain_name, content) in tier2_files {
+        files.push((format!(".strata/domains/{domain_name}.md"), content));
     }
 
-    ui::success(&format!("Generated {count} context file(s)"));
+    // Agent-specific target file
+    if let Some(target_output) = crate::targets::resolve_target(target) {
+        let rendered = crate::targets::render_target(
+            &config.project.name,
+            &tier1,
+            &target_output,
+            &scan.project_type,
+        )?;
+        let rel = target_output.path.to_string_lossy().replace('\\', "/");
+        files.push((rel, rendered));
+    }
 
+    Ok(files)
+}
+
+/// Write generated files to disk, preserving human content above markers.
+pub fn write_all(root: &Path, files: &[(String, String)]) -> Result<()> {
+    for (rel_path, content) in files {
+        let abs_path = root.join(rel_path);
+        if let Some(parent) = abs_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        if rel_path.starts_with(".strata/") {
+            write_with_marker(&abs_path, content)?;
+        } else {
+            fs::write(&abs_path, content)?;
+        }
+        ui::file_action("generate", rel_path);
+    }
     Ok(())
 }
 
@@ -107,6 +167,27 @@ fn generate_tier1(scan: &ProjectScan, config: &StrataConfig, root: &Path) -> Str
             let _ = writeln!(out, "{purpose}");
             let _ = writeln!(out);
         }
+    }
+
+    // Project type
+    if scan.project_type.language != Language::Unknown {
+        let _ = writeln!(out, "## Project Type");
+        let _ = writeln!(out);
+        let _ = write!(out, "**Language**: {}", scan.project_type.language);
+        if let Some(ref tool) = scan.project_type.build_tool {
+            let _ = write!(out, " ({tool})");
+        }
+        let _ = writeln!(out);
+        if !scan.project_type.frameworks.is_empty() {
+            let names: Vec<String> = scan
+                .project_type
+                .frameworks
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            let _ = writeln!(out, "**Frameworks**: {}", names.join(", "));
+        }
+        let _ = writeln!(out);
     }
 
     // Domain map
@@ -324,6 +405,42 @@ fn write_with_marker(path: &Path, generated: &str) -> Result<()> {
 
     fs::write(path, content)?;
     Ok(())
+}
+
+/// ISO-8601 timestamp without external deps.
+fn now_iso() -> String {
+    let epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Simple epoch -> date conversion (no leap seconds, good enough for timestamps)
+    let secs_per_day: u64 = 86400;
+    let days = epoch / secs_per_day;
+    let time_of_day = epoch % secs_per_day;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+
+    // Days since 1970-01-01 to (year, month, day)
+    let (year, month, day) = civil_from_days(days as i64);
+
+    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
+}
+
+/// Convert days since epoch to civil date. Algorithm from Howard Hinnant.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = i64::from(yoe) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
 }
 
 #[cfg(test)]

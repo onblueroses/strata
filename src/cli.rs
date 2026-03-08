@@ -93,6 +93,17 @@ pub enum Command {
         index: bool,
     },
 
+    /// Show what would change if you regenerated now
+    Diff {
+        /// Project directory (defaults to current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Target agent format
+        #[arg(long)]
+        target: Option<AgentTarget>,
+    },
+
     /// Generate context files for AI agent consumption
     Generate {
         /// Project directory (defaults to current directory)

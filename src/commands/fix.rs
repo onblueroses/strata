@@ -46,7 +46,7 @@ pub fn run(path: &Path, dry_run: bool, regenerate_index: bool) -> Result<()> {
             } else {
                 // Ensure domain directory exists
                 fs::create_dir_all(root.join(&dir_name))?;
-                let content = templates::render_rules_md(&domain.name);
+                let content = templates::render_rules_md(&domain.name)?;
                 fs::write(&rules_path, content)?;
                 ui::success(&format!("Created {dir_name}/RULES.md"));
             }

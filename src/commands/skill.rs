@@ -171,7 +171,7 @@ pub fn run_eval_set_init(path: &Path, name: &str, output: Option<&str>) -> Resul
         fs::create_dir_all(parent)?;
     }
 
-    let content = templates::render_eval_set(name);
+    let content = templates::render_eval_set(name)?;
     fs::write(&out_path, content)?;
 
     let rel = out_path

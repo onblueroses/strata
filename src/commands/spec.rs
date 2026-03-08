@@ -23,7 +23,7 @@ pub fn run_new(path: &Path, name: &str, session_id: Option<&str>) -> Result<()> 
 
     let sid = session_id.unwrap_or("unknown");
     let date = today_iso();
-    let content = templates::render_spec(name, sid, &date);
+    let content = templates::render_spec(name, sid, &date)?;
     fs::write(&spec_path, content)?;
 
     let rel = spec_path

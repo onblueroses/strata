@@ -6,6 +6,7 @@ mod eval;
 mod lint;
 mod sarif;
 mod scanner;
+mod state;
 mod targets;
 mod templates;
 mod ui;
@@ -48,6 +49,7 @@ fn main() {
             dry_run,
             index,
         } => commands::fix::run(Path::new(&path), dry_run, index),
+        Command::Diff { path, target } => commands::diff::run(Path::new(&path), target),
         Command::Generate {
             path,
             target,

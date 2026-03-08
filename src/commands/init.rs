@@ -169,19 +169,19 @@ fn create_directories(root: &Path, domains: &[DomainConfig]) -> Result<()> {
 
 fn generate_files(root: &Path, project_name: &str, domains: &[DomainConfig]) -> Result<()> {
     // PROJECT.md (Constitution layer)
-    let project_md = templates::render_project_md(project_name);
+    let project_md = templates::render_project_md(project_name)?;
     fs::write(root.join("PROJECT.md"), project_md)?;
     ui::file_action("create", "PROJECT.md");
 
     // INDEX.md (Global Index layer)
-    let index_md = templates::render_index_md(project_name, domains);
+    let index_md = templates::render_index_md(project_name, domains)?;
     fs::write(root.join("INDEX.md"), index_md)?;
     ui::file_action("create", "INDEX.md");
 
     // RULES.md per domain (Domain Boundaries layer)
     for domain in domains {
         let dir_name = format!("{}-{}", domain.prefix, domain.name);
-        let rules_md = templates::render_rules_md(&domain.name);
+        let rules_md = templates::render_rules_md(&domain.name)?;
         fs::write(root.join(&dir_name).join("RULES.md"), rules_md)?;
         ui::file_action("create", &format!("{dir_name}/RULES.md"));
     }

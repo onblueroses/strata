@@ -1,5 +1,13 @@
-# {{PROJECT_NAME}}
+# {{ project_name }}
 
 <!-- strata:generated - Agent target: Copilot -->
+{% if project_type %}
 
-{{CONTEXT}}
+## Project Type
+
+**Language**: {{ project_type.language }}{% if project_type.build_tool %} ({{ project_type.build_tool }}){% endif %}
+
+{% if project_type.frameworks %}**Frameworks**: {{ project_type.frameworks }}{% endif %}
+
+{% endif %}
+{{ context }}

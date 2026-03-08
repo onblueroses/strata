@@ -1,4 +1,6 @@
 use crate::config::DomainConfig;
+use crate::error::Result;
+use minijinja::{Environment, context};
 use std::fmt::Write as _;
 
 const PROJECT_MD_TMPL: &str = include_str!("../templates/PROJECT.md.tmpl");
@@ -23,12 +25,27 @@ const SECURITY_SKILL_TMPL: &str = include_str!("../templates/skills/security.md.
 const OPTIMIZE_SKILL_TMPL: &str = include_str!("../templates/skills/optimize.md.tmpl");
 const MEMORY_STARTER_TMPL: &str = include_str!("../templates/memory.md.tmpl");
 const EVAL_SET_TMPL: &str = include_str!("../templates/eval-set.json.tmpl");
+const EVAL_REPORT_TMPL: &str = include_str!("../templates/eval-report.html.tmpl");
 
-pub fn render_project_md(project_name: &str) -> String {
-    PROJECT_MD_TMPL.replace("{{PROJECT_NAME}}", project_name)
+/// Build a minijinja environment with all dynamic templates registered.
+pub fn build_env() -> Result<Environment<'static>> {
+    let mut env = Environment::new();
+    env.add_template("project.md", PROJECT_MD_TMPL)?;
+    env.add_template("index.md", INDEX_MD_TMPL)?;
+    env.add_template("rules.md", RULES_MD_TMPL)?;
+    env.add_template("spec.md", SPEC_TMPL)?;
+    env.add_template("eval-set.json", EVAL_SET_TMPL)?;
+    env.add_template("eval-report.html", EVAL_REPORT_TMPL)?;
+    Ok(env)
 }
 
-pub fn render_index_md(project_name: &str, domains: &[DomainConfig]) -> String {
+pub fn render_project_md(project_name: &str) -> Result<String> {
+    let env = build_env()?;
+    let tmpl = env.get_template("project.md")?;
+    Ok(tmpl.render(context! { project_name })?)
+}
+
+pub fn render_index_md(project_name: &str, domains: &[DomainConfig]) -> Result<String> {
     let mut entries = String::new();
     for domain in domains {
         let dir_name = format!("{}-{}", domain.prefix, domain.name);
@@ -39,13 +56,18 @@ pub fn render_index_md(project_name: &str, domains: &[DomainConfig]) -> String {
         );
     }
 
-    INDEX_MD_TMPL
-        .replace("{{PROJECT_NAME}}", project_name)
-        .replace("{{INDEX_ENTRIES}}", entries.trim_end())
+    let env = build_env()?;
+    let tmpl = env.get_template("index.md")?;
+    Ok(tmpl.render(context! {
+        project_name,
+        index_entries => entries.trim_end(),
+    })?)
 }
 
-pub fn render_rules_md(domain_name: &str) -> String {
-    RULES_MD_TMPL.replace("{{DOMAIN_NAME}}", domain_name)
+pub fn render_rules_md(domain_name: &str) -> Result<String> {
+    let env = build_env()?;
+    let tmpl = env.get_template("rules.md")?;
+    Ok(tmpl.render(context! { domain_name })?)
 }
 
 pub fn render_gitignore() -> String {
@@ -72,12 +94,15 @@ pub fn render_pre_compact_hook() -> String {
     PRE_COMPACT_HOOK_TMPL.to_string()
 }
 
-pub fn render_spec(name: &str, session_id: &str, date: &str) -> String {
-    SPEC_TMPL
-        .replace("{{SPEC_NAME}}", name)
-        .replace("{{SESSION_ID}}", session_id)
-        .replace("{{DATE}}", date)
-        .replace("{{PHASE_NAME}}", "Setup")
+pub fn render_spec(name: &str, session_id: &str, date: &str) -> Result<String> {
+    let env = build_env()?;
+    let tmpl = env.get_template("spec.md")?;
+    Ok(tmpl.render(context! {
+        spec_name => name,
+        session_id,
+        date,
+        phase_name => "Setup",
+    })?)
 }
 
 pub fn render_review_skill() -> String {
@@ -124,9 +149,14 @@ pub fn render_memory_starter() -> String {
     MEMORY_STARTER_TMPL.to_string()
 }
 
-pub fn render_eval_set(skill_name: &str) -> String {
-    EVAL_SET_TMPL.replace(
-        "Review this code",
-        &format!("A query that should trigger {skill_name}"),
-    )
+pub fn render_eval_set(skill_name: &str) -> Result<String> {
+    let env = build_env()?;
+    let tmpl = env.get_template("eval-set.json")?;
+    Ok(tmpl.render(context! { skill_name })?)
+}
+
+pub fn render_eval_report(data_json: &str) -> Result<String> {
+    let env = build_env()?;
+    let tmpl = env.get_template("eval-report.html")?;
+    Ok(tmpl.render(context! { data_json })?)
 }

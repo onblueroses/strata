@@ -62,8 +62,23 @@ pub enum StrataError {
     #[error("Walk error: {0}")]
     WalkError(String),
 
+    #[error("Template error: {0}")]
+    Template(String),
+
     #[error("{0}")]
     General(String),
+}
+
+impl From<serde_json::Error> for StrataError {
+    fn from(e: serde_json::Error) -> Self {
+        StrataError::General(format!("JSON error: {e}"))
+    }
+}
+
+impl From<minijinja::Error> for StrataError {
+    fn from(e: minijinja::Error) -> Self {
+        StrataError::Template(e.to_string())
+    }
 }
 
 impl From<dialoguer::Error> for StrataError {
