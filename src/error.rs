@@ -86,3 +86,9 @@ impl From<dialoguer::Error> for StrataError {
         StrataError::General(format!("Prompt error: {e}"))
     }
 }
+
+impl From<notify::Error> for StrataError {
+    fn from(e: notify::Error) -> Self {
+        StrataError::General(format!("Watch error: {e}"))
+    }
+}

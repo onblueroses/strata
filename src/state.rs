@@ -16,6 +16,8 @@ pub struct GenerationState {
     pub target: String,
     pub config_hash: u64,
     pub files: HashMap<String, FileState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_commit: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -117,6 +119,85 @@ pub fn compute_domain_source_hash(root: &Path, domain_dir: &str) -> u64 {
     hasher.finish()
 }
 
+/// Build generation state from generated files and config.
+/// Shared by `generate` and `update` commands.
+pub fn build_generation_state(
+    root: &Path,
+    config: &crate::config::StrataConfig,
+    config_path: &Path,
+    files: &[(String, String)],
+    target: crate::config::AgentTarget,
+    git_commit: Option<String>,
+) -> GenerationState {
+    let config_content = std::fs::read_to_string(config_path).unwrap_or_default();
+    let mut file_states = HashMap::new();
+
+    for (rel_path, content) in files {
+        let source_hash = if rel_path == ".strata/context.md" {
+            compute_context_source_hash(root, config)
+        } else if rel_path.starts_with(".strata/domains/") {
+            let domain_dir = rel_path
+                .strip_prefix(".strata/domains/")
+                .and_then(|s| s.strip_suffix(".md"))
+                .unwrap_or("");
+            compute_domain_source_hash(root, domain_dir)
+        } else {
+            hash_content(content)
+        };
+
+        file_states.insert(
+            rel_path.clone(),
+            FileState {
+                content_hash: hash_content(content),
+                source_hash,
+            },
+        );
+    }
+
+    GenerationState {
+        generated_at: now_iso(),
+        strata_version: env!("CARGO_PKG_VERSION").to_string(),
+        target: target.to_string(),
+        config_hash: hash_content(&config_content),
+        files: file_states,
+        git_commit,
+    }
+}
+
+/// ISO-8601 timestamp without external deps.
+fn now_iso() -> String {
+    let epoch = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let secs_per_day: u64 = 86400;
+    let days = epoch / secs_per_day;
+    let time_of_day = epoch % secs_per_day;
+    let hours = time_of_day / 3600;
+    let minutes = (time_of_day % 3600) / 60;
+    let seconds = time_of_day % 60;
+
+    let (year, month, day) = civil_from_days(days as i64);
+
+    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
+}
+
+/// Convert days since epoch to civil date. Algorithm from Howard Hinnant.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = i64::from(yoe) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test code")]
 mod tests {
@@ -153,6 +234,7 @@ mod tests {
                     source_hash: 222,
                 },
             )]),
+            git_commit: None,
         };
 
         save_state(dir.path(), &state).unwrap();

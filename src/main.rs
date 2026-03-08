@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod error;
 mod eval;
+mod git;
 mod lint;
 mod sarif;
 mod scanner;
@@ -55,6 +56,12 @@ fn main() {
             target,
             skills,
         } => commands::generate::run(Path::new(&path), target, skills),
+        Command::Update { path, target } => commands::update::run(Path::new(&path), target),
+        Command::Watch {
+            path,
+            target,
+            debounce,
+        } => commands::watch::run(Path::new(&path), target, debounce),
         Command::InstallHooks { path } => commands::hooks::run(Path::new(&path)),
         Command::Spec { action } => match action {
             SpecAction::New { name, session } => {

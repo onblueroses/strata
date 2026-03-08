@@ -119,6 +119,32 @@ pub enum Command {
         skills: bool,
     },
 
+    /// Selectively regenerate only changed context files
+    Update {
+        /// Project directory (defaults to current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Target agent format
+        #[arg(long)]
+        target: Option<AgentTarget>,
+    },
+
+    /// Watch for file changes and regenerate context automatically
+    Watch {
+        /// Project directory (defaults to current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Target agent format
+        #[arg(long)]
+        target: Option<AgentTarget>,
+
+        /// Debounce interval in milliseconds
+        #[arg(long, default_value_t = 300)]
+        debounce: u64,
+    },
+
     /// Install git pre-commit hooks for drift prevention
     InstallHooks {
         /// Project directory (defaults to current directory)

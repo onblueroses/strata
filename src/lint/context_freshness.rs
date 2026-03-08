@@ -67,19 +67,41 @@ fn check_with_state(
         }
     }
 
-    if stale_sources.is_empty() {
-        return Vec::new();
+    if !stale_sources.is_empty() {
+        return vec![Diagnostic::new(
+            "context-freshness",
+            Severity::Info,
+            format!(
+                ".strata/context.md is stale (changed: {}). Run `strata generate` to refresh.",
+                stale_sources.join(", ")
+            ),
+            ".strata/context.md",
+        )];
     }
 
-    vec![Diagnostic::new(
-        "context-freshness",
-        Severity::Info,
-        format!(
-            ".strata/context.md is stale (changed: {}). Run `strata generate` to refresh.",
-            stale_sources.join(", ")
-        ),
-        ".strata/context.md",
-    )]
+    // Hashes match, but check if commits have passed since generation
+    if let Some(ref gen_commit) = gen_state.git_commit {
+        if let Some(current_commit) = crate::git::head_commit(root) {
+            if gen_commit != &current_commit {
+                if let Some(distance) =
+                    crate::git::commit_distance(root, gen_commit, &current_commit)
+                {
+                    if distance > 0 {
+                        return vec![Diagnostic::new(
+                            "context-freshness",
+                            Severity::Info,
+                            format!(
+                                "Context may be stale ({distance} commit(s) since generation). Run `strata diff` to check."
+                            ),
+                            ".strata/context.md",
+                        )];
+                    }
+                }
+            }
+        }
+    }
+
+    Vec::new()
 }
 
 fn check_with_mtime(root: &Path) -> Vec<Diagnostic> {

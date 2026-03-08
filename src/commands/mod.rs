@@ -8,3 +8,5 @@ pub mod lint;
 pub mod session;
 pub mod skill;
 pub mod spec;
+pub mod update;
+pub mod watch;

@@ -2,15 +2,14 @@ use crate::config::{AgentTarget, StrataConfig};
 use crate::error::Result;
 use crate::scanner::ProjectScan;
 use crate::scanner::project_type::Language;
-use crate::state::{self, FileState, GenerationState};
+use crate::state;
 use crate::ui;
 use crate::util::{snap_to_char_ceil, snap_to_char_floor};
-use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
-const GENERATED_MARKER: &str = "<!-- strata:generated -->";
+pub(crate) const GENERATED_MARKER: &str = "<!-- strata:generated -->";
 
 pub fn run(path: &Path, target: Option<AgentTarget>, install_skills: bool) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
@@ -32,38 +31,15 @@ pub fn run(path: &Path, target: Option<AgentTarget>, install_skills: bool) -> Re
     write_all(&root, &files)?;
 
     // Build and save state.json
-    let config_content = fs::read_to_string(&config_path).unwrap_or_default();
-    let mut file_states = HashMap::new();
-
-    for (rel_path, content) in &files {
-        let source_hash = if rel_path == ".strata/context.md" {
-            state::compute_context_source_hash(&root, &config)
-        } else if rel_path.starts_with(".strata/domains/") {
-            let domain_dir = rel_path
-                .strip_prefix(".strata/domains/")
-                .and_then(|s| s.strip_suffix(".md"))
-                .unwrap_or("");
-            state::compute_domain_source_hash(&root, domain_dir)
-        } else {
-            state::hash_content(content)
-        };
-
-        file_states.insert(
-            rel_path.clone(),
-            FileState {
-                content_hash: state::hash_content(content),
-                source_hash,
-            },
-        );
-    }
-
-    let gen_state = GenerationState {
-        generated_at: now_iso(),
-        strata_version: env!("CARGO_PKG_VERSION").to_string(),
-        target: resolved_target.to_string(),
-        config_hash: state::hash_content(&config_content),
-        files: file_states,
-    };
+    let git_commit = crate::git::head_commit(&root);
+    let gen_state = state::build_generation_state(
+        &root,
+        &config,
+        &config_path,
+        &files,
+        resolved_target,
+        git_commit,
+    );
     state::save_state(&root, &gen_state)?;
 
     // Install starter skills if requested
@@ -388,7 +364,7 @@ pub fn truncate_to_budget(content: &str, budget: usize) -> String {
 }
 
 /// Write generated content to a file, preserving human content above the marker.
-fn write_with_marker(path: &Path, generated: &str) -> Result<()> {
+pub(crate) fn write_with_marker(path: &Path, generated: &str) -> Result<()> {
     let content = if path.exists() {
         let existing = fs::read_to_string(path)?;
         if let Some(pos) = existing.find(GENERATED_MARKER) {
@@ -405,42 +381,6 @@ fn write_with_marker(path: &Path, generated: &str) -> Result<()> {
 
     fs::write(path, content)?;
     Ok(())
-}
-
-/// ISO-8601 timestamp without external deps.
-fn now_iso() -> String {
-    let epoch = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    // Simple epoch -> date conversion (no leap seconds, good enough for timestamps)
-    let secs_per_day: u64 = 86400;
-    let days = epoch / secs_per_day;
-    let time_of_day = epoch % secs_per_day;
-    let hours = time_of_day / 3600;
-    let minutes = (time_of_day % 3600) / 60;
-    let seconds = time_of_day % 60;
-
-    // Days since 1970-01-01 to (year, month, day)
-    let (year, month, day) = civil_from_days(days as i64);
-
-    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
-}
-
-/// Convert days since epoch to civil date. Algorithm from Howard Hinnant.
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
-    let z = z + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097) as u32;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = i64::from(yoe) + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    (y, m, d)
 }
 
 #[cfg(test)]
