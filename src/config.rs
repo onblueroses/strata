@@ -2,6 +2,42 @@ use crate::error::{Result, StrataError};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// A single user-defined lint rule from strata.toml.
+/// Check types: `file_exists`, `file_missing`, `content_contains`, `frontmatter_key`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomRuleSpec {
+    pub name: String,
+    /// `"error"`, `"warning"`, or `"info"`
+    #[serde(default = "default_severity")]
+    pub severity: String,
+    /// `"file_exists"`, `"file_missing"`, `"content_contains"`, or `"frontmatter_key"`
+    pub check: String,
+    /// Glob pattern for file matching (relative to project root)
+    pub glob: String,
+    pub message: String,
+    /// Required for `content_contains`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    /// Required for `frontmatter_key`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// For `content_contains`: true = flag when pattern absent, false = flag when present
+    #[serde(default)]
+    pub negate: bool,
+}
+
+fn default_severity() -> String {
+    "warning".to_string()
+}
+
+/// Workspace (monorepo) configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WorkspaceConfig {
+    /// Member project directories (relative paths from workspace root).
+    #[serde(default)]
+    pub members: Vec<String>,
+}
+
 /// Top-level strata.toml configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StrataConfig {
@@ -24,6 +60,10 @@ pub struct StrataConfig {
     pub targets: TargetsConfig,
     #[serde(default)]
     pub skills: SkillsConfig,
+    #[serde(default)]
+    pub custom_rules: Vec<CustomRuleSpec>,
+    #[serde(default)]
+    pub workspace: WorkspaceConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -401,6 +441,41 @@ fn default_scan_extensions() -> Vec<String> {
 }
 
 impl StrataConfig {
+    /// Returns true if this config declares workspace members.
+    // Dead code in main binary until Phase 4 workspace dispatch; used in tests
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "used by workspace command dispatch")
+    )]
+    pub fn is_workspace(&self) -> bool {
+        !self.workspace.members.is_empty()
+    }
+
+    /// Load each workspace member's config. Returns `(member_root, config)` pairs.
+    #[expect(dead_code, reason = "used by workspace command dispatch")]
+    pub fn load_workspace_members(
+        root: &Path,
+        config: &StrataConfig,
+    ) -> Result<Vec<(PathBuf, StrataConfig)>> {
+        config
+            .workspace
+            .members
+            .iter()
+            .map(|member| {
+                let member_root = root.join(member);
+                if !member_root.is_dir() {
+                    return Err(StrataError::General(format!(
+                        "workspace member '{}' not found at {}",
+                        member,
+                        member_root.display()
+                    )));
+                }
+                let (member_config, _) = StrataConfig::load(&member_root)?;
+                Ok((member_root, member_config))
+            })
+            .collect()
+    }
+
     /// Find and read strata.toml starting from `dir`, walking up to ancestors.
     pub fn load(dir: &Path) -> Result<(Self, PathBuf)> {
         let config_path = find_config(dir)?;
@@ -468,6 +543,8 @@ mod tests {
             sessions: SessionsConfig::default(),
             targets: TargetsConfig::default(),
             skills: SkillsConfig::default(),
+            custom_rules: vec![],
+            workspace: WorkspaceConfig::default(),
         };
         let serialized = toml::to_string_pretty(&config).unwrap();
         let deserialized: StrataConfig = toml::from_str(&serialized).unwrap();
@@ -485,5 +562,92 @@ name = "minimal"
         assert_eq!(config.project.name, "minimal");
         assert!(config.project.domains.is_empty());
         assert!(!config.structure.ignore.is_empty()); // defaults applied
+    }
+
+    #[test]
+    fn test_custom_rules_parse() {
+        let toml_str = r#"
+[project]
+name = "test"
+
+[[custom_rules]]
+name = "require-changelog"
+severity = "warning"
+check = "file_exists"
+glob = "CHANGELOG.md"
+message = "CHANGELOG.md is missing"
+
+[[custom_rules]]
+name = "no-bare-todos"
+severity = "error"
+check = "content_contains"
+glob = "**/*.md"
+pattern = "TODO"
+negate = false
+message = "bare TODO found"
+"#;
+        let config: StrataConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.custom_rules.len(), 2);
+        let first = &config.custom_rules[0];
+        assert_eq!(first.name, "require-changelog");
+        assert_eq!(first.severity, "warning");
+        assert_eq!(first.check, "file_exists");
+        let second = &config.custom_rules[1];
+        assert_eq!(second.pattern.as_deref(), Some("TODO"));
+        assert!(!second.negate);
+    }
+
+    #[test]
+    fn test_custom_rules_missing_section_uses_default() {
+        let toml_str = r#"
+[project]
+name = "test"
+"#;
+        let config: StrataConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.custom_rules.is_empty());
+    }
+
+    #[test]
+    fn test_workspace_config_parse() {
+        let toml_str = r#"
+[project]
+name = "workspace-root"
+
+[workspace]
+members = ["client", "server", "shared"]
+"#;
+        let config: StrataConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.is_workspace());
+        assert_eq!(config.workspace.members, ["client", "server", "shared"]);
+    }
+
+    #[test]
+    fn test_workspace_missing_section_is_not_workspace() {
+        let toml_str = r#"
+[project]
+name = "single"
+"#;
+        let config: StrataConfig = toml::from_str(toml_str).unwrap();
+        assert!(!config.is_workspace());
+    }
+
+    #[test]
+    fn test_custom_rule_spec_defaults() {
+        let toml_str = r#"
+[project]
+name = "test"
+
+[[custom_rules]]
+name = "my-rule"
+check = "file_exists"
+glob = "README.md"
+message = "README is missing"
+"#;
+        let config: StrataConfig = toml::from_str(toml_str).unwrap();
+        let rule = &config.custom_rules[0];
+        assert_eq!(rule.severity, "warning"); // default
+        assert!(!rule.negate); // default
+        assert!(rule.pattern.is_none());
+        assert!(rule.key.is_none());
     }
 }

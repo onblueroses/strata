@@ -83,6 +83,8 @@ pub fn run(
         sessions,
         targets: TargetsConfig::default(),
         skills: SkillsConfig::default(),
+        custom_rules: vec![],
+        workspace: crate::config::WorkspaceConfig::default(),
     };
     config.save(&path.join("strata.toml"))?;
     ui::file_action("create", "strata.toml");

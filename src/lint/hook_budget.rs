@@ -40,7 +40,7 @@ mod tests {
     use super::*;
     use crate::config::{
         ContextConfig, HooksConfig, LintConfig, MemoryConfig, ProjectConfig, SessionsConfig,
-        SkillsConfig, SpecsConfig, StructureConfig, TargetsConfig,
+        SkillsConfig, SpecsConfig, StructureConfig, TargetsConfig, WorkspaceConfig,
     };
     use crate::scanner::hooks::HookMeta;
     use std::collections::HashMap;
@@ -62,6 +62,8 @@ mod tests {
             sessions: SessionsConfig::default(),
             targets: TargetsConfig::default(),
             skills: SkillsConfig::default(),
+            custom_rules: vec![],
+            workspace: WorkspaceConfig::default(),
         }
     }
 
