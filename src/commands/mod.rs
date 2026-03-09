@@ -1,4 +1,5 @@
 pub mod check;
+pub mod completions;
 pub mod diff;
 pub mod fix;
 pub mod generate;

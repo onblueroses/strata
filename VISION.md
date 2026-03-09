@@ -77,27 +77,27 @@ Added between Phase 0 and Phase 1. Context generation, budget enforcement, and f
 | 0.5.9 | Sessions: `strata session start\|list\|save`, session-structure lint | Done |
 | 0.5.10 | Agent targets: `strata generate --target claude\|cursor\|copilot`, starter-skills lint | Done |
 
-### Phase 1: Smart Scaffold (next)
+### Phase 1: Smart Scaffold (complete)
 
 Improve generation quality with project awareness, better templates, and drift detection.
 
-| Step | Summary |
-|------|---------|
-| 1.1 | Project type detection (Rust, JS/TS, Python, Go, frameworks) |
-| 1.2 | Template engine upgrade (`minijinja` - conditional sections, loops) |
-| 1.3 | `strata diff` command (show changes since last generation) |
-| 1.4 | Freshness tracking (`.strata/state.json`, git-aware staleness) |
+| Step | Summary | Status |
+|------|---------|--------|
+| 1.1 | Project type detection (Rust, JS/TS, Python, Go, frameworks) | Done |
+| 1.2 | Template engine upgrade (`minijinja` - conditional sections, loops) | Done |
+| 1.3 | `strata diff` command (show changes since last generation) | Done |
+| 1.4 | Freshness tracking (`.strata/state.json`, git-aware staleness) | Done |
 
-### Phase 2: Recursive Improvement
+### Phase 2: Recursive Improvement (mostly complete)
 
 strata gets smarter over time by watching project evolution and suggesting structural updates.
 
-| Step | Summary |
-|------|---------|
-| 2.1 | `strata watch` (file watching with `notify`, streaming diagnostics) |
-| 2.2 | `strata update` (re-analyze + update generated files, preserve human edits) |
-| 2.3 | Git-aware freshness (track last-verified by mtime/git log) |
-| 2.4 | Incremental scanning (cache by path+mtime+content_hash, `blake3`) |
+| Step | Summary | Status |
+|------|---------|--------|
+| 2.1 | `strata watch` (file watching with `notify`, streaming diagnostics) | Done |
+| 2.2 | `strata update` (re-analyze + update generated files, preserve human edits) | Done |
+| 2.3 | Git-aware freshness (track last-verified by mtime/git log) | Done |
+| 2.4 | Incremental scanning (cache by path+mtime+content_hash, `blake3`) | Next |
 
 ### Phase 3: Advanced Features
 

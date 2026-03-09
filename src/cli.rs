@@ -1,6 +1,7 @@
 use crate::config::{AgentTarget, Preset};
 use crate::eval::OutputFormat as EvalOutputFormat;
 use clap::{Parser, Subcommand};
+pub use clap_complete::Shell;
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 pub enum OutputFormat {
@@ -168,6 +169,12 @@ pub enum Command {
     Skill {
         #[command(subcommand)]
         action: SkillAction,
+    },
+
+    /// Generate shell completion scripts
+    Completions {
+        /// Shell to generate completions for
+        shell: Shell,
     },
 }
 

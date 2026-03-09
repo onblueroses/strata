@@ -84,6 +84,7 @@ fn main() {
                 commands::session::run_save(Path::new("."), session.as_deref())
             }
         },
+        Command::Completions { shell } => commands::completions::run(shell),
         Command::Skill { action } => match action {
             SkillAction::Eval {
                 name,
