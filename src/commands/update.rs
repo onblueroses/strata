@@ -8,6 +8,60 @@ use std::path::Path;
 pub fn run(path: &Path, target: Option<AgentTarget>) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
     let (config, config_path) = StrataConfig::load(&root)?;
+
+    ui::header("Updating context files");
+
+    if config.is_workspace() {
+        let members = StrataConfig::load_workspace_members(&root, &config)?;
+        let mut total_updated = 0;
+        let mut total_unchanged = 0;
+        for (member_root, member_config) in &members {
+            let member_name = member_root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("?");
+            let scan = crate::scanner::scan_project(member_root, member_config)?;
+            let resolved_target = target
+                .or_else(|| {
+                    state::load_state(member_root)
+                        .ok()
+                        .flatten()
+                        .and_then(|s| parse_target(&s.target))
+                })
+                .unwrap_or(member_config.targets.default);
+            super::fix::regenerate_index_md(member_root, &scan, member_config)?;
+            let files =
+                super::generate::generate_all(member_root, member_config, &scan, resolved_target)?;
+            let prev_state = state::load_state(member_root)?;
+            let (updated, unchanged) = write_changed(member_root, &files, prev_state.as_ref())?;
+            let git_commit = crate::git::head_commit(member_root);
+            let member_config_path = member_root.join("strata.toml");
+            let gen_state = state::build_generation_state(
+                member_root,
+                member_config,
+                &member_config_path,
+                &files,
+                resolved_target,
+                git_commit,
+            );
+            state::save_state(member_root, &gen_state)?;
+            ui::success(&format!(
+                "[{member_name}] {updated} updated, {unchanged} unchanged"
+            ));
+            total_updated += updated;
+            total_unchanged += unchanged;
+        }
+        println!();
+        if total_updated == 0 {
+            ui::success("All context files are up to date.");
+        } else {
+            ui::success(&format!(
+                "Updated {total_updated} file(s), {total_unchanged} unchanged."
+            ));
+        }
+        return Ok(());
+    }
+
     let scan = crate::scanner::scan_project(&root, &config)?;
 
     // Default to target from state.json if available (no --target needed after first generate)
@@ -19,8 +73,6 @@ pub fn run(path: &Path, target: Option<AgentTarget>) -> Result<()> {
                 .and_then(|s| parse_target(&s.target))
         })
         .unwrap_or(config.targets.default);
-
-    ui::header("Updating context files");
 
     // Refresh INDEX.md
     super::fix::regenerate_index_md(&root, &scan, &config)?;

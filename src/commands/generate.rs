@@ -14,11 +14,46 @@ pub(crate) const GENERATED_MARKER: &str = "<!-- strata:generated -->";
 pub fn run(path: &Path, target: Option<AgentTarget>, install_skills: bool) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
     let (config, config_path) = StrataConfig::load(&root)?;
-    let scan = crate::scanner::scan_project(&root, &config)?;
-
-    let resolved_target = target.unwrap_or(config.targets.default);
 
     ui::header("Generating context files");
+
+    if config.is_workspace() {
+        let members = StrataConfig::load_workspace_members(&root, &config)?;
+        let mut total_files = 0;
+        for (member_root, member_config) in &members {
+            let member_name = member_root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("?");
+            let scan = crate::scanner::scan_project(member_root, member_config)?;
+            let resolved_target = target.unwrap_or(member_config.targets.default);
+            super::fix::regenerate_index_md(member_root, &scan, member_config)?;
+            let files = generate_all(member_root, member_config, &scan, resolved_target)?;
+            write_all(member_root, &files)?;
+            let git_commit = crate::git::head_commit(member_root);
+            let member_config_path = member_root.join("strata.toml");
+            let gen_state = state::build_generation_state(
+                member_root,
+                member_config,
+                &member_config_path,
+                &files,
+                resolved_target,
+                git_commit,
+            );
+            state::save_state(member_root, &gen_state)?;
+            if install_skills {
+                install_starter_skills(member_root)?;
+            }
+            ui::success(&format!("[{member_name}] {} file(s)", files.len()));
+            total_files += files.len();
+        }
+        println!();
+        ui::success(&format!("Generated {total_files} context file(s) total"));
+        return Ok(());
+    }
+
+    let scan = crate::scanner::scan_project(&root, &config)?;
+    let resolved_target = target.unwrap_or(config.targets.default);
 
     // Refresh INDEX.md as part of generation
     super::fix::regenerate_index_md(&root, &scan, &config)?;

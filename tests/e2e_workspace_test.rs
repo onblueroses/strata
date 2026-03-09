@@ -4,6 +4,7 @@
 mod common;
 
 use assert_cmd::Command;
+use assert_fs::prelude::*;
 use predicates::prelude::*;
 
 /// Full workspace manager e2e test:
@@ -170,6 +171,140 @@ fn test_minimal_preset_no_hooks() {
     assert!(!dir.path().join(".strata/hooks").exists());
     assert!(!dir.path().join("skills/review").exists());
     assert!(!dir.path().join("MEMORY.md").exists());
+}
+
+// --- Monorepo / workspace tests ---
+
+fn workspace_root_toml(members: &[&str]) -> String {
+    let members_str = members
+        .iter()
+        .map(|m| format!("\"{m}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[workspace]\nmembers = [{members_str}]\n")
+}
+
+fn minimal_member_toml(name: &str) -> String {
+    format!("[project]\nname = \"{name}\"\n")
+}
+
+fn make_valid_member(dir: &assert_fs::TempDir, member: &str) {
+    dir.child(format!("{member}/strata.toml"))
+        .write_str(&minimal_member_toml(member))
+        .unwrap();
+    dir.child(format!("{member}/PROJECT.md"))
+        .write_str("# Project\ndescription: A test project")
+        .unwrap();
+    dir.child(format!("{member}/INDEX.md"))
+        .write_str("# Index\n\n| File | Description |\n|------|-------------|\n")
+        .unwrap();
+}
+
+/// Workspace check: both members pass -> output contains per-member [name] lines, exit 0.
+#[test]
+fn test_monorepo_check_all_pass() {
+    let dir = common::temp_project();
+
+    dir.child("strata.toml")
+        .write_str(&workspace_root_toml(&["alpha", "beta"]))
+        .unwrap();
+
+    make_valid_member(&dir, "alpha");
+    make_valid_member(&dir, "beta");
+
+    Command::new(common::strata_bin())
+        .args(["check"])
+        .current_dir(dir.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("[alpha]"))
+        .stdout(predicate::str::contains("[beta]"));
+}
+
+/// Workspace check: one member is missing required files -> exit 1, both members shown.
+#[test]
+fn test_monorepo_check_partial_failure() {
+    let dir = common::temp_project();
+
+    dir.child("strata.toml")
+        .write_str(&workspace_root_toml(&["alpha", "beta"]))
+        .unwrap();
+
+    make_valid_member(&dir, "alpha");
+
+    // beta: only strata.toml, missing PROJECT.md and INDEX.md
+    dir.child("beta/strata.toml")
+        .write_str(&minimal_member_toml("beta"))
+        .unwrap();
+
+    let output = Command::new(common::strata_bin())
+        .args(["check"])
+        .current_dir(dir.path())
+        .output()
+        .expect("strata failed");
+
+    // ui::success writes to stdout; ui::error writes to stderr
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("[alpha]"),
+        "Missing [alpha] in combined output: {combined}"
+    );
+    assert!(
+        combined.contains("[beta]"),
+        "Missing [beta] in combined output: {combined}"
+    );
+    assert!(
+        !output.status.success(),
+        "Expected non-zero exit when a member fails"
+    );
+}
+
+/// Workspace lint: custom rule in one member fires with member-prefixed location in JSON output.
+#[test]
+fn test_monorepo_lint_member_prefix_in_json() {
+    let dir = common::temp_project();
+
+    dir.child("strata.toml")
+        .write_str(&workspace_root_toml(&["alpha", "beta"]))
+        .unwrap();
+
+    make_valid_member(&dir, "alpha");
+    make_valid_member(&dir, "beta");
+
+    // Add a custom rule to beta that will fire (README.md is absent)
+    let beta_toml = format!(
+        "{}\n[[custom_rules]]\nname = \"require-readme\"\nseverity = \"warning\"\ncheck = \"file_exists\"\nglob = \"README.md\"\nmessage = \"README.md is missing\"\n",
+        minimal_member_toml("beta")
+    );
+    dir.child("beta/strata.toml").write_str(&beta_toml).unwrap();
+
+    let output = Command::new(common::strata_bin())
+        .args(["lint", "--format", "json"])
+        .current_dir(dir.path())
+        .output()
+        .expect("strata failed");
+
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("invalid json");
+
+    let locs: Vec<&str> = json
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|d| d["location"].as_str())
+        .collect();
+
+    // beta diagnostic location should be prefixed with "beta/"
+    assert!(
+        locs.iter().any(|l| l.starts_with("beta/")),
+        "Expected beta/-prefixed location, got: {locs:?}"
+    );
+    // alpha has no custom rules and all structure checks pass - no alpha/ prefixed diagnostics
+    assert!(
+        !locs.iter().any(|l| l.starts_with("alpha/")),
+        "Unexpected alpha/-prefixed location: {locs:?}"
+    );
 }
 
 /// Test standard preset has hooks and skills but not specs/sessions dirs.

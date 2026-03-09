@@ -10,7 +10,6 @@ use std::path::Path;
 pub fn run(path: &Path, dry_run: bool, regenerate_index: bool) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
     let (config, _) = StrataConfig::load(&root)?;
-    let scan = scanner::scan_project(&root, &config)?;
 
     if dry_run {
         ui::header("Fix (dry run)");
@@ -18,17 +17,58 @@ pub fn run(path: &Path, dry_run: bool, regenerate_index: bool) -> Result<()> {
         ui::header("Fix");
     }
 
+    if config.is_workspace() {
+        let members = StrataConfig::load_workspace_members(&root, &config)?;
+        for (member_root, member_config) in &members {
+            let name = member_root
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("?");
+            let fixes = fix_project(member_root, member_config, dry_run, regenerate_index)?;
+            if fixes == 0 {
+                ui::success(&format!("[{name}] Nothing to fix"));
+            } else if dry_run {
+                ui::info(&format!("[{name}] {fixes} fix(es) would be applied"));
+            } else {
+                ui::success(&format!("[{name}] {fixes} fix(es) applied"));
+            }
+        }
+        println!();
+        return Ok(());
+    }
+
+    let fixes = fix_project(&root, &config, dry_run, regenerate_index)?;
+    println!();
+    if fixes == 0 {
+        ui::success("Nothing to fix");
+    } else if dry_run {
+        ui::info(&format!("{fixes} fix(es) would be applied"));
+    } else {
+        ui::success(&format!("{fixes} fix(es) applied"));
+    }
+
+    Ok(())
+}
+
+/// Apply fixes to a single project root. Returns the number of fixes applied (or counted in dry-run mode).
+fn fix_project(
+    root: &Path,
+    config: &StrataConfig,
+    dry_run: bool,
+    regenerate_index: bool,
+) -> Result<usize> {
+    let scan = scanner::scan_project(root, config)?;
     let mut fixes = 0;
 
     // Fix 1: Add unindexed files to INDEX.md
-    let unindexed = scan.unindexed_files(&root);
+    let unindexed = scan.unindexed_files(root);
     if !unindexed.is_empty() {
         if dry_run {
             for file in &unindexed {
                 ui::info(&format!("Would add to INDEX.md: {}", file.display()));
             }
         } else {
-            append_to_index(&root, &unindexed)?;
+            append_to_index(root, &unindexed)?;
             for file in &unindexed {
                 ui::success(&format!("Added to INDEX.md: {}", file.display()));
             }
@@ -44,7 +84,6 @@ pub fn run(path: &Path, dry_run: bool, regenerate_index: bool) -> Result<()> {
             if dry_run {
                 ui::info(&format!("Would create {dir_name}/RULES.md"));
             } else {
-                // Ensure domain directory exists
                 fs::create_dir_all(root.join(&dir_name))?;
                 let content = templates::render_rules_md(&domain.name)?;
                 fs::write(&rules_path, content)?;
@@ -83,22 +122,13 @@ pub fn run(path: &Path, dry_run: bool, regenerate_index: bool) -> Result<()> {
         if dry_run {
             ui::info("Would regenerate INDEX.md");
         } else {
-            regenerate_index_md(&root, &scan, &config)?;
+            regenerate_index_md(root, &scan, config)?;
             ui::success("Regenerated INDEX.md");
         }
         fixes += 1;
     }
 
-    println!();
-    if fixes == 0 {
-        ui::success("Nothing to fix");
-    } else if dry_run {
-        ui::info(&format!("{fixes} fix(es) would be applied"));
-    } else {
-        ui::success(&format!("{fixes} fix(es) applied"));
-    }
-
-    Ok(())
+    Ok(fixes)
 }
 
 /// Regenerate INDEX.md from scratch based on current project files.

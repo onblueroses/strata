@@ -41,6 +41,7 @@ pub struct WorkspaceConfig {
 /// Top-level strata.toml configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StrataConfig {
+    #[serde(default)]
     pub project: ProjectConfig,
     #[serde(default)]
     pub structure: StructureConfig,
@@ -66,8 +67,9 @@ pub struct StrataConfig {
     pub workspace: WorkspaceConfig,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProjectConfig {
+    #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub description: String,
@@ -442,17 +444,11 @@ fn default_scan_extensions() -> Vec<String> {
 
 impl StrataConfig {
     /// Returns true if this config declares workspace members.
-    // Dead code in main binary until Phase 4 workspace dispatch; used in tests
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "used by workspace command dispatch")
-    )]
     pub fn is_workspace(&self) -> bool {
         !self.workspace.members.is_empty()
     }
 
     /// Load each workspace member's config. Returns `(member_root, config)` pairs.
-    #[expect(dead_code, reason = "used by workspace command dispatch")]
     pub fn load_workspace_members(
         root: &Path,
         config: &StrataConfig,

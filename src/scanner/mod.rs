@@ -234,6 +234,19 @@ pub fn scan_project(root: &Path, config: &StrataConfig) -> Result<ProjectScan> {
     })
 }
 
+/// Run a full scan across all workspace members.
+/// Returns `(member_root, scan)` pairs in member declaration order.
+#[expect(dead_code, reason = "used by workspace command dispatch")]
+pub fn scan_workspace(root: &Path, config: &StrataConfig) -> Result<Vec<(PathBuf, ProjectScan)>> {
+    StrataConfig::load_workspace_members(root, config)?
+        .into_iter()
+        .map(|(member_root, member_config)| {
+            let scan = scan_project(&member_root, &member_config)?;
+            Ok((member_root, scan))
+        })
+        .collect()
+}
+
 pub fn is_meta_file(path: &Path) -> bool {
     let path_str = path.to_string_lossy();
     // Everything under .strata/ is meta
