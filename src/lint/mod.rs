@@ -1,5 +1,6 @@
 pub mod context_budget;
 pub mod context_freshness;
+pub mod custom_rules;
 pub mod dead_links;
 pub mod empty_folders;
 pub mod hook_budget;
@@ -124,10 +125,17 @@ impl LintEngine {
         ];
 
         let disabled = &config.lint.disable;
-        let rules = all_rules
+        let mut rules: Vec<Box<dyn LintRule>> = all_rules
             .into_iter()
             .filter(|r| !disabled.contains(&r.name().to_string()))
             .collect();
+
+        // Append user-defined custom rules from config
+        for spec in &config.custom_rules {
+            if !disabled.contains(&spec.name) {
+                rules.push(Box::new(custom_rules::CustomRule::new(spec.clone())));
+            }
+        }
 
         Self { rules }
     }
