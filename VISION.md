@@ -111,8 +111,6 @@ strata gets smarter over time by watching project evolution and suggesting struc
 | 3.3 | MCP server mode (`strata serve`, task-aware context loading, tiered hot/warm/cold) |
 | 3.4 | Shell completions (`clap_complete`) |
 
----
-
 </details>
 
 ## Architecture Decisions
