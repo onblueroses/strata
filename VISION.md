@@ -46,6 +46,9 @@ strata becomes the full AI navigation layer: scaffold structure, generate projec
 
 ## Phased Roadmap
 
+<details>
+<summary>Phased Roadmap</summary>
+
 ### Phase 0: Foundation (partially complete)
 
 Fix false positives, modernize internals, make strata pleasant to use on real projects.
@@ -109,6 +112,8 @@ strata gets smarter over time by watching project evolution and suggesting struc
 | 3.4 | Shell completions (`clap_complete`) |
 
 ---
+
+</details>
 
 ## Architecture Decisions
 

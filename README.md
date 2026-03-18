@@ -70,6 +70,9 @@ All targets also generate `.strata/context.md` and per-domain files. Human conte
 
 ## Commands
 
+<details>
+<summary>Commands</summary>
+
 ### `strata init`
 
 Interactive project scaffolding with preset tiers.
@@ -161,7 +164,12 @@ strata session save --session abc12345
 
 Install git pre-commit hook that runs `strata check`.
 
+</details>
+
 ## Configuration
+
+<details>
+<summary>Configuration</summary>
 
 `strata.toml` at project root:
 
@@ -211,6 +219,8 @@ staleness_days = 7
 [targets]
 default = "generic"  # generic | claude | cursor | copilot
 ```
+
+</details>
 
 ## Design Principles
 
