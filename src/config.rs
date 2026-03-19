@@ -124,7 +124,7 @@ impl Default for StructureConfig {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LintConfig {
     /// Rules to disable (by slug).
     #[serde(default)]
@@ -133,6 +133,30 @@ pub struct LintConfig {
     /// Treat warnings as errors.
     #[serde(default)]
     pub strict: bool,
+
+    /// Days before `last_verified:` dates trigger a stale-dates warning.
+    #[serde(default = "default_stale_verified_days")]
+    pub stale_verified_days: u32,
+
+    /// Days before `_Last updated:_` dates trigger a stale-dates warning.
+    #[serde(default = "default_stale_updated_days")]
+    pub stale_updated_days: u32,
+
+    /// Days before `WAITING (` markers trigger a waiting-markers warning.
+    #[serde(default = "default_stale_waiting_days")]
+    pub stale_waiting_days: u32,
+}
+
+impl Default for LintConfig {
+    fn default() -> Self {
+        Self {
+            disable: Vec::new(),
+            strict: false,
+            stale_verified_days: default_stale_verified_days(),
+            stale_updated_days: default_stale_updated_days(),
+            stale_waiting_days: default_stale_waiting_days(),
+        }
+    }
 }
 
 /// Character budgets for context generation.
@@ -394,6 +418,18 @@ const fn default_session_id_length() -> u32 {
 
 const fn default_staleness_days() -> u32 {
     7
+}
+
+const fn default_stale_verified_days() -> u32 {
+    7
+}
+
+const fn default_stale_updated_days() -> u32 {
+    60
+}
+
+const fn default_stale_waiting_days() -> u32 {
+    30
 }
 
 const fn default_true() -> bool {

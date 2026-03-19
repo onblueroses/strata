@@ -166,3 +166,57 @@ fn test_lint_rule_filter() {
     assert!(!stdout.contains("rules-completeness"));
     assert!(!stdout.contains("dead-links"));
 }
+
+#[test]
+fn test_lint_stale_dates_warning() {
+    let dir = common::temp_project();
+    setup_project(&dir);
+    // Create a markdown file with a very old last_verified date
+    dir.child("01-Core/entity.md")
+        .write_str("# Entity\n## Status\nlast_verified: 2020-01-01\n\nSome content.\n")
+        .unwrap();
+
+    let result = std::process::Command::new(common::strata_bin())
+        .args(["lint", "--rule", "stale-dates"])
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to run strata");
+
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(combined.contains("stale-dates"), "Output: {combined}");
+    assert!(
+        combined.contains("last_verified"),
+        "Should mention last_verified: {combined}"
+    );
+}
+
+#[test]
+fn test_lint_waiting_markers_warning() {
+    let dir = common::temp_project();
+    setup_project(&dir);
+    // Create a markdown file with a very old WAITING marker
+    dir.child("01-Core/backlog.md")
+        .write_str("# Backlog\n\n- Task one WAITING (partner reply, since 2020-01-01)\n")
+        .unwrap();
+
+    let result = std::process::Command::new(common::strata_bin())
+        .args(["lint", "--rule", "waiting-markers"])
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to run strata");
+
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(combined.contains("waiting-markers"), "Output: {combined}");
+    assert!(
+        combined.contains("WAITING"),
+        "Should mention WAITING marker: {combined}"
+    );
+}

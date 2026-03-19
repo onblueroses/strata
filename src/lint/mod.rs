@@ -16,12 +16,15 @@ pub mod skill_structure;
 pub mod spec_ownership;
 pub mod spec_stale;
 pub mod spec_structure;
+pub mod stale_dates;
 pub mod starter_skills;
+pub mod waiting_markers;
 
 use crate::config::StrataConfig;
 use crate::scanner::ProjectScan;
 use serde::Serialize;
 use std::path::Path;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -89,6 +92,43 @@ pub trait LintRule {
     fn check(&self, scan: &ProjectScan, root: &Path, config: &StrataConfig) -> Vec<Diagnostic>;
 }
 
+/// Parse a `YYYY-MM-DD` string into epoch seconds. Returns `None` for invalid input.
+pub(crate) fn parse_yyyy_mm_dd(s: &str) -> Option<u64> {
+    let s = s.trim();
+    let mut parts = s.splitn(3, '-');
+    let year: u64 = parts.next()?.parse().ok()?;
+    let month: u64 = parts.next()?.parse().ok()?;
+    let day: u64 = parts.next()?.parse().ok()?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || year < 1970 {
+        return None;
+    }
+    // Days from epoch to start of year
+    let mut days = 0u64;
+    for y in 1970..year {
+        days += if is_leap(y) { 366 } else { 365 };
+    }
+    let month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    for m in 0..(month - 1) {
+        days += month_days[m as usize];
+        if m == 1 && is_leap(year) {
+            days += 1;
+        }
+    }
+    days += day - 1;
+    Some(days * 86400)
+}
+
+fn is_leap(y: u64) -> bool {
+    y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
+}
+
+/// Current time as epoch seconds, for date comparison in lint rules.
+pub(crate) fn now_epoch_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
 pub struct LintEngine {
     rules: Vec<Box<dyn LintRule>>,
 }
@@ -122,6 +162,8 @@ impl LintEngine {
             Box::new(spec_ownership::SpecOwnership),
             Box::new(session_structure::SessionStructure),
             Box::new(starter_skills::StarterSkills),
+            Box::new(stale_dates::StaleDates),
+            Box::new(waiting_markers::WaitingMarkers),
         ];
 
         let disabled = &config.lint.disable;
