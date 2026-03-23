@@ -1,7 +1,28 @@
 #!/usr/bin/env bash
 # Session start hook - runs when an AI agent session begins.
-# Customize this to set up session context, log session starts, etc.
+# Logs session start, generates a session ID, and nudges the agent to check for active specs.
 
 set -euo pipefail
 
-echo "Session started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# Generate a session ID from timestamp
+SESSION_ID=$(date +%s | sha256sum 2>/dev/null | head -c 8 || date +%s | md5sum | head -c 8 || echo "$(date +%s)" | cut -c1-8)
+echo "Session started: $(date -u +%Y-%m-%dT%H:%M:%SZ) | ID: $SESSION_ID"
+
+# Log to sessions directory if it exists
+SESSIONS_DIR=".strata/sessions"
+if [ -d "$SESSIONS_DIR" ]; then
+    echo "$SESSION_ID $(date -u +%Y-%m-%dT%H:%M:%SZ) start" >> "$SESSIONS_DIR/session-log.txt"
+fi
+
+# Check for active specs
+SPECS_DIR=".strata/specs"
+if [ -d "$SPECS_DIR" ]; then
+    active=$(grep -rl 'Status:.*in-progress' "$SPECS_DIR" 2>/dev/null || true)
+    if [ -n "$active" ]; then
+        echo ""
+        echo "Active specs found - check >> Current Step before starting new work:"
+        for spec in $active; do
+            echo "  - $spec"
+        done
+    fi
+fi

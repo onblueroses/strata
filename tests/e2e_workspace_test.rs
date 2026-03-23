@@ -43,6 +43,9 @@ fn test_workspace_manager_full_workflow() {
     assert!(dir.path().join(".strata/sessions").is_dir());
     assert!(dir.path().join("skills/review/SKILL.md").exists());
     assert!(dir.path().join("skills/commit/SKILL.md").exists());
+    assert!(dir.path().join("skills/verify/SKILL.md").exists());
+    assert!(dir.path().join("references/code-quality.md").exists());
+    assert!(dir.path().join("references/skill-design.md").exists());
 
     // 2. Session start
     Command::new(common::strata_bin())
@@ -167,10 +170,11 @@ fn test_minimal_preset_no_hooks() {
 
     assert!(dir.path().join("strata.toml").exists());
     assert!(dir.path().join("PROJECT.md").exists());
-    // Minimal should NOT have hooks or skills
+    // Minimal should NOT have hooks, skills, references, or memory
     assert!(!dir.path().join(".strata/hooks").exists());
     assert!(!dir.path().join("skills/review").exists());
     assert!(!dir.path().join("MEMORY.md").exists());
+    assert!(!dir.path().join("references").exists());
 }
 
 // --- Monorepo / workspace tests ---
@@ -330,7 +334,10 @@ fn test_standard_preset() {
 
     assert!(dir.path().join(".strata/hooks/session-start.sh").exists());
     assert!(dir.path().join("skills/review/SKILL.md").exists());
+    assert!(dir.path().join("skills/verify/SKILL.md").exists());
     assert!(dir.path().join("MEMORY.md").exists());
+    assert!(dir.path().join("references/code-quality.md").exists());
+    assert!(dir.path().join("references/skill-design.md").exists());
     // Standard should NOT have specs/sessions dirs
     assert!(!dir.path().join(".strata/specs").exists());
     assert!(!dir.path().join(".strata/sessions").exists());

@@ -1,0 +1,79 @@
+---
+name: verify
+description: >
+  Post-implementation integrity check. Run after finishing a task, before committing,
+  when saying "done" or "finished", or when asked to verify work. Catches uncommitted
+  changes, missing tests, leftover debug code, and unresolved TODOs. Run this even
+  for "small" changes - small changes cause big bugs.
+---
+
+# Verify
+
+Run this after implementing a feature or fix, before reporting the task as complete.
+
+## Step 1: Re-read changed files
+
+Read every file you modified from disk (not from memory). Compare what's on disk
+with what you intended. Look for:
+
+- Partial edits (started a change but didn't finish)
+- Import/export mismatches across files
+- Type signature changes that weren't propagated to callers
+
+**Test:** for each changed file, can you explain what changed and why in one sentence?
+
+## Step 2: Run tests
+
+Detect and run the project's test suite:
+
+| Indicator | Command |
+|-----------|---------|
+| `package.json` with test script | `npm test` |
+| `Cargo.toml` | `cargo test` |
+| `pytest.ini`, `setup.cfg`, `pyproject.toml` | `pytest` |
+| `go.mod` | `go test ./...` |
+| `Makefile` with test target | `make test` |
+
+If tests fail, fix the failures before proceeding. Do not skip failing tests.
+
+## Step 3: Check for debris
+
+Search changed files for leftover artifacts:
+
+- `TODO` or `FIXME` without a description (bare markers are noise)
+- `console.log(`, `print(`, `dbg!(`, `debugger` in non-test files
+- `CHANGEME`, `PLACEHOLDER`, `XXX` markers
+- Commented-out code blocks (delete or uncomment, don't leave zombie code)
+
+## Step 4: Cross-file consistency
+
+If you changed 2+ files, verify:
+
+- Imports resolve (no references to deleted or renamed exports)
+- Type signatures match at boundaries (function arguments, API contracts)
+- Documentation mentions the right names and paths (stale docs are worse than no docs)
+
+## Report Format
+
+```
+VERIFY: [N files checked]
+========================================
+
+[PASS] All checks passed - ready to commit
+--- or ---
+[FAIL] N issues found
+
+  [1] file.ts:42 - console.log left in production code
+  [2] utils.ts - TODO without description on line 15
+  [3] api.ts:20 - import references deleted function `oldHelper`
+
+Fix these before committing.
+```
+
+## Quality Self-Check
+
+Before reporting PASS, verify:
+1. Re-read every changed file from disk (not from context)?
+2. Test suite ran and passed?
+3. No debug artifacts in non-test files?
+4. Cross-file references resolve?

@@ -1,7 +1,33 @@
 #!/usr/bin/env bash
 # Session stop hook - runs when an AI agent session ends.
-# Customize this to sync state, commit work, clean up, etc.
+# Warns if there are uncommitted changes that haven't been verified.
+# Customize: change the warning to a hard exit (exit 1) to make verification mandatory.
 
 set -euo pipefail
 
 echo "Session stopped: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# Check for uncommitted changes
+if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null; then
+    changes=$(git status --porcelain 2>/dev/null || true)
+    if [ -n "$changes" ]; then
+        changed_count=$(echo "$changes" | wc -l | tr -d ' ')
+        echo ""
+        echo "WARNING: $changed_count uncommitted file(s) detected."
+        echo "Consider running your verify/review skill before ending the session."
+        echo ""
+        echo "Changed files:"
+        echo "$changes" | head -20
+        if [ "$changed_count" -gt 20 ]; then
+            echo "  ... and $((changed_count - 20)) more"
+        fi
+        # To make this a hard gate, uncomment the next line:
+        # exit 1
+    fi
+fi
+
+# Log to sessions directory if it exists
+SESSIONS_DIR=".strata/sessions"
+if [ -d "$SESSIONS_DIR" ]; then
+    echo "$(date +%s | sha256sum 2>/dev/null | head -c 8 || echo 'unknown') $(date -u +%Y-%m-%dT%H:%M:%SZ) stop" >> "$SESSIONS_DIR/session-log.txt"
+fi

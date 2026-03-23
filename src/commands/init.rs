@@ -90,7 +90,7 @@ pub fn run(
     ui::file_action("create", "strata.toml");
 
     // Generate files from templates
-    generate_files(&path, &project_name, &domain_configs)?;
+    generate_files(&path, &project_name, &domain_configs, preset)?;
 
     // Preset-specific scaffolding
     if matches!(preset, Preset::Standard | Preset::Full) {
@@ -169,14 +169,34 @@ fn create_directories(root: &Path, domains: &[DomainConfig]) -> Result<()> {
     Ok(())
 }
 
-fn generate_files(root: &Path, project_name: &str, domains: &[DomainConfig]) -> Result<()> {
+fn generate_files(
+    root: &Path,
+    project_name: &str,
+    domains: &[DomainConfig],
+    preset: Preset,
+) -> Result<()> {
     // PROJECT.md (Constitution layer)
     let project_md = templates::render_project_md(project_name)?;
     fs::write(root.join("PROJECT.md"), project_md)?;
     ui::file_action("create", "PROJECT.md");
 
     // INDEX.md (Global Index layer)
-    let index_md = templates::render_index_md(project_name, domains)?;
+    let extra_entries: Vec<(&str, &str)> = if matches!(preset, Preset::Standard | Preset::Full) {
+        vec![
+            ("MEMORY.md", "Persistent project memory for AI agents"),
+            (
+                "references/code-quality.md",
+                "Code quality principles and anti-patterns",
+            ),
+            (
+                "references/skill-design.md",
+                "Skill design and description optimization",
+            ),
+        ]
+    } else {
+        vec![]
+    };
+    let index_md = templates::render_index_md(project_name, domains, &extra_entries)?;
     fs::write(root.join("INDEX.md"), index_md)?;
     ui::file_action("create", "INDEX.md");
 
@@ -255,6 +275,7 @@ fn scaffold_standard(root: &Path) -> Result<()> {
         ("release", templates::render_release_skill()),
         ("security", templates::render_security_skill()),
         ("optimize", templates::render_optimize_skill()),
+        ("verify", templates::render_verify_skill()),
     ] {
         let skill_dir = root.join("skills").join(name);
         fs::create_dir_all(&skill_dir)?;
@@ -268,6 +289,23 @@ fn scaffold_standard(root: &Path) -> Result<()> {
         fs::write(&memory_path, templates::render_memory_starter())?;
         ui::file_action("create", "MEMORY.md");
     }
+
+    // Reference docs
+    let refs_dir = root.join("references");
+    fs::create_dir_all(&refs_dir)?;
+    ui::file_action("create", "references/");
+
+    fs::write(
+        refs_dir.join("code-quality.md"),
+        templates::render_code_quality_reference(),
+    )?;
+    ui::file_action("create", "references/code-quality.md");
+
+    fs::write(
+        refs_dir.join("skill-design.md"),
+        templates::render_skill_design_reference(),
+    )?;
+    ui::file_action("create", "references/skill-design.md");
 
     Ok(())
 }

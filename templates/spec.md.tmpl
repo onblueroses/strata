@@ -3,6 +3,25 @@
 Status: `in-progress`
 Session: `{{ session_id }}`
 Created: {{ date }}
+Commit-Strategy: per-phase
+
+## Quick Start
+> Fresh context or just resumed? Read this section, then go to `>> Current Step`.
+
+**Files touched:**
+<!-- List every file this spec modifies, with a one-line description -->
+
+**-> Next:** Phase A, Step 1
+
+**Mode: EXECUTION** - Do NOT re-plan. The spec is the authoritative plan. Decisions are settled.
+
+## Navigation Map
+
+Files the agent needs, with what to find there and why.
+
+| File | Find here | Why needed |
+|------|-----------|------------|
+<!-- | `path/to/file` | [what to look for] | [why you need it] | -->
 
 ## Goal
 
@@ -12,17 +31,53 @@ Created: {{ date }}
 
 <!-- What's explicitly out of scope. -->
 
+## Standing Rules
+
+<!-- 3-5 constraints from PROJECT.md or CLAUDE.md relevant to THIS work.
+     Embed them here so they survive context compaction. -->
+
+## Boundaries
+
+Scope control. Three tiers of autonomy for execution across compaction boundaries.
+
+**Always** (proceed without asking):
+<!-- - Run tests after each step -->
+
+**Ask first** (needs human approval):
+<!-- - Adding new dependencies -->
+
+**Never** (hard stop, not in scope):
+<!-- - Changing the database schema -->
+
 ## Decisions
 
-| # | Decision | Rationale |
-|---|----------|-----------|
+Settled. Do not re-debate after compaction.
+
+| # | Decision | Rationale | Alternatives Rejected | Date |
+|---|----------|-----------|----------------------|------|
 
 ## Plan
 
+<!-- Phase scoping: ~30 min per phase, max 6 steps each.
+     Every step has an acceptance criteria after "->".
+     Each phase has a Gate (validation command), Consumes, and Produces. -->
+
 ### Phase A: {{ phase_name }}
 
-- [ ] Step 1
-- [ ] Step 2
+**Gate:** <!-- e.g., `npm test` or N/A - reason -->
+**Consumes:** <!-- files/artifacts this phase reads, with expected state -->
+**Produces:** <!-- files/artifacts this phase creates or modifies -->
+
+- [ ] **Step 1**: <!-- concrete action --> -> <!-- acceptance criteria -->
+- [ ] **Step 2**: <!-- concrete action --> -> <!-- acceptance criteria -->
+
+## Validation
+
+| Level | Check | How to verify |
+|-------|-------|---------------|
+| L1 - Syntax | Compiles, no lint errors | <!-- e.g., `npm run build` --> |
+| L2 - Unit | Tests pass | <!-- e.g., `npm test` --> |
+| L3 - Integration | Feature works end-to-end | <!-- specific command or manual step --> |
 
 ## >> Current Step
 
@@ -30,7 +85,24 @@ Phase A, Step 1
 
 ## Completed
 
-<!-- Move completed steps here with dates -->
+<!-- Move completed steps here. After all steps in a phase, write the Phase Summary:
+
+### Phase A: [name] (~NN min actual)
+- [x] **Step 1**: [what was done] (verified: [how])
+**Phase A Gate:** PASSED at HH:MM - [output summary]
+**Phase A Summary:**
+Built: [what was created/modified]
+Key decisions: [reference Decision # entries]
+Changed from plan: [what diverged and why, or "none"]
+-->
+
+## Conformance
+
+<!-- Run before closing. Re-read Goal and step criteria. Verify implementation matches. -->
+
+- [ ] Goal met
+- [ ] All step acceptance criteria verified
+- [ ] Boundary "Never" items respected
 
 ## Learnings
 

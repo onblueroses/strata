@@ -1,7 +1,50 @@
 #!/usr/bin/env bash
 # Pre-compact hook - runs before context window compression.
-# Customize this to save working state, update specs, etc.
+# Saves working state so the agent can resume after compaction.
 
 set -euo pipefail
 
-echo "Pre-compact: saving context at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+echo "Pre-compact: saving context at $TIMESTAMP"
+
+SESSIONS_DIR=".strata/sessions"
+
+# Save context to sessions directory if it exists
+if [ -d "$SESSIONS_DIR" ]; then
+    SAVE_FILE="$SESSIONS_DIR/context-save-$(date +%s).md"
+
+    {
+        echo "# Context Save"
+        echo "Saved: $TIMESTAMP"
+        echo ""
+
+        # Capture modified files
+        if command -v git &>/dev/null && git rev-parse --is-inside-work-tree &>/dev/null; then
+            echo "## Modified Files"
+            echo '```'
+            git diff --name-only 2>/dev/null || true
+            git diff --cached --name-only 2>/dev/null || true
+            echo '```'
+            echo ""
+        fi
+
+        # Note active specs
+        SPECS_DIR=".strata/specs"
+        if [ -d "$SPECS_DIR" ]; then
+            active=$(grep -rl 'Status:.*in-progress' "$SPECS_DIR" 2>/dev/null || true)
+            if [ -n "$active" ]; then
+                echo "## Active Specs"
+                for spec in $active; do
+                    echo "- $spec"
+                    # Extract current step
+                    grep -A 2 '## >> Current Step' "$spec" 2>/dev/null | tail -1 || true
+                done
+                echo ""
+            fi
+        fi
+    } > "$SAVE_FILE"
+
+    echo "Context saved to $SAVE_FILE"
+else
+    echo "No sessions directory found - skipping context save"
+fi

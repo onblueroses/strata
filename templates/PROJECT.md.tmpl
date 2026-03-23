@@ -2,21 +2,43 @@
 
 > Constitution layer - Purpose, constraints, and non-negotiables for this project.
 
+<!-- Compliance math: 20 rules at 95% compliance each = 36% overall compliance.
+     Every line competes for attention. Fewer, high-quality rules beat long lists.
+     Front-load the most critical constraints. Positive framing ("Always X") sticks
+     better than negative ("Never Y"). If a linter catches it, don't waste a rule on it. -->
+
 ## Purpose
 
 *What does this project do? One paragraph.*
 
 ## Constraints
 
-*What must always be true? What are the non-negotiable rules?*
+Three tiers of autonomy. Agents follow these without re-prompting.
 
-- [ ] *Add your first constraint here*
+**Always** (proceed without asking):
+- Run tests before committing
+<!-- - Add your own "always" rules here -->
+
+**Ask first** (needs human approval):
+- Adding new dependencies
+- Changing public API surface
+<!-- - Add your own "ask first" rules here -->
+
+**Never** (hard stop - pair each with an alternative):
+- Commit secrets, keys, or tokens. *Instead:* use environment variables or a secrets manager
+- Skip tests to save time. *Instead:* fix the failing test or mark it as skipped with a reason
+<!-- - Add your own "never" rules here -->
 
 ## Principles
 
-*How should decisions be made in this project?*
+How decisions should be made in this project.
 
-1. *Add your first principle here*
+1. **Parse, don't validate.** Convert raw input to typed values at system boundaries. Internal code trusts its types.
+2. **Validate at boundaries only.** CLI args, HTTP requests, file input, external APIs. Everything internal is already typed.
+3. **Consistency within a file beats any abstract "best practice."** Match surrounding code style.
+4. **No abstractions for one use case.** Wait for three real use cases before abstracting. Three similar lines beat a premature helper.
+5. **Comments explain WHY, never WHAT.** If a comment restates the next line of code, delete it.
+<!-- Add project-specific principles below -->
 
 ## See Also
 

@@ -45,11 +45,19 @@ Keep descriptions under 1024 characters. The body can be any length, but if it e
 
 **Descriptions are triggers.** The agent decides whether to use a skill based on
 name + description alone. Be pushy - list the specific situations that should activate
-the skill, not just what it does.
+the skill, not just what it does. Agents tend to undertrigger, so explicitly state
+adjacent use cases. Instead of "How to deploy", write "Use when deploying, updating,
+restarting, or checking status of services, even if the user doesn't mention 'deploy'."
 
 **Anti-examples prevent failures.** List the 3-5 most common mistakes the agent
 makes for this task, with reasoning for why each is wrong. A model that understands
 the reasoning generalizes better than one following bare prohibitions.
+
+| Pattern | Why it fails |
+|---------|-------------|
+| Bare prohibition: "DO NOT do X" | Agent avoids exact case but invents similar mistakes |
+| Abstract rule: "Write high-quality output" | Agent rationalizes anything as "high quality" |
+| No examples: "Format correctly" | Agent guesses a format, often wrong |
 
 **Concrete tests beat abstract rules.** Instead of "the output must be high quality,"
 give a mechanical test: "cover the summary with your hand and read the takeaway alone -
@@ -57,6 +65,29 @@ does it teach something useful on its own?"
 
 **Quality self-check.** End with a 3-5 point checklist the agent verifies after
 producing output but before reporting done. Target the highest error rates.
+
+## Controlled Vocabularies
+
+When a field has a finite set of good values (tags, status codes, categories),
+enumerate them in the skill. Open-ended fields drift - without vocabulary constraints,
+the majority of values tend to be unique, making them useless for filtering or search.
+
+```yaml
+# Bad - open-ended, drifts immediately
+tags: [whatever the agent thinks fits]
+
+# Good - enumerated, searchable, consistent
+tags:  # pick 1-3
+  - feature
+  - bugfix
+  - refactor
+  - docs
+  - infrastructure
+  - testing
+```
+
+Before adding a new value to a controlled vocabulary, check if an existing value covers
+the same meaning. Fewer values = more useful filtering.
 
 ## Size Budget
 

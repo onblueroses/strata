@@ -23,6 +23,9 @@ const EXPLORE_SKILL_TMPL: &str = include_str!("../templates/skills/explore.md.tm
 const RELEASE_SKILL_TMPL: &str = include_str!("../templates/skills/release.md.tmpl");
 const SECURITY_SKILL_TMPL: &str = include_str!("../templates/skills/security.md.tmpl");
 const OPTIMIZE_SKILL_TMPL: &str = include_str!("../templates/skills/optimize.md.tmpl");
+const VERIFY_SKILL_TMPL: &str = include_str!("../templates/skills/verify.md.tmpl");
+const CODE_QUALITY_REF_TMPL: &str = include_str!("../templates/references/code-quality.md.tmpl");
+const SKILL_DESIGN_REF_TMPL: &str = include_str!("../templates/references/skill-design.md.tmpl");
 const MEMORY_STARTER_TMPL: &str = include_str!("../templates/memory.md.tmpl");
 const EVAL_SET_TMPL: &str = include_str!("../templates/eval-set.json.tmpl");
 const EVAL_REPORT_TMPL: &str = include_str!("../templates/eval-report.html.tmpl");
@@ -45,7 +48,11 @@ pub fn render_project_md(project_name: &str) -> Result<String> {
     Ok(tmpl.render(context! { project_name })?)
 }
 
-pub fn render_index_md(project_name: &str, domains: &[DomainConfig]) -> Result<String> {
+pub fn render_index_md(
+    project_name: &str,
+    domains: &[DomainConfig],
+    extra_entries: &[(&str, &str)],
+) -> Result<String> {
     let mut entries = String::new();
     for domain in domains {
         let dir_name = format!("{}-{}", domain.prefix, domain.name);
@@ -54,6 +61,9 @@ pub fn render_index_md(project_name: &str, domains: &[DomainConfig]) -> Result<S
             "| `{dir_name}/RULES.md` | Domain rules for {} |",
             domain.name
         );
+    }
+    for (path, desc) in extra_entries {
+        let _ = writeln!(entries, "| `{path}` | {desc} |");
     }
 
     let env = build_env()?;
@@ -143,6 +153,18 @@ pub fn render_security_skill() -> String {
 
 pub fn render_optimize_skill() -> String {
     OPTIMIZE_SKILL_TMPL.to_string()
+}
+
+pub fn render_verify_skill() -> String {
+    VERIFY_SKILL_TMPL.to_string()
+}
+
+pub fn render_code_quality_reference() -> String {
+    CODE_QUALITY_REF_TMPL.to_string()
+}
+
+pub fn render_skill_design_reference() -> String {
+    SKILL_DESIGN_REF_TMPL.to_string()
 }
 
 pub fn render_memory_starter() -> String {

@@ -1,15 +1,46 @@
 # Project Memory
 
-Persistent knowledge that survives across AI agent sessions.
+Persistent knowledge that survives across AI agent sessions. This file is loaded every session - keep it concise. Push detail into reference docs.
+
+## Reference Docs
+
+Read any doc whose trigger matches the current task. Don't load docs that don't apply.
+
+| Doc | Read when |
+|-----|-----------|
+| `references/code-quality.md` | Writing non-trivial code, code review, starting a new module |
+| `references/skill-design.md` | Creating or improving a skill, writing skill descriptions |
+<!-- Add project-specific reference docs here -->
+
+## Entities
+
+<!-- Track the major components, services, or modules of your project.
+     Each row = something with its own state worth tracking across sessions.
+     Example: | auth-service | JWT auth API | src/auth/ | -->
+
+| Name | What | Path |
+|------|------|------|
 
 ## Architecture
 
-<!-- Key architectural decisions, patterns, and conventions -->
+<!-- Key architectural decisions and patterns.
+     What technology choices were made and WHY. What patterns does the codebase follow.
+     Example: "REST over GraphQL - simpler for our read-heavy workload, no nested query complexity" -->
 
 ## Conventions
 
-<!-- Coding style, naming, workflow preferences -->
+<!-- Coding style, naming, workflow preferences.
+     What should an agent match when writing new code?
+     Example: "Filenames: kebab-case. Components: PascalCase. Tests: co-located as *.test.ts" -->
+
+## Key Decisions
+
+<!-- Settled architectural decisions that should NOT be re-debated.
+     Format: "Chose X over Y because Z."
+     Move decisions here from specs once the spec is complete. -->
 
 ## Gotchas
 
-<!-- Non-obvious pitfalls, workarounds, environment-specific issues -->
+<!-- Non-obvious pitfalls, workarounds, environment-specific issues.
+     Things that caused real bugs or wasted time.
+     Example: "Docker build fails on M1 if platform not specified - always use --platform linux/amd64" -->
