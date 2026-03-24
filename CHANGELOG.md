@@ -13,8 +13,8 @@ All notable changes to this project will be documented in this file.
 - `LinkInfo` struct in scanner with line/column tracking for crosslinks
 - Lint text output now shows `file:line:col` when span info is available
 - `dead-links` lint rule now reports the line/column of the broken link
-- **10 starter skills** in standard/full presets (was 2: review, commit)
-  - debug, test, plan, pr, explore, release, security, optimize
+- **11 starter skills** in standard/full presets (was 2: review, commit)
+  - debug, test, plan, pr, explore, release, security, optimize, verify
   - Each follows skill-design-principles: pushy descriptions, anti-examples with reasoning, concrete mechanical tests, quality self-checks
 - Skill validation enhancements in `skill-structure` lint rule:
   - Name must be kebab-case and <= 64 characters
@@ -23,6 +23,36 @@ All notable changes to this project will be documented in this file.
 - `SkillMeta` now tracks `line_count` and `has_references_dir`
 - Improved starter skill templates (review, commit) with anti-example tables and concrete tests
 - Enhanced `skills/README.md` template with progressive disclosure tiers and size budget guidance
+- **Project type detection** - auto-detects Rust, JS/TS, Python, Go, and frameworks (Next.js, SvelteKit, etc.)
+- **minijinja template engine** - conditional sections, loops, project-type-aware rendering (replaces `{{KEY}}` replacement)
+- **`strata diff`** - show what would change if you regenerated now
+- **Freshness tracking** with `.strata/state.json` (file modification times, git-aware staleness)
+- **`strata update`** - selectively regenerate only out-of-date context files
+- **`strata watch`** - file watching with configurable debounce, auto-regeneration on changes
+- **Git-aware context freshness** - tracks last generation against git log
+- **`strata completions`** - shell completion scripts via `clap_complete` (bash, zsh, fish, powershell)
+- **Custom lint rules** - TOML-driven `[[custom_rules]]` with 4 check types: `file_exists`, `file_missing`, `content_contains`, `frontmatter_key`
+- **Monorepo workspace support** - `[workspace]` config with `members` list, per-member strata.toml, aggregated results
+- **Temporal lint rules** (2 new rules, total now 20 built-in):
+  - `stale-dates` - warns when `last_verified:` or `_Last updated:_` dates exceed configurable thresholds
+  - `waiting-markers` - warns when `WAITING (YYYY-MM-DD)` markers are past threshold
+- New `[lint]` config fields: `stale_verified_days`, `stale_updated_days`, `stale_waiting_days`
+- **Opinionated templates** for standard/full presets:
+  - `references/code-quality.md` - code quality principles and anti-patterns
+  - `references/skill-design.md` - skill design and description optimization guide
+  - `verify` starter skill for post-implementation integrity checks
+  - Enhanced PROJECT.md, hook scripts, MEMORY.md, spec, and skills README templates
+- **Skill eval system** (`strata skill eval|optimize|eval-set init`):
+  - `EvalBackend` trait with Claude Code backend (spawns CLI, parses NDJSON stream)
+  - Parallel eval runner with configurable workers and timeout
+  - Iterative optimizer with train/test split (deterministic LCG shuffle), early exit on 100%
+  - HTML report generation
+  - `[skills]` config section for eval defaults
+
+### Changed
+- Lint engine expanded from 6 to 20 built-in rules (14 new) plus user-defined custom rules
+- `strata generate` now accepts `--target` and `--skills` flags
+- CLI expanded from 9 to 13 subcommands
 
 ## [0.2.0] - 2026-03-04
 

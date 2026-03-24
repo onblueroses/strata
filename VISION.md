@@ -102,14 +102,22 @@ strata gets smarter over time by watching project evolution and suggesting struc
 | 2.3 | Git-aware freshness (track last-verified by mtime/git log) | Done |
 | 2.4 | Incremental scanning (cache by path+mtime+content_hash, `blake3`) | Next |
 
-### Phase 3: Advanced Features
+### Phase 3: Advanced Features (mostly complete)
+
+| Step | Summary | Status |
+|------|---------|--------|
+| 3.1 | Custom lint rules (TOML-driven pattern/condition/message) | Done |
+| 3.2 | Workspace support (monorepo, per-member config, aggregated results) | Done |
+| 3.3 | MCP server mode (`strata serve`, task-aware context loading, tiered hot/warm/cold) | Planned |
+| 3.4 | Shell completions (`clap_complete`) | Done |
+
+### Phase 4: Content Quality
 
 | Step | Summary |
 |------|---------|
-| 3.1 | Custom lint rules (TOML-driven pattern/condition/message) |
-| 3.2 | Workspace support (monorepo, per-member INDEX/RULES, shared PROJECT) |
-| 3.3 | MCP server mode (`strata serve`, task-aware context loading, tiered hot/warm/cold) |
-| 3.4 | Shell completions (`clap_complete`) |
+| 4.1 | Temporal lint rules: stale-dates (last_verified, Last updated) and waiting-markers | Done |
+| 4.2 | Opinionated templates: code quality principles, skill design reference docs, verify skill | Done |
+| 4.3 | Skill eval system: trigger testing, iterative optimization, HTML reports | Done |
 
 </details>
 
@@ -119,7 +127,7 @@ strata gets smarter over time by watching project evolution and suggesting struc
 |----------|--------|-----------|--------|
 | File walker | `ignore` crate | gitignore-aware, parallel-ready, BurntSushi quality | Implemented |
 | Error display | `thiserror` + `miette` | Rich diagnostics with source spans, diagnostic codes, actionable help text | Implemented |
-| Template engine | `{{KEY}}` marker-based (planned: `minijinja`) | Current: simple replacement. Future: conditionals, loops | Implemented (basic) |
+| Template engine | `minijinja` | Conditional sections, loops, project-type-aware rendering | Implemented |
 | Config format | TOML | Rust ecosystem standard, already in use | Implemented |
 | Link mode | Config-driven (`path` vs `name`) | Code projects use paths, vaults use filename matching | Implemented |
 | Generation markers | `<!-- strata:generated -->` | Single marker: above = human-owned, below = regenerated | Implemented |
@@ -129,7 +137,10 @@ strata gets smarter over time by watching project evolution and suggesting struc
 | Parallel scanning | `rayon` | Standard for data parallelism in file content scanning | Implemented |
 | Snapshot testing | `insta` + `insta-cmd` | De facto standard, interactive review | Implemented |
 | Content hashing | `blake3` | SIMD-accelerated, 3x faster than SHA-256 | Planned |
-| File watching | `notify` v8 | Cross-platform, proven, debounced | Planned |
+| File watching | `notify` v8 | Cross-platform, proven, debounced | Implemented |
+| Custom lint rules | TOML-driven (`[[custom_rules]]`) | file_exists, file_missing, content_contains, frontmatter_key checks | Implemented |
+| Monorepo | `[workspace]` config with `members` list | Per-member strata.toml, aggregated lint/check | Implemented |
+| Skill eval | `EvalBackend` trait + Claude Code backend | Trigger testing, train/test split, iterative optimization | Implemented |
 
 ---
 

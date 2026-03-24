@@ -2,7 +2,7 @@
 
 AI workspace manager for agent-navigable project structures.
 
-strata encodes a five-layer navigation architecture and manages the full AI agent workspace: lifecycle hooks, specs, sessions, multi-agent target generation. It scaffolds the structure, validates integrity, and auto-repairs drift.
+strata encodes a five-layer navigation architecture and manages the full AI agent workspace: lifecycle hooks, specs, sessions, multi-agent target generation, skill evaluation, and monorepo workspaces. It scaffolds the structure, validates integrity, detects drift, and auto-repairs issues.
 
 ## Quick Start
 
@@ -16,11 +16,20 @@ strata init --name my-project --domains Core,Docs --preset standard
 # Check structural integrity
 strata check
 
-# Run quality diagnostics (18 lint rules)
+# Run quality diagnostics (20 built-in lint rules + custom rules)
 strata lint
 
 # Generate context files for your AI agent
 strata generate --target claude
+
+# Show what changed since last generation
+strata diff
+
+# Selectively regenerate only changed files
+strata update
+
+# Watch for changes and regenerate automatically
+strata watch
 
 # Manage implementation specs
 strata spec new my-feature --session abc12345
@@ -32,6 +41,13 @@ strata spec complete my-feature
 strata session start --name feature-work
 strata session save
 strata session list
+
+# Evaluate and optimize skill descriptions
+strata skill eval my-skill --eval-set skills/my-skill/eval-set.json
+strata skill optimize my-skill --eval-set skills/my-skill/eval-set.json --report
+
+# Generate shell completions
+strata completions bash > ~/.bash_completion.d/strata
 ```
 
 ## Presets
@@ -42,8 +58,9 @@ strata session list
 |---------|---------|----------|------|
 | PROJECT.md, INDEX.md, domains, skills/ | x | x | x |
 | .strata/hooks/ (session-start, session-stop, pre-compact) | | x | x |
-| Starter skills (review, commit) | | x | x |
+| Starter skills (11: review, commit, debug, test, plan, pr, explore, release, security, optimize, verify) | | x | x |
 | MEMORY.md template | | x | x |
+| references/ (code-quality.md, skill-design.md) | | x | x |
 | .strata/specs/ directory | | | x |
 | .strata/sessions/ directory | | | x |
 
@@ -75,7 +92,7 @@ All targets also generate `.strata/context.md` and per-domain files. Human conte
 
 ### `strata init`
 
-Interactive project scaffolding with preset tiers.
+Interactive project scaffolding with preset tiers. Detects project type (Rust, JS/TS, Python, Go, frameworks) and adapts templates.
 
 ```bash
 strata init                                          # interactive
@@ -89,7 +106,7 @@ Structural integrity validation. Exit code 1 on failure.
 
 ### `strata lint`
 
-Quality diagnostics with 18 rules across Error/Warning/Info severity.
+Quality diagnostics with 20 built-in rules across Error/Warning/Info severity, plus user-defined custom rules.
 
 | Rule | Severity | Catches |
 |------|----------|---------|
@@ -104,6 +121,8 @@ Quality diagnostics with 18 rules across Error/Warning/Info severity.
 | `hook-structure` | Warning | Hook configured but missing/not executable |
 | `hook-budget` | Warning | Hook script too large |
 | `spec-structure` | Warning | Missing Status or Current Step |
+| `stale-dates` | Warning | `last_verified:` or `_Last updated:_` dates past threshold |
+| `waiting-markers` | Warning | `WAITING (YYYY-MM-DD)` markers past threshold |
 | `memory-structure` | Info | Memory files without headings |
 | `empty-folders` | Info | Domain folders with no content |
 | `context-freshness` | Info | Generated context out of date |
@@ -116,6 +135,7 @@ Quality diagnostics with 18 rules across Error/Warning/Info severity.
 strata lint                    # all rules
 strata lint --rule dead-links  # single rule
 strata lint --format json      # CI output
+strata lint --format sarif     # SARIF v2.1.0 for GitHub Code Scanning
 strata lint --quiet            # exit code only
 ```
 
@@ -139,6 +159,34 @@ strata generate --target claude  # writes CLAUDE.md
 strata generate --skills         # install starter skills
 ```
 
+### `strata diff`
+
+Show what would change if you regenerated now. Compares current generated files against what `generate` would produce.
+
+```bash
+strata diff                     # compare all targets
+strata diff --target claude     # compare specific target
+```
+
+### `strata update`
+
+Selectively regenerate only context files that are out of date (based on file modification times and git state).
+
+```bash
+strata update                    # update stale files
+strata update --target claude    # update specific target
+```
+
+### `strata watch`
+
+Watch for file changes and automatically regenerate context files.
+
+```bash
+strata watch                     # default 300ms debounce
+strata watch --debounce 500      # custom debounce interval
+strata watch --target claude     # watch for specific target
+```
+
 ### `strata spec`
 
 Manage implementation specs in `.strata/specs/`.
@@ -160,9 +208,85 @@ strata session list --limit 20
 strata session save --session abc12345
 ```
 
+### `strata skill`
+
+Evaluate and optimize skill trigger descriptions.
+
+```bash
+strata skill eval my-skill --eval-set eval.json       # test trigger accuracy
+strata skill eval my-skill --eval-set eval.json --format json
+strata skill optimize my-skill --eval-set eval.json    # iterative improvement
+strata skill optimize my-skill --eval-set eval.json --report --apply
+strata skill eval-set init my-skill                    # create starter eval set
+```
+
 ### `strata install-hooks`
 
 Install git pre-commit hook that runs `strata check`.
+
+### `strata completions`
+
+Generate shell completion scripts.
+
+```bash
+strata completions bash > ~/.bash_completion.d/strata
+strata completions zsh > ~/.zfunc/_strata
+strata completions fish > ~/.config/fish/completions/strata.fish
+strata completions powershell > _strata.ps1
+```
+
+</details>
+
+## Custom Lint Rules
+
+<details>
+<summary>Custom Lint Rules</summary>
+
+Define project-specific lint rules in `strata.toml`:
+
+```toml
+[[custom_rules]]
+name = "require-changelog"
+severity = "warning"
+check = "file_exists"
+glob = "CHANGELOG.md"
+message = "CHANGELOG.md is missing"
+
+[[custom_rules]]
+name = "no-bare-todos"
+severity = "error"
+check = "content_contains"
+glob = "**/*.md"
+pattern = "TODO"
+negate = false
+message = "bare TODO found"
+
+[[custom_rules]]
+name = "require-description"
+check = "frontmatter_key"
+glob = "**/*.md"
+key = "description"
+message = "Missing frontmatter description"
+```
+
+Check types: `file_exists`, `file_missing`, `content_contains`, `frontmatter_key`.
+
+</details>
+
+## Workspace Support
+
+<details>
+<summary>Workspace Support</summary>
+
+Monorepo projects can declare workspace members. Each member has its own `strata.toml`, and workspace-level commands aggregate results across members.
+
+```toml
+[project]
+name = "my-monorepo"
+
+[workspace]
+members = ["client", "server", "shared"]
+```
 
 </details>
 
@@ -185,10 +309,14 @@ prefix = "01"
 [structure]
 ignore = [".git", ".strata", "node_modules", "target"]
 link_mode = "path"  # or "name" for vault-style
+scan_extensions = ["md", "txt", "rs", "py", "js", "ts"]  # override defaults
 
 [lint]
 disable = []
 strict = false
+stale_verified_days = 7    # days before last_verified: triggers warning
+stale_updated_days = 60    # days before _Last updated:_ triggers warning
+stale_waiting_days = 30    # days before WAITING markers trigger warning
 
 [context]
 project_budget = 3000
@@ -218,6 +346,25 @@ staleness_days = 7
 
 [targets]
 default = "generic"  # generic | claude | cursor | copilot
+
+[skills]
+eval_backend = "claude-code"
+eval_workers = 4
+eval_timeout = 30
+trigger_threshold = 0.5
+runs_per_query = 1
+holdout = 0.4
+max_iterations = 5
+
+[workspace]
+members = []  # monorepo member directories
+
+# Custom lint rules (repeatable)
+# [[custom_rules]]
+# name = "my-rule"
+# check = "file_exists"  # file_exists | file_missing | content_contains | frontmatter_key
+# glob = "README.md"
+# message = "README is missing"
 ```
 
 </details>
@@ -228,6 +375,7 @@ default = "generic"  # generic | claude | cursor | copilot
 - **Tiered presets**: Start minimal, grow into full workspace management
 - **No external dependencies for core**: Session IDs use timestamp hashing, dates use manual epoch math
 - **Canonical representation**: `.strata/` is the source of truth; `--target` translates to agent-specific formats
+- **Opinionated defaults**: Standard preset includes code quality principles, skill design guidelines, and reference docs
 
 ## License
 
