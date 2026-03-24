@@ -1,0 +1,97 @@
+---
+name: status
+description: >
+  Quick project health check. Run to get an overview of project state: git status,
+  test results, lint diagnostics, running services, and documentation freshness.
+  Use before starting work, after returning from a break, or when something feels
+  off. Faster than investigating each system individually.
+---
+
+# Status
+
+Get a fast overview of project health across multiple dimensions.
+
+## Checks
+
+Run these sequentially. Stop early if a critical issue is found.
+
+### 1. Git state
+
+```bash
+git status --short
+git log --oneline -5
+git branch -vv           # show tracking info
+```
+
+Report: clean/dirty, unpushed commits, current branch, tracking status.
+
+### 2. Build health
+
+Run a quick build check (not a full build):
+
+| Stack | Command |
+|-------|---------|
+| Rust | `cargo check --all-targets` |
+| TypeScript | `tsc --noEmit` |
+| Python | `python -m py_compile <main_file>` |
+
+Report: compiles/errors.
+
+### 3. Test health
+
+Run the test suite:
+
+| Stack | Command |
+|-------|---------|
+| Rust | `cargo test` |
+| Node.js | `npm test` |
+| Python | `pytest --tb=no -q` |
+
+Report: pass count, fail count, skip count.
+
+### 4. Structural health
+
+```bash
+strata check
+strata lint --quiet
+```
+
+Report: pass/fail, error count, warning count.
+
+### 5. Documentation freshness
+
+```bash
+strata lint --rule stale-dates --rule context-freshness
+```
+
+Report: any stale documentation or generated files.
+
+## Output Format
+
+```
+STATUS: [project name]
+========================================
+
+Git:     clean, on main, up to date with origin
+Build:   OK (no errors)
+Tests:   197 passed, 0 failed
+Strata:  check OK, lint 0 errors / 2 warnings
+Docs:    1 stale date (MEMORY.md last_verified: 2026-03-01)
+
+Overall: HEALTHY [or NEEDS ATTENTION]
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Running status checks manually one by one | Slow, easy to forget one | Run the full checklist |
+| Ignoring warnings | Warnings accumulate into errors | Address warnings before they compound |
+| Checking only what you're about to change | Broken tests elsewhere block your commits | Check everything quickly |
+| Running full status during time-critical work | Overkill for a hotfix | Skip tests and docs checks when speed matters |
+
+## Quality Self-Check
+
+1. All 5 checks ran?
+2. Overall assessment matches the findings?
+3. Actionable items identified (not just "2 warnings")?

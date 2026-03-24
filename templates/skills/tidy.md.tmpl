@@ -1,0 +1,80 @@
+---
+name: tidy
+description: >
+  Structural hygiene pass. Run weekly, after large changes, or when things feel
+  disorganized. Checks INDEX.md accuracy, stale documentation, orphaned files,
+  broken links, and lint rule compliance. Auto-fixes safe issues, flags the rest.
+  Cheaper than a full audit - just keeps entropy from accumulating.
+---
+
+# Tidy
+
+Lightweight structural maintenance. Fixes what's safe, flags what needs attention.
+
+## Step 1: Run diagnostics
+
+```bash
+strata check          # structural integrity
+strata lint           # all rules
+```
+
+Capture the output. Categorize findings:
+
+- **Auto-fixable:** unindexed files, missing RULES.md, dead links, stale context
+- **Needs review:** budget overruns, malformed specs, missing descriptions
+- **Informational:** empty folders, stale dates, context freshness
+
+## Step 2: Auto-fix safe issues
+
+```bash
+strata fix            # add unindexed files, generate RULES.md, remove dead links
+strata fix --index    # rebuild INDEX.md if many files are out of sync
+strata update         # regenerate stale context files
+```
+
+## Step 3: Check documentation currency
+
+For each file flagged by `stale-dates` or `context-freshness`:
+
+1. Read the file
+2. Check if the content is still accurate
+3. Update stale facts, paths, or descriptions
+4. Update `last_verified` or `_Last updated_` dates
+
+## Step 4: Report
+
+```
+TIDY: [project name]
+========================================
+
+Auto-fixed:
+  - Added 3 files to INDEX.md
+  - Regenerated 2 context files
+  - Removed 1 dead link
+
+Needs attention:
+  - MEMORY.md exceeds budget (4200/3200 chars) - consider trimming
+  - skills/deploy/SKILL.md missing description frontmatter
+
+Clean:
+  - No structural errors
+  - All RULES.md present
+  - No orphan files
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Running tidy on every commit | Overkill, wastes time | Weekly or after large changes |
+| Manually fixing INDEX.md | Error-prone, strata does this automatically | Use `strata fix --index` |
+| Ignoring budget warnings | Context files grow silently until they cause problems | Trim or split oversized files |
+| Deleting orphan files without checking | They might be referenced by name, not by link | Check usage first, then decide |
+
+## Quality Self-Check
+
+After tidying:
+1. `strata check` passes?
+2. `strata lint` has no errors (warnings are acceptable)?
+3. Auto-fixes committed?
+4. Stale dates updated where content was verified?

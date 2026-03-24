@@ -58,7 +58,7 @@ strata completions bash > ~/.bash_completion.d/strata
 |---------|---------|----------|------|
 | PROJECT.md, INDEX.md, domains, skills/ | x | x | x |
 | .strata/hooks/ (session-start, session-stop, pre-compact) | | x | x |
-| Starter skills (11: review, commit, debug, test, plan, pr, explore, release, security, optimize, verify) | | x | x |
+| 20 starter skills (review, commit, debug, test, plan, pr, explore, release, security, optimize, verify, end, pickup, tidy, research, deploy, status, get-to-work, trace, learn) | | x | x |
 | MEMORY.md template | | x | x |
 | references/ (code-quality.md, skill-design.md) | | x | x |
 | .strata/specs/ directory | | | x |

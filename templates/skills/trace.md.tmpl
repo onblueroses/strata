@@ -1,0 +1,92 @@
+---
+name: trace
+description: >
+  Session history timeline for a topic or feature. Run when asking "what happened
+  to X?", "when did we change Y?", or "what decisions were made about Z?". Searches
+  session notes, git history, and specs to reconstruct a chronological timeline.
+  Prevents re-debating settled decisions or losing track of why something was done.
+---
+
+# Trace
+
+Reconstruct the history of a feature, decision, or topic across sessions.
+
+## Step 1: Identify the target
+
+What are we tracing? Could be:
+- A feature name ("authentication", "deploy pipeline")
+- A file or module ("src/auth/", "config.rs")
+- A decision ("why did we switch to SQLite?")
+- A concept ("error handling", "caching strategy")
+
+## Step 2: Search sources
+
+Search these sources in parallel for mentions of the target:
+
+### 2a. Git history
+```bash
+git log --all --oneline --grep="<target>"        # commit messages
+git log --all --oneline -S "<target>"             # code changes
+git log --all --oneline -- "*<target>*"           # file path changes
+```
+
+### 2b. Session notes
+Search `.strata/sessions/` for daily notes and context saves mentioning the target.
+Read the summary, decisions, and next-steps sections of matching sessions.
+
+### 2c. Specs
+Search `.strata/specs/` for specs related to the target. Read the Decisions table
+and Learnings section of matching specs.
+
+### 2d. Documentation
+```bash
+grep -r "<target>" PROJECT.md MEMORY.md INDEX.md
+```
+
+## Step 3: Build timeline
+
+Assemble findings into a chronological timeline:
+
+```markdown
+## Trace: [target]
+Period: [earliest date] to [latest date]
+
+### Timeline
+
+| Date | Source | Event |
+|------|--------|-------|
+| 2026-02-15 | commit abc1234 | Initial implementation of [target] |
+| 2026-02-20 | session notes | Decided to switch from X to Y because [reason] |
+| 2026-03-01 | spec auth-v2 | Redesign planned, phase 1 complete |
+| 2026-03-10 | commit def5678 | Removed deprecated [target] code |
+
+### Key Decisions
+- [Date]: [Decision] - [Rationale]
+- [Date]: [Decision] - [Rationale]
+
+### Current State
+[What is the current status of this feature/topic?]
+```
+
+## Step 4: Highlight conflicts
+
+If the timeline reveals contradictory decisions or reversals, call them out:
+- "On Feb 20 we decided X, but on Mar 5 we reversed to Y. The rationale for Y was [reason]."
+- Current state should reflect the most recent decision.
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Only checking git log | Misses session decisions, spec rationale | Search all 4 sources |
+| Reporting raw grep output | Noise, not insight | Build a curated timeline |
+| Re-debating past decisions found in the trace | Decisions were made with context you may not have now | Respect past decisions unless new information invalidates them |
+| Tracing without a clear target | Too broad, returns everything | Narrow to a specific feature, file, or decision |
+
+## Quality Self-Check
+
+1. All 4 sources searched (git, sessions, specs, docs)?
+2. Timeline is chronological?
+3. Key decisions include rationale, not just "decided X"?
+4. Current state clearly stated?
+5. Contradictions or reversals explicitly noted?

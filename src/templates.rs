@@ -24,6 +24,15 @@ const RELEASE_SKILL_TMPL: &str = include_str!("../templates/skills/release.md.tm
 const SECURITY_SKILL_TMPL: &str = include_str!("../templates/skills/security.md.tmpl");
 const OPTIMIZE_SKILL_TMPL: &str = include_str!("../templates/skills/optimize.md.tmpl");
 const VERIFY_SKILL_TMPL: &str = include_str!("../templates/skills/verify.md.tmpl");
+const END_SKILL_TMPL: &str = include_str!("../templates/skills/end.md.tmpl");
+const PICKUP_SKILL_TMPL: &str = include_str!("../templates/skills/pickup.md.tmpl");
+const TIDY_SKILL_TMPL: &str = include_str!("../templates/skills/tidy.md.tmpl");
+const RESEARCH_SKILL_TMPL: &str = include_str!("../templates/skills/research.md.tmpl");
+const DEPLOY_SKILL_TMPL: &str = include_str!("../templates/skills/deploy.md.tmpl");
+const STATUS_SKILL_TMPL: &str = include_str!("../templates/skills/status.md.tmpl");
+const GET_TO_WORK_SKILL_TMPL: &str = include_str!("../templates/skills/get-to-work.md.tmpl");
+const TRACE_SKILL_TMPL: &str = include_str!("../templates/skills/trace.md.tmpl");
+const LEARN_SKILL_TMPL: &str = include_str!("../templates/skills/learn.md.tmpl");
 const CODE_QUALITY_REF_TMPL: &str = include_str!("../templates/references/code-quality.md.tmpl");
 const SKILL_DESIGN_REF_TMPL: &str = include_str!("../templates/references/skill-design.md.tmpl");
 const MEMORY_STARTER_TMPL: &str = include_str!("../templates/memory.md.tmpl");
@@ -157,6 +166,42 @@ pub fn render_optimize_skill() -> String {
 
 pub fn render_verify_skill() -> String {
     VERIFY_SKILL_TMPL.to_string()
+}
+
+pub fn render_end_skill() -> String {
+    END_SKILL_TMPL.to_string()
+}
+
+pub fn render_pickup_skill() -> String {
+    PICKUP_SKILL_TMPL.to_string()
+}
+
+pub fn render_tidy_skill() -> String {
+    TIDY_SKILL_TMPL.to_string()
+}
+
+pub fn render_research_skill() -> String {
+    RESEARCH_SKILL_TMPL.to_string()
+}
+
+pub fn render_deploy_skill() -> String {
+    DEPLOY_SKILL_TMPL.to_string()
+}
+
+pub fn render_status_skill() -> String {
+    STATUS_SKILL_TMPL.to_string()
+}
+
+pub fn render_get_to_work_skill() -> String {
+    GET_TO_WORK_SKILL_TMPL.to_string()
+}
+
+pub fn render_trace_skill() -> String {
+    TRACE_SKILL_TMPL.to_string()
+}
+
+pub fn render_learn_skill() -> String {
+    LEARN_SKILL_TMPL.to_string()
 }
 
 pub fn render_code_quality_reference() -> String {

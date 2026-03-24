@@ -13,8 +13,9 @@ All notable changes to this project will be documented in this file.
 - `LinkInfo` struct in scanner with line/column tracking for crosslinks
 - Lint text output now shows `file:line:col` when span info is available
 - `dead-links` lint rule now reports the line/column of the broken link
-- **11 starter skills** in standard/full presets (was 2: review, commit)
+- **20 starter skills** in standard/full presets (was 2: review, commit)
   - debug, test, plan, pr, explore, release, security, optimize, verify
+  - end, pickup, tidy, research, deploy, status, get-to-work, trace, learn
   - Each follows skill-design-principles: pushy descriptions, anti-examples with reasoning, concrete mechanical tests, quality self-checks
 - Skill validation enhancements in `skill-structure` lint rule:
   - Name must be kebab-case and <= 64 characters

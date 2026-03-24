@@ -1,0 +1,105 @@
+---
+name: get-to-work
+description: >
+  Autonomous project maintenance. Run when there's no specific task, during downtime,
+  or when the project needs general attention. Scans for staleness, inconsistencies,
+  stalled work, and documentation drift, then fixes what it can and flags the rest.
+  Turns idle time into project improvement without human direction.
+---
+
+# Get to Work
+
+Autonomous maintenance pass. Find and fix project issues without being told what to do.
+
+## Step 1: Scan
+
+Scan the project through these lenses, in order:
+
+### 1a. Staleness
+- Run `strata lint --rule stale-dates --rule context-freshness --rule spec-stale`
+- Check `git log --since="2 weeks ago" --oneline` - are there areas with no recent activity?
+- Any `last_verified` dates older than 7 days?
+
+### 1b. Structural drift
+- Run `strata check` and `strata lint`
+- Compare INDEX.md against actual files on disk
+- Check if generated context files match current project state (`strata diff`)
+
+### 1c. Stalled work
+- Read `.strata/specs/` for in-progress specs that haven't been updated recently
+- Check for branches with unpushed or unmerged work
+- Look for TODO/FIXME comments that reference dates or deadlines
+
+### 1d. Documentation accuracy
+- Read PROJECT.md - does the description still match reality?
+- Read MEMORY.md - any entries that are now outdated?
+- Check README.md - do examples still work? Are feature lists current?
+
+### 1e. Quality gaps
+- Run the test suite - any new failures?
+- Run `strata lint --format json` - categorize findings by severity
+- Check for files with no tests that should have them
+
+## Step 2: Prioritize
+
+Rank findings by impact:
+
+1. **Errors** - structural integrity failures, broken tests, dead links
+2. **Drift** - documentation that contradicts code, stale context files
+3. **Staleness** - old dates, unverified documentation
+4. **Gaps** - missing tests, undocumented features
+
+## Step 3: Fix
+
+**Auto-fix (do immediately):**
+- `strata fix` for structural issues
+- `strata update` for stale context files
+- Update `last_verified` dates after verifying content
+- Remove dead TODOs that are already done
+
+**Flag for review (don't auto-fix):**
+- Architecture descriptions that might need rewriting
+- Specs that might need to be abandoned vs. continued
+- Test gaps that need design decisions
+
+## Step 4: Report
+
+```
+GET-TO-WORK: [project name]
+========================================
+
+Fixed (N items):
+  - Rebuilt INDEX.md (added 4 new files)
+  - Updated stale context files
+  - Removed 2 completed TODOs
+
+Flagged for review (N items):
+  - [MEDIUM] README feature list mentions "planned" feature that's now implemented
+  - [LOW] Spec "auth-refactor" in-progress but no commits in 2 weeks
+
+No issues found in:
+  - Test suite (all passing)
+  - Structural integrity
+  - Cross-file references
+```
+
+## Options
+
+- `--dry-run` - report only, don't fix anything
+- `--cycle` - repeat the scan after fixes to catch cascading issues (max 3 cycles)
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Refactoring code during maintenance | Maintenance finds issues, doesn't redesign | Note the refactoring opportunity, don't act on it |
+| Fixing everything without reporting | User loses visibility into what changed | Fix + report every change |
+| Skipping the prioritization step | Fixing low-priority items while errors exist | Errors first, gaps last |
+| Running get-to-work during active development | Interferes with in-progress work | Run during idle time or between tasks |
+
+## Quality Self-Check
+
+1. All 5 scan lenses checked?
+2. Fixes committed with descriptive messages?
+3. Flagged items include severity and enough context to act on?
+4. No code refactoring snuck in (maintenance only)?

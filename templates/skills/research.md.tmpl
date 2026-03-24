@@ -1,0 +1,95 @@
+---
+name: research
+description: >
+  Adaptive research that scales to question complexity. Use when investigating
+  technical questions, evaluating libraries, comparing approaches, or gathering
+  information before making architecture decisions. Scales from a direct lookup
+  (simple) to parallel multi-agent deep-dive (complex). Prevents both under-researching
+  (guessing) and over-researching (rabbit holes).
+---
+
+# Research
+
+Gather information with effort proportional to the question's complexity.
+
+## Step 1: Classify complexity
+
+Read the question and classify:
+
+| Level | Pattern | Examples | Approach |
+|-------|---------|----------|----------|
+| **Simple** | Single fact, well-documented | "What's the default port for Redis?" | Direct lookup, no agents |
+| **Moderate** | Comparison, multiple sources needed | "Pros/cons of SQLite vs PostgreSQL for this use case" | 2-3 focused searches |
+| **Complex** | Architecture decision, novel combination, conflicting sources | "Best approach for real-time sync between Rust backend and React frontend" | Parallel deep-dive with sub-questions |
+
+## Step 2: Decompose (moderate and complex only)
+
+Break the question into independent sub-questions that can be researched in parallel.
+
+**Rules:**
+- Each sub-question should be answerable independently
+- 2-3 sub-questions for moderate, 4-5 for complex
+- Include one sub-question specifically about failure modes or gotchas
+
+## Step 3: Research
+
+**Simple:** Search directly. One web search or documentation lookup. Answer in 2-3 sentences.
+
+**Moderate:** Run 2-3 searches. Synthesize findings. Note contradictions between sources.
+
+**Complex:** Research sub-questions in parallel. For each:
+- Search for primary sources (docs, RFCs, benchmarks) over blog posts
+- Note the date of information (old benchmarks lie)
+- Capture concrete numbers, not adjectives
+
+## Step 4: Synthesize
+
+**Format for moderate/complex:**
+
+```markdown
+## [Question]
+
+### Answer
+[Direct answer in 2-3 sentences]
+
+### Key Findings
+- [Finding 1 with source]
+- [Finding 2 with source]
+- [Finding 3 with source]
+
+### Trade-offs
+| Option | Strengths | Weaknesses |
+|--------|-----------|------------|
+| A | ... | ... |
+| B | ... | ... |
+
+### Recommendation
+[What to do and why, given this project's constraints]
+
+### Confidence
+[High/Medium/Low] - [why]
+```
+
+## Step 5: Follow-ups
+
+If research revealed questions you can't answer without more context:
+- List them explicitly
+- Don't guess - say "needs measurement" or "depends on [X]"
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Researching for 30 minutes to answer "what port does X use?" | Simple question, direct lookup | Check docs, answer in 10 seconds |
+| Answering architecture questions from memory alone | Knowledge has a cutoff date, things change | Verify current state with fresh sources |
+| Citing blog posts over official docs | Blogs go stale, docs are maintained | Primary sources first |
+| "I think it's probably..." without checking | Guessing wastes more time than looking it up | Research or say "I don't know" |
+
+## Quality Self-Check
+
+Before reporting findings:
+1. Complexity level matches the effort spent?
+2. Sources are cited (not just "I found that...")?
+3. Contradictions between sources noted?
+4. Recommendation tied to this project's specific constraints?
+5. Confidence level stated honestly?

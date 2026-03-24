@@ -1,0 +1,68 @@
+---
+name: end
+description: >
+  Session closure. Run when finishing work, saying goodbye, wrapping up, or ending
+  a conversation. Writes session notes, commits uncommitted work, and updates project
+  documentation. Prevents lost context between sessions. If you're about to stop
+  working, run this first - not after.
+---
+
+# End
+
+Clean session closure. Preserves context so the next session can pick up where you left off.
+
+## Step 1: Commit uncommitted work
+
+Check `git status` in the project root. If there are uncommitted changes from this session:
+
+1. Stage the relevant files
+2. Write a descriptive commit message summarizing what changed
+3. Commit
+
+Do not leave uncommitted work for the next session.
+
+## Step 2: Write session notes
+
+Create or update the session note file (daily note, changelog entry, or `.strata/sessions/` file
+depending on what the project uses).
+
+Include:
+- **Summary** - 2-3 sentences: what was done, what's the current state
+- **Decisions** - key choices made and their rationale (these are lost after compaction)
+- **Outputs** - files created or modified
+- **Next steps** - what the next session should start with
+
+## Step 3: Update project documentation
+
+Scan files you edited this session. For each:
+- Does the README still accurately describe the project?
+- Does the project's CLAUDE.md or context file reflect current architecture?
+- Are any file paths, counts, or descriptions stale?
+
+Fix stale documentation now. Stale docs cost more than missing docs.
+
+## Step 4: Run structural checks
+
+```bash
+strata check    # structural integrity
+strata lint     # quality diagnostics
+```
+
+Fix any errors. Warnings are acceptable to leave.
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Closing without committing | Next session inherits mystery changes, wastes time investigating | Commit everything with clear messages |
+| "I'll document it next time" | You won't remember the decisions | Document now while context is fresh |
+| Skipping session notes | Next session starts blind, re-discovers the same things | 2-3 sentences saves 20 minutes next time |
+| Writing vague notes ("worked on feature X") | Doesn't help the next session | Include decisions, blockers, and next steps |
+
+## Quality Self-Check
+
+Before ending:
+1. `git status` clean in every repo you touched?
+2. Session notes written with decisions and next steps?
+3. Documentation still accurate for files you changed?
+4. No failing `strata check`?

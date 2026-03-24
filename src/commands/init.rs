@@ -276,6 +276,15 @@ fn scaffold_standard(root: &Path) -> Result<()> {
         ("security", templates::render_security_skill()),
         ("optimize", templates::render_optimize_skill()),
         ("verify", templates::render_verify_skill()),
+        ("end", templates::render_end_skill()),
+        ("pickup", templates::render_pickup_skill()),
+        ("tidy", templates::render_tidy_skill()),
+        ("research", templates::render_research_skill()),
+        ("deploy", templates::render_deploy_skill()),
+        ("status", templates::render_status_skill()),
+        ("get-to-work", templates::render_get_to_work_skill()),
+        ("trace", templates::render_trace_skill()),
+        ("learn", templates::render_learn_skill()),
     ] {
         let skill_dir = root.join("skills").join(name);
         fs::create_dir_all(&skill_dir)?;

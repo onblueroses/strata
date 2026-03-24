@@ -1,0 +1,72 @@
+---
+name: pickup
+description: >
+  Context loader for resuming work. Run at session start, when switching projects,
+  or when you need full context on a project area. Reads project state, checks for
+  staleness, loads recent session history, and warns about drift. Prevents the
+  "where was I?" problem that wastes the first 10 minutes of every session.
+---
+
+# Pickup
+
+Load project context quickly so you can start working immediately.
+
+## Step 1: Read project state
+
+Read the project's core documentation in this order:
+
+1. `PROJECT.md` - purpose, constraints, non-negotiables
+2. `CLAUDE.md` or `.strata/context.md` - architecture, conventions, gotchas
+3. `MEMORY.md` - persistent knowledge, decisions, patterns
+4. `INDEX.md` - file map (scan, don't read fully)
+
+If any of these are missing, note it but continue.
+
+## Step 2: Check for active work
+
+Look for signs of in-progress work:
+
+- **Specs:** read `.strata/specs/` for any spec with `Status: in-progress`. If found, read
+  the `>> Current Step` section - this is where the last session left off.
+- **Session notes:** read the most recent file in `.strata/sessions/`. Extract the
+  "Next steps" section if it exists.
+- **Git state:** run `git status` and `git log --oneline -5`. Are there uncommitted
+  changes? Unpushed commits? Unfinished branches?
+
+## Step 3: Check staleness
+
+Run `strata lint --rule stale-dates --rule context-freshness --quiet`.
+
+If any warnings fire:
+- `stale-dates` → documentation hasn't been verified recently. Warn the user.
+- `context-freshness` → generated context is out of date. Suggest `strata update`.
+
+## Step 4: Report context
+
+Output a concise summary:
+
+```
+PROJECT: [name]
+STATUS: [active / stale / has uncommitted work]
+ACTIVE SPEC: [spec name and current step, or "none"]
+LAST SESSION: [date - summary from session notes]
+WARNINGS: [staleness, drift, uncommitted changes]
+READY: [what to work on next]
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Starting work without reading context | Re-discover architecture, repeat mistakes | Load context first, work second |
+| Reading every file in the project | Wastes time, floods context window | Read the 4 core docs, scan INDEX |
+| Ignoring active specs | Redo work that's already planned | Check specs first, continue from current step |
+| Not checking git state | Commit on top of someone else's uncommitted changes | Always check `git status` at session start |
+
+## Quality Self-Check
+
+Before starting work:
+1. Can you describe the project's purpose in one sentence?
+2. Do you know the current conventions and constraints?
+3. Have you checked for active specs or in-progress work?
+4. Are there any staleness warnings to address?

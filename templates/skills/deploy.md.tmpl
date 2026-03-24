@@ -1,0 +1,97 @@
+---
+name: deploy
+description: >
+  Infrastructure-aware deployment. Run when deploying to staging or production,
+  pushing a release, or updating a running service. Includes pre-flight checks,
+  build verification, deployment execution, and post-deploy health checks.
+  Prevents deploying broken builds, skipping health checks, or forgetting
+  permission fixes.
+---
+
+# Deploy
+
+Structured deployment with safety checks at each stage.
+
+## Step 1: Identify target
+
+Determine what's being deployed and where:
+- What service or application?
+- What environment? (staging, production, preview)
+- What's the deploy method? (git push, scp, Docker, CI/CD)
+
+Read the project's deploy documentation if it exists. Follow existing procedures exactly.
+
+## Step 2: Pre-flight checks
+
+Before deploying anything:
+
+1. **Tests pass** - run the project's test suite. Do not deploy with failing tests.
+2. **Build succeeds** - run the production build. Check for warnings, not just errors.
+3. **Git state clean** - all changes committed and pushed. No uncommitted work.
+4. **Branch correct** - deploying from the right branch (main, release, etc.).
+
+```bash
+git status                    # clean working tree?
+git log --oneline -3          # deploying the right commits?
+strata check                  # structural integrity
+```
+
+## Step 3: Build
+
+Run the production build:
+
+| Stack | Command |
+|-------|---------|
+| Node.js | `npm run build` or `npx next build` |
+| Rust | `cargo build --release` |
+| Python | `pip install -e .` or build Docker image |
+| Static | Copy/bundle assets |
+
+Verify build output exists and looks correct (check file sizes, no empty bundles).
+
+## Step 4: Deploy
+
+Execute the deployment. This is project-specific - follow existing procedures.
+
+**Common patterns:**
+- **Git push deploy:** `git push production main`
+- **File copy:** `scp -r dist/ server:/path/`
+- **Docker:** `docker build && docker push && docker-compose up -d`
+- **CI/CD:** Push to trigger pipeline, wait for completion
+
+## Step 5: Health check
+
+After deployment, verify the service is running:
+
+1. **HTTP check** - hit the health endpoint or main URL. Expect 200.
+2. **Process check** - verify the process is running (pm2, systemctl, docker ps).
+3. **Log check** - scan recent logs for errors or panics.
+4. **Smoke test** - manually verify one user-visible feature works.
+
+If any check fails: investigate immediately. Do not leave a broken deployment.
+
+## Step 6: Record
+
+Update deployment documentation:
+- Note the version/commit deployed
+- Update `last_verified` dates if applicable
+- Record any issues encountered and how they were resolved
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Deploying without running tests | "It worked locally" doesn't mean it works in prod | Always run tests before deploy |
+| Skipping health checks | Silent failures cause outages hours later | Check HTTP, process, logs after every deploy |
+| Deploying from a dirty working tree | Unclear what's actually deployed | Commit everything first |
+| "I'll fix the permissions later" | Service crashes at 3am when you're asleep | Fix permissions during deploy |
+| Force-deploying over a failure | Masks the root cause | Investigate why the deploy failed first |
+
+## Quality Self-Check
+
+After deploying:
+1. Health endpoint returns 200?
+2. Process running and stable (not crash-looping)?
+3. No new errors in logs?
+4. At least one user-visible feature manually verified?
+5. Deployment recorded in documentation?
