@@ -4,7 +4,7 @@
 
 ## Problem
 
-AI coding agents waste tokens navigating unfamiliar codebases. Context files (CLAUDE.md, AGENTS.md, .cursorrules) exist but are freeform, unvalidated, tool-specific, and rot silently. No tool validates project structure for AI navigation, generates cross-tool context files from a single source of truth, or detects documentation drift.
+AI coding agents waste tokens navigating unfamiliar codebases. Context files (CLAUDE.md, AGENTS.md) exist but are freeform, unvalidated, tool-specific, and rot silently. No tool validates project structure for AI navigation, generates cross-tool context files from a single source of truth, or detects documentation drift.
 
 ## Research Findings
 
@@ -28,8 +28,8 @@ Additionally, strata manages the AI workspace:
 6. **Lifecycle Hooks** (`.strata/hooks/`) - Shell scripts for session start/stop/compact events
 7. **Specs** (`.strata/specs/`) - Implementation specs with phases, steps, decisions, session ownership
 8. **Sessions** (`.strata/sessions/`) - Daily notes and context saves with session ID tracking
-9. **Agent Targets** - Generate agent-specific files (CLAUDE.md, .cursorrules, copilot-instructions.md)
-10. **Preset Tiers** - minimal (structure), standard (+hooks, skills, memory), full (+specs, sessions)
+9. **Agent Targets** - Generate agent-specific files (CLAUDE.md, AGENTS.md) for Claude Code, OpenCode, Pi
+10. **Preset Tiers** - minimal (structure), standard (+hooks, 23 core skills, memory, references), full (+specs, sessions, meta skills, domain skills)
 
 ## Vision
 
@@ -78,7 +78,7 @@ Added between Phase 0 and Phase 1. Context generation, budget enforcement, and f
 | 0.5.7 | Lifecycle hooks: `[hooks]` config, `.strata/hooks/`, hook-structure + hook-budget lint | Done |
 | 0.5.8 | Specs: `strata spec new\|list\|status\|complete`, spec-structure + spec-stale + spec-ownership lint | Done |
 | 0.5.9 | Sessions: `strata session start\|list\|save`, session-structure lint | Done |
-| 0.5.10 | Agent targets: `strata generate --target claude\|cursor\|copilot`, starter-skills lint | Done |
+| 0.5.10 | Agent targets: `strata generate --target claude-code\|opencode\|pi`, starter-skills lint | Done |
 
 ### Phase 1: Smart Scaffold (complete)
 
@@ -117,6 +117,7 @@ strata gets smarter over time by watching project evolution and suggesting struc
 |------|---------|
 | 4.1 | Temporal lint rules: stale-dates (last_verified, Last updated) and waiting-markers | Done |
 | 4.2 | Opinionated templates: code quality principles, skill design reference docs, verify skill | Done |
+| 4.4 | Batteries-included: 48 skill templates (23 core, 7 meta, 18 domain), tier-based dispatch, project-type-aware domain matching, enforcement hooks, getting-started reference | Done |
 | 4.3 | Skill eval system: trigger testing, iterative optimization, HTML reports | Done |
 
 </details>

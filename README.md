@@ -20,7 +20,7 @@ strata check
 strata lint
 
 # Generate context files for your AI agent
-strata generate --target claude
+strata generate --target claude-code
 
 # Show what changed since last generation
 strata diff
@@ -58,11 +58,16 @@ strata completions bash > ~/.bash_completion.d/strata
 |---------|---------|----------|------|
 | PROJECT.md, INDEX.md, domains, skills/ | x | x | x |
 | .strata/hooks/ (session-start, session-stop, pre-compact) | | x | x |
-| 20 starter skills (review, commit, debug, test, plan, pr, explore, release, security, optimize, verify, end, pickup, tidy, research, deploy, status, get-to-work, trace, learn) | | x | x |
+| 23 core skills (review, commit, debug, test, plan, pr, explore, release, security, optimize, verify, end, pickup, tidy, research, deploy, status, get-to-work, trace, learn, deep-understand, reconcile, ship) | | x | x |
+| .claude/settings.json (for ClaudeCode targets) | | x | x |
 | MEMORY.md template | | x | x |
 | references/ (code-quality.md, skill-design.md) | | x | x |
+| --no-enforce flag for warning-only hooks | | x | x |
 | .strata/specs/ directory | | | x |
 | .strata/sessions/ directory | | | x |
+| references/getting-started.md | | | x |
+| 7 meta skills (skill-creator, ask-better, autooptimize, context-resume, context-save, browser-automation, visualize) | | | x |
+| Domain skills with project-type matching (frontend, n8n, security, obsidian, academic) | | | x |
 
 ## The Five Layers
 
@@ -76,12 +81,11 @@ strata completions bash > ~/.bash_completion.d/strata
 
 `strata generate --target <agent>` writes agent-specific context files:
 
-| Target | Output file |
-|--------|-------------|
-| generic (default) | `.strata/context.md` |
-| claude | `CLAUDE.md` |
-| cursor | `.cursorrules` |
-| copilot | `.github/copilot-instructions.md` |
+| Target | Output file | Hook mechanism |
+|--------|-------------|----------------|
+| claude-code (default) | `CLAUDE.md` | `.claude/settings.json` |
+| opencode | `AGENTS.md` | JS/TS plugins |
+| pi | `AGENTS.md` | TS extensions |
 
 All targets also generate `.strata/context.md` and per-domain files. Human content above the `<!-- strata:generated -->` marker is preserved across regenerations.
 
@@ -154,9 +158,9 @@ strata fix --index      # rebuild INDEX.md
 Generate context files for AI agents.
 
 ```bash
-strata generate                  # generic target
-strata generate --target claude  # writes CLAUDE.md
-strata generate --skills         # install starter skills
+strata generate                       # claude-code (default)
+strata generate --target opencode     # writes AGENTS.md
+strata generate --skills              # install starter skills
 ```
 
 ### `strata diff`
@@ -165,7 +169,7 @@ Show what would change if you regenerated now. Compares current generated files 
 
 ```bash
 strata diff                     # compare all targets
-strata diff --target claude     # compare specific target
+strata diff --target claude-code     # compare specific target
 ```
 
 ### `strata update`
@@ -174,7 +178,7 @@ Selectively regenerate only context files that are out of date (based on file mo
 
 ```bash
 strata update                    # update stale files
-strata update --target claude    # update specific target
+strata update --target claude-code    # update specific target
 ```
 
 ### `strata watch`
@@ -184,7 +188,7 @@ Watch for file changes and automatically regenerate context files.
 ```bash
 strata watch                     # default 300ms debounce
 strata watch --debounce 500      # custom debounce interval
-strata watch --target claude     # watch for specific target
+strata watch --target claude-code     # watch for specific target
 ```
 
 ### `strata spec`
@@ -329,6 +333,7 @@ files = ["MEMORY.md"]
 budget = 3200
 
 [hooks]
+enforce = true  # block session-stop until verification passes
 session_start = ".strata/hooks/session-start.sh"
 session_stop = ".strata/hooks/session-stop.sh"
 pre_compact = ".strata/hooks/pre-compact.sh"
@@ -345,7 +350,7 @@ context_save = true
 staleness_days = 7
 
 [targets]
-default = "generic"  # generic | claude | cursor | copilot
+active = ["claude-code"]  # claude-code | opencode | pi
 
 [skills]
 eval_backend = "claude-code"
@@ -371,7 +376,7 @@ members = []  # monorepo member directories
 
 ## Design Principles
 
-- **Agent-agnostic**: Works with Claude, Cursor, Copilot, or any agent that reads markdown
+- **Agent-aware**: First-class support for Claude Code, OpenCode, and Pi with target-specific generation
 - **Tiered presets**: Start minimal, grow into full workspace management
 - **No external dependencies for core**: Session IDs use timestamp hashing, dates use manual epoch math
 - **Canonical representation**: `.strata/` is the source of truth; `--target` translates to agent-specific formats

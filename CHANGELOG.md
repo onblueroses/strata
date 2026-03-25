@@ -49,11 +49,25 @@ All notable changes to this project will be documented in this file.
   - Iterative optimizer with train/test split (deterministic LCG shuffle), early exit on 100%
   - HTML report generation
   - `[skills]` config section for eval defaults
+- **Batteries-included skill system** - 48 skill templates across three tiers:
+  - 23 core skills (Standard+): review, commit, debug, test, plan, pr, explore, release, security, optimize, verify, end, pickup, tidy, research, deploy, status, get-to-work, trace, learn, deep-understand, reconcile, ship
+  - 7 meta skills (Full): skill-creator, ask-better, autooptimize, context-resume, context-save, browser-automation, visualize
+  - 18 domain skills (Full, project-type-matched): frontend (4), n8n (7), security (1), obsidian (4), academic (1)
+  - Tier-based dispatch via `core_skills()`, `domain_skills()`, `meta_skills()`
+  - Project-type-aware domain matching (frontend frameworks -> frontend skills, known languages -> security)
+- **Agent targets narrowed** to Claude Code, OpenCode, Pi (removed Generic, Cursor, Copilot)
+  - `TargetCapabilities` struct with instruction_file, skill_dir, config_dir, hook_mechanism per target
+  - `.claude/settings.json` scaffolded for ClaudeCode targets in Standard/Full presets
+- **Enforcement hooks on by default** - `[hooks] enforce = true` blocks session-stop until verification passes
+  - `--no-enforce` flag for warning-only mode
+- **Getting-started reference doc** - scaffolded in Full preset at `references/getting-started.md`
 
 ### Changed
 - Lint engine expanded from 6 to 20 built-in rules (14 new) plus user-defined custom rules
 - `strata generate` now accepts `--target` and `--skills` flags
 - CLI expanded from 9 to 13 subcommands
+- Agent targets reduced from 5 (generic, claude, cursor, copilot + generic) to 3 (claude-code, opencode, pi)
+- Standard preset: 20 -> 23 core skills; Full preset: adds 7 meta + 18 domain skills (48 total)
 
 ## [0.2.0] - 2026-03-04
 
