@@ -91,9 +91,9 @@ fn test_workspace_manager_full_workflow() {
         .assert()
         .success();
 
-    // 6. Generate with --target claude
+    // 6. Generate with --target claude-code
     Command::new(common::strata_bin())
-        .args(["generate", "--target", "claude"])
+        .args(["generate", "--target", "claude-code"])
         .current_dir(dir.path())
         .assert()
         .success()

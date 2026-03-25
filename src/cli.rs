@@ -51,6 +51,10 @@ pub enum Command {
         /// Preset tier: minimal (structure only), standard (+hooks, skills, memory), full (+specs, sessions)
         #[arg(long, default_value_t = Preset::Minimal)]
         preset: Preset,
+
+        /// Disable enforcement hooks (verify-before-stop, review-before-commit)
+        #[arg(long)]
+        no_enforce: bool,
     },
 
     /// Check structural integrity (pass/fail)

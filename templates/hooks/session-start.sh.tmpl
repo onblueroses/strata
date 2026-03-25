@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Session start hook - runs when an AI agent session begins.
-# Logs session start, generates a session ID, and nudges the agent to check for active specs.
+# Session start hook - generates session ID, checks for active specs, cleans stale markers.
 
 set -euo pipefail
 
@@ -8,14 +7,19 @@ set -euo pipefail
 SESSION_ID=$(date +%s | sha256sum 2>/dev/null | head -c 8 || date +%s | md5sum | head -c 8 || echo "$(date +%s)" | cut -c1-8)
 echo "Session started: $(date -u +%Y-%m-%dT%H:%M:%SZ) | ID: $SESSION_ID"
 
+# Clean stale verification markers from previous sessions
+STRATA_DIR=".strata"
+rm -f "$STRATA_DIR/.verify-passed" 2>/dev/null || true
+rm -f "$STRATA_DIR/.review-passed" 2>/dev/null || true
+
 # Log to sessions directory if it exists
-SESSIONS_DIR=".strata/sessions"
+SESSIONS_DIR="$STRATA_DIR/sessions"
 if [ -d "$SESSIONS_DIR" ]; then
     echo "$SESSION_ID $(date -u +%Y-%m-%dT%H:%M:%SZ) start" >> "$SESSIONS_DIR/session-log.txt"
 fi
 
 # Check for active specs
-SPECS_DIR=".strata/specs"
+SPECS_DIR="$STRATA_DIR/specs"
 if [ -d "$SPECS_DIR" ]; then
     active=$(grep -rl 'Status:.*in-progress' "$SPECS_DIR" 2>/dev/null || true)
     if [ -n "$active" ]; then

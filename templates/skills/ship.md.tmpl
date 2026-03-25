@@ -1,0 +1,121 @@
+---
+name: ship
+tier: core
+description: >
+  Pre-publish quality gate for user-facing work. Run before deploying, releasing, or
+  sharing anything users will see. Catches interaction gaps, missing states, broken
+  flows, accessibility issues, and content problems that automated tests miss. Covers
+  web apps, CLIs, APIs, and documentation. Not a substitute for tests - this catches
+  what tests don't.
+  Auto-trigger: when deploying or publishing user-facing changes.
+---
+
+# Ship
+
+Pre-publish audit. Catch the things automated tests miss before users find them.
+
+## Step 1: Identify what's shipping
+
+What type of artifact is being published?
+
+| Type | Focus areas |
+|------|-------------|
+| **Web page/app** | Visual completeness, interaction states, responsive, accessibility, loading states |
+| **API** | Error responses, validation messages, rate limiting, auth edge cases |
+| **CLI tool** | Help text, error messages, edge case inputs, exit codes |
+| **Library/package** | README accuracy, API docs, changelog, breaking changes noted |
+| **Documentation** | Links work, examples run, screenshots current, no stale information |
+
+## Step 2: State coverage audit
+
+Every interactive element must handle ALL states. Check each:
+
+### For web pages/apps
+
+| Element | States to verify |
+|---------|-----------------|
+| Buttons | default, hover, active, disabled, loading |
+| Forms | empty, valid, invalid, submitting, success, error |
+| Lists | empty state, 1 item, many items, loading, error |
+| Images | loading, loaded, broken/missing, alt text |
+| Navigation | current page indicator, all links work, mobile menu |
+| Modals/dialogs | open, close (X, escape, backdrop click), scroll content |
+
+### For APIs
+
+| Scenario | Verify |
+|----------|--------|
+| Valid input | Correct response shape and status code |
+| Invalid input | Descriptive error message, correct 4xx code |
+| Missing auth | 401 with clear message, not 500 |
+| Rate limited | 429 with retry-after header |
+| Server error | 500 with safe message (no stack traces) |
+
+### For CLIs
+
+| Scenario | Verify |
+|----------|--------|
+| No arguments | Help text or useful error |
+| `--help` | Accurate, complete, examples work |
+| Invalid arguments | Clear error message pointing to the problem |
+| Missing required input | Tells user what's missing |
+| Interrupt (Ctrl+C) | Graceful shutdown, no corrupt state |
+
+## Step 3: Content audit
+
+- **No placeholder text** - search for "lorem", "TODO", "CHANGEME", "example.com" in non-example contexts
+- **No debug artifacts** - console.log, debugger statements, test accounts, mock data
+- **Copy is complete** - no truncated sentences, no "TBD", no "[insert here]"
+- **Error messages are helpful** - tell users what happened AND what to do about it
+
+## Step 4: Edge cases
+
+Test the boundaries:
+
+- **Empty state** - what does the user see when there's no data?
+- **Long content** - does text overflow, truncate gracefully, or break layout?
+- **Rapid actions** - double-click submit, rapid navigation, race conditions
+- **Offline/slow** - what happens with no network or high latency?
+- **Permissions** - unauthorized users see appropriate messaging, not blank pages or errors
+
+## Step 5: Verdict
+
+```
+SHIP: [project/feature name]
+========================================
+
+[READY] / [BLOCKED - N issues]
+
+Checked:
+  - State coverage: [N elements] x [N states] verified
+  - Content: no placeholders, no debug artifacts
+  - Edge cases: empty state, long content, rapid actions
+  - Accessibility: keyboard nav, contrast, alt text
+
+Issues (if any):
+  - [BLOCKER] Form submit button has no loading state - users can double-submit
+  - [BLOCKER] API returns stack trace on 500 errors
+  - [WARNING] Empty state for user list shows blank page instead of helpful message
+```
+
+**READY** = no blockers. Warnings are acceptable if documented.
+**BLOCKED** = fix blockers before shipping. Warnings don't block.
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| "Tests pass so it's ready" | Tests check code correctness, not user experience | Tests + ship audit together |
+| Checking only the happy path | Users will find every unhappy path | Check error states, empty states, edge cases |
+| Skipping mobile/responsive check | Mobile is often > 50% of traffic | Check critical flows at mobile viewport |
+| Shipping with TODOs in user-visible text | Users see your implementation notes | Search for placeholders before shipping |
+| "We'll fix it in the next release" | Users are experiencing the bug NOW | Fix blockers before shipping |
+
+## Quality Self-Check
+
+Before marking READY:
+1. Every interactive element has all required states?
+2. Error messages are user-friendly (not technical jargon)?
+3. No placeholder text, debug artifacts, or test data in production?
+4. At least one edge case tested (empty state, long content, or rapid actions)?
+5. Overall verdict reflects actual state - not optimism?

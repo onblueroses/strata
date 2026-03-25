@@ -1,0 +1,125 @@
+---
+name: deep-understand
+tier: core
+description: >
+  Deep codebase familiarization. Use when exploring an unfamiliar codebase, onboarding
+  to a new project, or investigating how a feature works end-to-end. Scales approach
+  based on project size - from direct reading for small projects to parallel agent
+  exploration for large ones. Prevents aimless file-hopping and missed architecture.
+  Auto-trigger: when exploring an unfamiliar codebase or directory for the first time.
+---
+
+# Deep Understand
+
+Systematic exploration scaled to project size. Understand before you modify.
+
+## Step 1: Size the project
+
+Count files and estimate scope:
+
+```bash
+find . -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './target/*' | wc -l
+```
+
+| Size | File count | Approach |
+|------|-----------|----------|
+| **Small** | < 50 files | Direct: read entry points and core modules yourself |
+| **Medium** | 50-300 files | Focused: read key files, grep for patterns, trace 1-2 features |
+| **Large** | 300+ files | Parallel: spawn agents for independent exploration tasks |
+
+## Step 2: Read orientation files
+
+These exist to help you. Read them first if present:
+
+1. `README.md` - purpose, setup, architecture overview
+2. `CLAUDE.md` or `.strata/context.md` - conventions, constraints, gotchas
+3. `PROJECT.md` - formal project definition
+4. `ARCHITECTURE.md` or `CONTRIBUTING.md` - structure guidance
+5. Config files (`package.json`, `Cargo.toml`, `pyproject.toml`) - dependencies and scripts
+
+## Step 3: Find entry points
+
+Where does execution start?
+
+| Type | Look for |
+|------|----------|
+| CLI | `main()`, `bin/`, `src/main.rs`, `src/cli.ts` |
+| Web app | `app.ts`, `index.ts`, route handlers, `pages/`, `app/` |
+| Library | `lib.rs`, `index.ts`, `__init__.py`, exported modules |
+| API | Route definitions, controller files, `api/` directory |
+
+Read entry points first. They show the skeleton of the system.
+
+## Step 4: Map the architecture
+
+Starting from entry points, follow imports to understand the dependency graph:
+
+1. **What depends on what?** Follow imports from entry points inward.
+2. **Where are the boundaries?** External APIs, databases, file system, user input.
+3. **What's the data flow?** Pick one user-visible feature. Trace data from input to output: where is it validated, transformed, stored, retrieved, rendered?
+4. **What patterns recur?** Error handling strategy, naming conventions, file organization, test structure.
+
+For large projects, trace 2-3 features across different parts of the codebase to get coverage.
+
+## Step 5: Identify conventions
+
+Before modifying any code, you must know:
+
+- **Naming:** camelCase vs snake_case, prefix/suffix patterns, file naming
+- **Error handling:** Result types? Exceptions? Error codes? Where are errors caught vs propagated?
+- **Testing:** Co-located or separate directory? Unit vs integration? Mocking strategy?
+- **File organization:** Feature-based or layer-based? Where do new files go?
+
+Match these exactly. Consistency within the project beats your preferred style.
+
+## Step 6: Report understanding
+
+```markdown
+## [Project Name] - Architecture Overview
+
+**Purpose:** [one sentence]
+**Stack:** [language, framework, key dependencies]
+**Entry points:** [list with file paths]
+
+### Architecture
+[2-3 sentences describing the high-level structure]
+
+### Data flow
+[one traced feature: input -> processing -> output]
+
+### Conventions
+- Naming: [pattern]
+- Error handling: [strategy]
+- Testing: [approach]
+- File organization: [pattern]
+
+### Boundaries
+- [External API / DB / filesystem touchpoints]
+
+### Key files
+| File | Role |
+|------|------|
+| `path/to/file` | [what it does] |
+
+### Gotchas
+- [anything surprising or non-obvious]
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Reading every file top to bottom | Wastes time on irrelevant code | Start from entry points, follow the call graph |
+| Jumping straight to the file you need to change | Miss architectural context, introduce inconsistencies | Understand the surrounding module first |
+| Assuming based on file names | Names lie, especially in legacy codebases | Read the actual code |
+| Ignoring test files | Tests document behavior and edge cases better than comments | Read tests alongside implementation |
+| Skipping config files | Miss build scripts, aliases, hidden dependencies | Config files reveal the project's wiring |
+
+## Quality Self-Check
+
+Before starting to modify code:
+1. Can you describe the high-level architecture in 2-3 sentences?
+2. Do you know the project's conventions (naming, error handling, test style)?
+3. Have you traced at least one feature end-to-end?
+4. Do you know where the system boundaries are?
+5. Could you add a new file and know exactly where it goes and how to name it?

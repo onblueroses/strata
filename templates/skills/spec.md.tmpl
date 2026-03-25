@@ -1,0 +1,107 @@
+---
+name: spec
+tier: core
+description: >
+  Create and manage implementation specs that survive context compaction. Specs
+  persist on disk as the single source of truth for non-trivial work. Use for
+  any multi-file implementation (3+ files). Supports create, update, status, close.
+  Auto-trigger: MANDATORY for multi-file implementations (3+ files).
+---
+
+# Spec
+
+Create spec files that survive context compaction. Specs are the single source of
+truth for non-trivial implementations.
+
+## Usage
+
+```
+/spec [feature-name]        # Create new spec
+/spec update                # Update >> Current Step in active spec
+/spec status                # Show active specs and progress
+/spec close                 # Mark active spec as complete
+```
+
+## Skip Conditions
+
+- **Skip if** task touches fewer than 3 files
+- **Skip if** spec already exists - read it and continue from `>> Current Step`
+- **Skip if** this is research/exploration with no implementation output
+
+## Guard Clause
+
+Before creating a new spec:
+- If an in-progress spec exists for a DIFFERENT feature, warn and suggest closing it
+- If a spec exists for THIS feature, resume from `>> Current Step`
+
+## Spec Format
+
+```markdown
+# Spec: [Feature Name]
+Created: YYYY-MM-DD | Status: planning | in-progress | complete | abandoned
+Last updated: YYYY-MM-DD HH:MM | Session: [id]
+
+## Quick Start
+> Fresh context? Read this section, then go to >> Current Step.
+
+**Files touched:**
+- `path/to/file` - [what changes here]
+
+**-> Next:** Step X.Y - [description]
+
+## Goal
+[One sentence. What and why.]
+
+## Boundaries
+
+**Always** (proceed without asking): [list]
+**Ask first** (need approval): [list]
+**Never** (hard stop): [list]
+
+## Decisions
+
+| # | Decision | Rationale | Alternatives Rejected | Date |
+|---|----------|-----------|----------------------|------|
+
+## Plan
+
+### Phase 1: [name] (~30 min)
+**Gate:** [validation command]
+- [ ] **Step 1.1**: [action] -> [acceptance criteria]
+- [ ] **Step 1.2**: [action] -> [acceptance criteria]
+
+## >> Current Step
+Working on: Step X.Y - [description]
+Status: [what's done, what's left]
+
+## Completed
+### Phase 1: [name]
+- [x] **Step 1.1**: [what was done] (verified: [how])
+
+## Learnings
+- [YYYY-MM-DD] [discovery that affects remaining work]
+```
+
+## During Execution
+
+1. **Before each step:** Update `>> Current Step` with what you're about to do
+2. **After each step:** Check box in Plan, move to Completed, advance `>> Current Step`
+3. **Decisions:** Add to table immediately - after compaction you won't remember why
+4. **Discoveries:** Add to Learnings - persists across compactions
+5. **Phase gates:** Run previous phase's gate before starting next phase
+
+## After Compaction
+
+1. Read the spec file
+2. `>> Current Step` tells you where you are
+3. `Decisions` are settled - do NOT re-debate
+4. `Learnings` contain non-obvious discoveries
+5. Continue from where you left off
+
+## DO NOT
+
+- Create specs for trivial tasks (< 3 files)
+- Re-debate Decisions after compaction
+- Write vague acceptance criteria ("looks good")
+- Scope phases beyond ~30 minutes
+- Leave `>> Current Step` stale

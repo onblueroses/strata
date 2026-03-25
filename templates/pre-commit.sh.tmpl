@@ -1,16 +1,37 @@
-#!/bin/sh
-# strata pre-commit hook - validates project structure before commit
+#!/usr/bin/env bash
+# strata pre-commit hook - validates project structure and review status before commit.
 # Installed by: strata install-hooks
 
-set -e
+set -euo pipefail
 
-echo "Running strata check..."
+STRATA_DIR=".strata"
+REVIEW_MARKER="$STRATA_DIR/.review-passed"
 
-if ! command -v strata > /dev/null 2>&1; then
+# Structural check
+if command -v strata > /dev/null 2>&1; then
+    echo "Running strata check..."
+    strata check
+    echo "Structural check passed."
+else
     echo "Warning: strata not found in PATH, skipping structural check"
-    exit 0
 fi
 
-strata check
-
-echo "Structural check passed."
+{% if enforce %}
+# Review gate: block commit if /review has not passed
+if [ ! -f "$REVIEW_MARKER" ]; then
+    echo ""
+    echo "BLOCKED: Review has not passed this session."
+    echo "Run /review before committing."
+    echo ""
+    echo "To disable enforcement, set enforce = false under [hooks] in strata.toml,"
+    echo "then reinstall hooks with: strata install-hooks"
+    exit 1
+fi
+echo "Review gate: passed (marker found)"
+{% else %}
+# Review enforcement disabled - warn only
+if [ ! -f "$REVIEW_MARKER" ]; then
+    echo ""
+    echo "NOTE: Review has not run this session. Consider running /review."
+fi
+{% endif %}

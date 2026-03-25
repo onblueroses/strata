@@ -1,0 +1,137 @@
+---
+name: n8n-workflow-patterns
+tier: domain
+domain: n8n
+description: >
+  Proven architectural patterns for n8n workflows. Covers webhook processing, API
+  integration, database operations, error handling, batching, and AI agent workflows.
+  Use when designing workflow structure or choosing between approaches.
+  Auto-trigger: when building new n8n workflows or designing workflow architecture.
+---
+
+# n8n Workflow Patterns
+
+Battle-tested patterns for common workflow architectures.
+
+## Pattern: Webhook Processor
+
+Receive external events, validate, process, respond.
+
+```
+Webhook -> IF (validate) -> Process -> Respond
+                         \-> Error Response
+```
+
+**Key rules:**
+- Always validate webhook payload before processing
+- Respond quickly (< 3s) - offload heavy work to sub-workflows
+- Use "Respond to Webhook" node for custom response codes/bodies
+- Store raw webhook payload for debugging
+
+## Pattern: API Poller
+
+Check an API on a schedule, process new items only.
+
+```
+Schedule -> HTTP Request -> Code (filter seen) -> Process -> Update state
+```
+
+**Key rules:**
+- Track last-seen ID or timestamp to avoid reprocessing
+- Use `Static Data` to persist state between executions
+- Handle pagination (loop until empty page)
+- Rate-limit API calls to avoid throttling
+
+## Pattern: Batch Processor
+
+Process large datasets in chunks to avoid timeouts and memory issues.
+
+```
+Trigger -> Fetch all items -> Split In Batches -> Process batch -> Merge results
+```
+
+**Key rules:**
+- Split In Batches node with batch size 10-50 (API-dependent)
+- Add Wait node between batches for rate-limited APIs
+- Track progress for resumability
+- Use Error Trigger workflow for failed batches
+
+## Pattern: Error Handler
+
+Catch and handle errors gracefully across the workflow.
+
+```
+Main workflow:  Trigger -> Process -> Output
+Error workflow: Error Trigger -> Log -> Notify -> (optional) Retry
+```
+
+**Key rules:**
+- Create a separate "Error Workflow" and link it in workflow settings
+- Log error details: node name, error message, input data
+- Notify via appropriate channel (email, Slack, webhook)
+- Don't retry infinitely - set max retries in node settings
+
+## Pattern: Data Sync
+
+Keep two systems in sync (bidirectional or one-way).
+
+```
+Schedule -> Fetch source -> Fetch destination -> Code (diff) -> Create/Update/Delete
+```
+
+**Key rules:**
+- Always diff before writing (don't blindly overwrite)
+- Handle deletes carefully (soft delete preferred)
+- Log every change for audit trail
+- Use IF node to route creates vs updates vs deletes separately
+
+## Pattern: AI Agent Workflow
+
+LLM-powered processing with tool use.
+
+```
+Trigger -> AI Agent -> Tool nodes -> Process response -> Output
+```
+
+**Key rules:**
+- System message sets behavior and constraints
+- Connect tool nodes (Calculator, HTTP, Code) to the agent
+- Set temperature 0 for deterministic tasks, 0.7+ for creative
+- Add output validation after the agent (don't trust raw LLM output)
+- Set reasonable token limits to control costs
+
+## Pattern: Approval Flow
+
+Human-in-the-loop processing with approval gates.
+
+```
+Trigger -> Prepare -> Wait for approval -> IF approved -> Process -> Notify
+                                        \-> Reject -> Notify
+```
+
+**Key rules:**
+- Use "Wait" node with webhook resume for async approval
+- Include all context in the approval request (reviewer shouldn't need to look things up)
+- Set timeout on Wait node (don't wait forever)
+- Log approval/rejection with reviewer identity and timestamp
+
+## General Rules
+
+| Rule | Why |
+|------|-----|
+| One workflow, one responsibility | Easier to debug, test, reuse |
+| Use sub-workflows for shared logic | DRY, single point of change |
+| Name nodes descriptively | "Fetch User Orders" not "HTTP Request 3" |
+| Set retry on failure for external calls | Networks are unreliable |
+| Test with production-like data | Edge cases hide in real data |
+| Pin test data on trigger nodes | Reproducible development and testing |
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| One giant workflow with 50+ nodes | Impossible to debug or test | Break into sub-workflows |
+| No error handling | Silent failures, data loss | Error Trigger workflow + notifications |
+| Hardcoded credentials in Code nodes | Security risk, breaks on rotation | Use n8n Credentials |
+| Processing all items without batching | Timeout on large datasets | Split In Batches |
+| No logging/audit trail | Can't debug issues after the fact | Log key events and decisions |

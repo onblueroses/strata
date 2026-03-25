@@ -1,10 +1,12 @@
 ---
 name: end
+tier: core
 description: >
   Session closure. Run when finishing work, saying goodbye, wrapping up, or ending
-  a conversation. Writes session notes, commits uncommitted work, and updates project
-  documentation. Prevents lost context between sessions. If you're about to stop
-  working, run this first - not after.
+  a conversation. Commits uncommitted work, writes session notes, updates project
+  documentation, and runs structural checks. Prevents lost context between sessions.
+  Auto-trigger: MANDATORY when session is ending, user says goodbye/done/wrap up,
+  or before closing. Run this first - not after.
 ---
 
 # End
@@ -13,35 +15,58 @@ Clean session closure. Preserves context so the next session can pick up where y
 
 ## Step 1: Commit uncommitted work
 
-Check `git status` in the project root. If there are uncommitted changes from this session:
+Check `git status` in every project root you touched this session. If there are uncommitted
+changes from this session:
 
-1. Stage the relevant files
+1. Stage the relevant files (not `git add -A` - be selective)
 2. Write a descriptive commit message summarizing what changed
 3. Commit
+4. Push if the branch has a remote tracking branch
 
-Do not leave uncommitted work for the next session.
+Do not leave uncommitted work for the next session. Uncommitted changes cause confusion,
+wasted investigation time, and potential conflicts.
 
-## Step 2: Write session notes
+**If there are changes you're NOT sure should be committed** (experimental branches,
+half-finished features), note them in session notes instead of committing.
 
-Create or update the session note file (daily note, changelog entry, or `.strata/sessions/` file
-depending on what the project uses).
+## Step 2: Update active specs
+
+If you worked on a spec this session (`.strata/specs/` with Status: `in-progress`):
+
+1. Update `>> Current Step` to reflect where you actually stopped
+2. Check off completed steps in the Plan
+3. Add any new decisions to the Decisions table
+4. Add any discoveries to Learnings
+5. Update `Last updated` timestamp
+
+This is the most important step for continuity. After compaction, the spec's `>> Current Step`
+is the ONLY reliable indicator of where work was interrupted.
+
+## Step 3: Write session notes
+
+Create or update the session note file (daily note, changelog entry, or `.strata/sessions/`
+file depending on what the project uses).
 
 Include:
 - **Summary** - 2-3 sentences: what was done, what's the current state
 - **Decisions** - key choices made and their rationale (these are lost after compaction)
-- **Outputs** - files created or modified
-- **Next steps** - what the next session should start with
+- **Outputs** - files created or modified (paths, not descriptions)
+- **Next steps** - what the next session should start with (be specific, not "continue working")
 
-## Step 3: Update project documentation
+**Good next steps:** "Finish Step 3.2 of the auth spec - token refresh logic is stubbed but not tested"
+**Bad next steps:** "Continue auth work"
+
+## Step 4: Update project documentation
 
 Scan files you edited this session. For each:
+- Does the project's instruction file (CLAUDE.md, AGENTS.md) reflect current architecture?
 - Does the README still accurately describe the project?
-- Does the project's CLAUDE.md or context file reflect current architecture?
 - Are any file paths, counts, or descriptions stale?
+- Did you add new files that should be mentioned in documentation?
 
-Fix stale documentation now. Stale docs cost more than missing docs.
+Fix stale documentation now. Stale docs cost more than missing docs because they actively mislead.
 
-## Step 4: Run structural checks
+## Step 5: Run structural checks
 
 ```bash
 strata check    # structural integrity
@@ -49,6 +74,18 @@ strata lint     # quality diagnostics
 ```
 
 Fix any errors. Warnings are acceptable to leave.
+
+## Step 6: Final git state
+
+After all updates:
+
+```bash
+git status      # should be clean
+git log -3      # verify session commits look correct
+```
+
+If there are new changes from Steps 2-4 (spec updates, session notes, doc fixes), commit them
+as a single "session wrap-up" commit.
 
 ## Anti-Examples
 
@@ -58,11 +95,22 @@ Fix any errors. Warnings are acceptable to leave.
 | "I'll document it next time" | You won't remember the decisions | Document now while context is fresh |
 | Skipping session notes | Next session starts blind, re-discovers the same things | 2-3 sentences saves 20 minutes next time |
 | Writing vague notes ("worked on feature X") | Doesn't help the next session | Include decisions, blockers, and next steps |
+| Leaving spec >> Current Step stale | Next session starts from wrong position | Update spec before writing session notes |
+| Committing everything with `git add -A` | Catches unrelated files, secrets, temp files | Stage specific files |
+
+## DO NOT
+
+- Skip this skill "because it was a short session" - short sessions still generate decisions
+- Commit `.env`, credentials, or build artifacts
+- Update documentation without re-reading the current content first (you might overwrite recent changes)
+- Write session notes that only you understand - write for the next agent/person picking this up
+- Leave `strata check` errors for the next session
 
 ## Quality Self-Check
 
 Before ending:
 1. `git status` clean in every repo you touched?
-2. Session notes written with decisions and next steps?
-3. Documentation still accurate for files you changed?
-4. No failing `strata check`?
+2. Active spec `>> Current Step` updated?
+3. Session notes written with decisions and next steps?
+4. Documentation still accurate for files you changed?
+5. No failing `strata check`?

@@ -1,0 +1,159 @@
+---
+name: react-best-practices
+tier: domain
+domain: frontend
+description: >
+  React and Next.js performance and architecture guidelines. Covers component patterns,
+  data fetching, rendering strategies, bundle optimization, and common pitfalls.
+  Based on Vercel engineering best practices.
+  Auto-trigger: when writing, reviewing, or refactoring React/Next.js code.
+---
+
+# React Best Practices
+
+Performance-first React and Next.js patterns.
+
+## Component Architecture
+
+### Server vs Client Components (Next.js App Router)
+
+Default to Server Components. Add `'use client'` only when you need:
+- Event handlers (`onClick`, `onChange`, etc.)
+- Browser APIs (`window`, `document`, `localStorage`)
+- State (`useState`, `useReducer`)
+- Effects (`useEffect`, `useLayoutEffect`)
+- Custom hooks that use any of the above
+
+**Push `'use client'` as far down as possible.** Don't make a whole page client-side
+because one button needs `onClick`. Extract the interactive part into a client component
+and keep the page as a server component.
+
+### Component patterns
+
+```tsx
+// Good: Server component with client island
+export default function ProductPage({ id }: { id: string }) {
+  const product = await getProduct(id) // Server-side data fetch
+  return (
+    <main>
+      <h1>{product.name}</h1>
+      <p>{product.description}</p>
+      <AddToCartButton productId={id} /> {/* Client component */}
+    </main>
+  )
+}
+```
+
+### Props
+
+- Prefer few, flat props over deeply nested objects
+- Use `children` for composition instead of render props (unless you need to pass data up)
+- Avoid boolean prop explosion: `<Button primary large rounded>` -> use a `variant` prop
+- Never pass entire objects when only one field is needed
+
+## Data Fetching
+
+### Next.js App Router
+
+- **Server Components**: `fetch()` or database queries directly in the component
+- **Route Handlers**: `app/api/` for mutations and external API proxies
+- **Server Actions**: `'use server'` for form submissions and mutations
+
+```tsx
+// Good: Parallel data fetching
+async function Dashboard() {
+  const [user, stats, notifications] = await Promise.all([
+    getUser(),
+    getStats(),
+    getNotifications(),
+  ])
+  return <DashboardView user={user} stats={stats} notifications={notifications} />
+}
+```
+
+### Caching strategy
+
+- `fetch()` in Server Components is cached by default in Next.js
+- Use `revalidate` for time-based freshness: `fetch(url, { next: { revalidate: 3600 } })`
+- Use `revalidatePath()` / `revalidateTag()` for on-demand revalidation after mutations
+- Never cache user-specific data with shared cache keys
+
+## Rendering
+
+### Static vs Dynamic
+
+| Pattern | When | How |
+|---------|------|-----|
+| Static (SSG) | Content doesn't change per-request | Default in App Router, or `generateStaticParams` |
+| ISR | Content changes, but not per-request | `revalidate` in fetch or route config |
+| SSR | Content changes per-request or per-user | `dynamic = 'force-dynamic'` or uncached fetch |
+| CSR | Interactive widgets, user-specific real-time data | `'use client'` + `useEffect` |
+
+### Streaming and Suspense
+
+```tsx
+// Good: Stream slow data, show fast data immediately
+export default function Page() {
+  return (
+    <main>
+      <Header /> {/* Renders immediately */}
+      <Suspense fallback={<ProductSkeleton />}>
+        <ProductList /> {/* Streams when ready */}
+      </Suspense>
+    </main>
+  )
+}
+```
+
+## State Management
+
+- **URL state** (`searchParams`, `useSearchParams`): filters, pagination, tabs. Shareable, bookmarkable.
+- **Server state** (Server Components + cache): data from APIs/DB. Don't duplicate in client state.
+- **Local UI state** (`useState`): form inputs, dropdowns, modals. Ephemeral, component-scoped.
+- **Global client state** (context or Zustand): only for truly cross-component UI state (theme, sidebar open).
+
+**Rule**: If the state came from the server, don't put it in `useState`. Fetch it in a
+Server Component or use SWR/React Query for client components.
+
+## Performance
+
+### Bundle size
+
+- Check bundle with `next build` output or `@next/bundle-analyzer`
+- Dynamic import heavy components: `const Chart = dynamic(() => import('./Chart'), { ssr: false })`
+- Tree-shake: import specific functions, not entire libraries (`import { format } from 'date-fns'`)
+- Images: use `next/image` with `width`/`height` or `fill` + `sizes` attribute
+
+### Rendering performance
+
+- **Memoize expensive computations**: `useMemo` for derived data, `useCallback` for stable function references
+- **Don't memoize everything**: Simple calculations, primitive values, and components that always re-render anyway
+- **Key prop**: Use stable, unique IDs. Never use array index for lists that reorder/filter/add/remove
+- **Avoid layout thrashing**: Batch DOM reads before DOM writes
+
+## Common Pitfalls
+
+| Pitfall | Problem | Fix |
+|---------|---------|-----|
+| `useEffect` for data fetching | Waterfalls, loading spinners, no SSR | Fetch in Server Components or use SWR |
+| Prop drilling 4+ levels | Fragile, verbose | Context for truly global state, composition for the rest |
+| `any` type on event handlers | Loses type safety | Use `React.MouseEvent<HTMLButtonElement>` etc. |
+| Missing `key` or index key | Wrong elements update, state bugs | Unique, stable IDs |
+| Client component at page level | Entire page is client-rendered | Push `'use client'` to leaf components |
+| `useEffect` with missing deps | Stale closures, infinite loops | Include all dependencies, or restructure |
+
+## DO NOT
+
+- Use `useEffect` to sync state that could be derived: `const fullName = first + ' ' + last`
+- Fetch data in `useEffect` when a Server Component would work
+- Use `React.FC` type (doesn't support generics well, adds implicit `children`)
+- Store derived state: if you can compute it from props or other state, compute it
+- Use `suppressHydrationWarning` to hide hydration mismatches - fix the mismatch
+
+## Quality Self-Check
+
+1. Client components are as small and leaf-level as possible?
+2. Data fetching happens in Server Components where possible?
+3. No `useEffect` for data that could be server-fetched?
+4. Bundle analyzer shows no unexpected large imports?
+5. Suspense boundaries around slow-loading components?

@@ -209,8 +209,11 @@ impl Default for MemoryConfig {
 }
 
 /// Lifecycle hook configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HooksConfig {
+    /// When true, session-stop hook blocks until verification passes.
+    #[serde(default = "default_true")]
+    pub enforce: bool,
     #[serde(default)]
     pub session_start: String,
     #[serde(default)]
@@ -221,6 +224,19 @@ pub struct HooksConfig {
     pub post_edit: String,
     #[serde(default)]
     pub notification: String,
+}
+
+impl Default for HooksConfig {
+    fn default() -> Self {
+        Self {
+            enforce: true,
+            session_start: String::new(),
+            session_stop: String::new(),
+            pre_compact: String::new(),
+            post_edit: String::new(),
+            notification: String::new(),
+        }
+    }
 }
 
 /// Spec system configuration.
@@ -274,16 +290,21 @@ impl Default for SessionsConfig {
 /// Agent target output configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TargetsConfig {
-    #[serde(default)]
-    pub default: AgentTarget,
+    /// Active agent targets to generate for.
+    #[serde(default = "default_active_targets")]
+    pub active: Vec<AgentTarget>,
 }
 
 impl Default for TargetsConfig {
     fn default() -> Self {
         Self {
-            default: AgentTarget::Generic,
+            active: default_active_targets(),
         }
     }
+}
+
+fn default_active_targets() -> Vec<AgentTarget> {
+    vec![AgentTarget::ClaudeCode]
 }
 
 /// Skill eval/optimize configuration.
@@ -358,24 +379,49 @@ const fn default_max_iterations() -> u32 {
     5
 }
 
-/// Supported AI agent targets for context generation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
-#[serde(rename_all = "lowercase")]
+/// Supported AI coding agent targets.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum,
+)]
+#[serde(rename_all = "kebab-case")]
 pub enum AgentTarget {
+    /// Anthropic's CLI agent. Skills in skills/*/SKILL.md, hooks in .claude/settings.json.
     #[default]
-    Generic,
-    Claude,
-    Cursor,
-    Copilot,
+    ClaudeCode,
+    /// Open-source CLI agent. Reads CLAUDE.md + .claude/skills/, hooks via JS/TS plugins.
+    OpenCode,
+    /// Open-source CLI harness. Reads CLAUDE.md + skills/, extensions via TS.
+    Pi,
 }
 
 impl std::fmt::Display for AgentTarget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Generic => write!(f, "generic"),
-            Self::Claude => write!(f, "claude"),
-            Self::Cursor => write!(f, "cursor"),
-            Self::Copilot => write!(f, "copilot"),
+            Self::ClaudeCode => write!(f, "claude-code"),
+            Self::OpenCode => write!(f, "opencode"),
+            Self::Pi => write!(f, "pi"),
+        }
+    }
+}
+
+/// Skill classification tiers that control when skills are installed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SkillTier {
+    /// Universal skills shipped with Standard+.
+    Core,
+    /// Project-type-matched skills shipped with Full.
+    Domain,
+    /// Opt-in tooling and meta skills.
+    Meta,
+}
+
+impl std::fmt::Display for SkillTier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Core => write!(f, "core"),
+            Self::Domain => write!(f, "domain"),
+            Self::Meta => write!(f, "meta"),
         }
     }
 }

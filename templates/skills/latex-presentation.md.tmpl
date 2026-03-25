@@ -1,0 +1,196 @@
+---
+name: latex-presentation
+tier: domain
+domain: academic
+description: >
+  Create publication-grade LaTeX Beamer presentations with professional chart design.
+  Covers color systems, chart styling, typography, layout, speaker notes, and
+  pgfplots integration.
+  Auto-trigger: when creating or editing LaTeX Beamer presentations or pgfplots charts.
+---
+
+# LaTeX Presentation
+
+Distinctive Beamer slides. Not the default theme, not a wall of bullets.
+
+## Theme Setup
+
+Start with a clean base and customize:
+
+```latex
+\documentclass[aspectratio=169]{beamer}
+\usetheme{default}
+\usecolortheme{default}
+
+% Remove navigation symbols
+\setbeamertemplate{navigation symbols}{}
+
+% Clean frame title
+\setbeamertemplate{frametitle}{
+  \vspace{0.5em}
+  \insertframetitle
+}
+
+% Custom colors
+\definecolor{primary}{HTML}{2D3436}
+\definecolor{accent}{HTML}{0984E3}
+\definecolor{muted}{HTML}{636E72}
+\definecolor{bg}{HTML}{FAFAFA}
+
+\setbeamercolor{title}{fg=primary}
+\setbeamercolor{frametitle}{fg=primary}
+\setbeamercolor{normal text}{fg=primary, bg=bg}
+\setbeamercolor{itemize item}{fg=accent}
+\setbeamercolor{itemize subitem}{fg=muted}
+```
+
+## Slide Structure
+
+### Title slide
+```latex
+\begin{frame}
+  \vfill
+  \centering
+  {\Large\bfseries\inserttitle}\\[0.5em]
+  {\color{muted}\insertauthor}\\[0.3em]
+  {\color{muted}\small\insertdate}
+  \vfill
+\end{frame}
+```
+
+### Content slide
+```latex
+\begin{frame}{Slide Title}
+  % Maximum 3-4 points per slide
+  \begin{itemize}
+    \item First point - the key insight
+    \item Second point - supporting evidence
+    \item Third point - implication
+  \end{itemize}
+\end{frame}
+```
+
+### Two-column slide
+```latex
+\begin{frame}{Comparison}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \textbf{Approach A}
+      \begin{itemize}
+        \item Pro 1
+        \item Pro 2
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \textbf{Approach B}
+      \begin{itemize}
+        \item Pro 1
+        \item Pro 2
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+```
+
+## Charts with pgfplots
+
+```latex
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% Chart style
+\pgfplotsset{
+  every axis/.append style={
+    font=\small,
+    tick label style={font=\footnotesize},
+    label style={font=\small},
+    legend style={font=\footnotesize, draw=none, fill=none},
+    axis line style={draw=muted},
+    tick style={draw=muted},
+    grid style={draw=muted!20},
+    major grid style={draw=muted!30},
+  }
+}
+```
+
+### Bar chart
+```latex
+\begin{frame}{Results}
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+      ybar, width=0.8\textwidth, height=0.6\textheight,
+      bar width=20pt,
+      symbolic x coords={A, B, C, D},
+      xtick=data, ymajorgrids=true,
+      ylabel={Score (\%)},
+      ymin=0, ymax=100,
+      nodes near coords, nodes near coords align={vertical},
+    ]
+      \addplot[fill=accent, draw=none] coordinates {(A,85) (B,72) (C,91) (D,68)};
+    \end{axis}
+  \end{tikzpicture}
+\end{frame>
+```
+
+### Line chart
+```latex
+\begin{frame}{Trend}
+  \centering
+  \begin{tikzpicture}
+    \begin{axis}[
+      width=0.8\textwidth, height=0.6\textheight,
+      xlabel={Time}, ylabel={Value},
+      xmajorgrids=true, ymajorgrids=true,
+      legend pos=north west,
+    ]
+      \addplot[accent, thick, mark=*] coordinates {(1,10) (2,15) (3,12) (4,20) (5,25)};
+      \addlegendentry{Method A}
+      \addplot[muted, thick, mark=square*] coordinates {(1,8) (2,11) (3,14) (4,16) (5,19)};
+      \addlegendentry{Method B}
+    \end{axis}
+  \end{tikzpicture}
+\end{frame}
+```
+
+## Speaker Notes
+
+```latex
+\usepackage{pgfpages}
+\setbeameroption{show notes on second screen=right}
+
+\begin{frame}{Key Finding}
+  Our method outperforms the baseline by 15\%.
+  \note{
+    Emphasize that this is on the held-out test set.
+    Mention that the baseline was tuned with the same budget.
+    If asked about statistical significance: p < 0.01, paired t-test.
+  }
+\end{frame}
+```
+
+## Typography Rules
+
+- **Maximum**: 6 lines of text per slide, 8 words per line
+- **Font size**: minimum 18pt for body text, 14pt for footnotes
+- **Hierarchy**: title (28-32pt) > subtitle (22-24pt) > body (18-20pt)
+- **Emphasis**: `\textbf{}` for key terms, `\color{accent}` for highlights. Never underline.
+- **No**: full sentences on slides. Use fragments. Speak the full sentence.
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Default Beamer theme (Warsaw, etc.) | Instantly recognizable as "generic academic talk" | Custom minimal theme |
+| 10 bullet points per slide | Nobody reads them | 3-4 points maximum, speak the rest |
+| Reading slides verbatim | Audience reads faster than you speak | Slides show key points, you provide context |
+| Tiny charts with no labels | Unintelligible from the back row | Large charts, clear labels, minimum 14pt font |
+| Animation on every element | Distracting, slows the talk | Animate only when reveal order matters |
+
+## Quality Self-Check
+
+1. Every slide passes the "3-second test" (audience gets the point in 3 seconds)?
+2. Charts readable from the back of the room?
+3. Maximum 3-4 points per slide?
+4. Color palette consistent throughout?
+5. Speaker notes for complex or data-heavy slides?

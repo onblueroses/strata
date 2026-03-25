@@ -14,7 +14,8 @@ pub fn run(path: &Path, target: Option<crate::config::AgentTarget>) -> Result<()
     };
 
     let scan = crate::scanner::scan_project(&root, &config)?;
-    let resolved_target = target.unwrap_or(config.targets.default);
+    let resolved_target =
+        target.unwrap_or_else(|| config.targets.active.first().copied().unwrap_or_default());
     let files = super::generate::generate_all(&root, &config, &scan, resolved_target)?;
 
     let mut modified = Vec::new();

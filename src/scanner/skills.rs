@@ -1,3 +1,4 @@
+use crate::config::SkillTier;
 use crate::error::Result;
 use std::path::{Path, PathBuf};
 
@@ -14,6 +15,12 @@ pub struct SkillMeta {
         expect(dead_code, reason = "parsed for future skill execution support")
     )]
     pub(crate) trigger: Option<String>,
+    /// Skill tier from frontmatter `tier:` field.
+    #[expect(
+        dead_code,
+        reason = "parsed for tier-aware skill installation in Phase 4"
+    )]
+    pub tier: Option<SkillTier>,
     /// Relative path to SKILL.md from project root.
     pub path: PathBuf,
     /// Total character count of the SKILL.md file.
@@ -34,6 +41,7 @@ pub fn parse_skill(path: &Path, relative_path: PathBuf) -> Result<SkillMeta> {
     let mut name = None;
     let mut description = None;
     let mut trigger = None;
+    let mut tier = None;
     let mut in_frontmatter = false;
 
     for (i, line) in content.lines().enumerate() {
@@ -53,30 +61,28 @@ pub fn parse_skill(path: &Path, relative_path: PathBuf) -> Result<SkillMeta> {
             continue;
         }
 
+        let extract = |value: &str| {
+            value
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'')
+                .to_string()
+        };
+
         if let Some(value) = trimmed.strip_prefix("name:") {
-            name = Some(
-                value
-                    .trim()
-                    .trim_matches('"')
-                    .trim_matches('\'')
-                    .to_string(),
-            );
+            name = Some(extract(value));
         } else if let Some(value) = trimmed.strip_prefix("description:") {
-            description = Some(
-                value
-                    .trim()
-                    .trim_matches('"')
-                    .trim_matches('\'')
-                    .to_string(),
-            );
+            description = Some(extract(value));
         } else if let Some(value) = trimmed.strip_prefix("trigger:") {
-            trigger = Some(
-                value
-                    .trim()
-                    .trim_matches('"')
-                    .trim_matches('\'')
-                    .to_string(),
-            );
+            trigger = Some(extract(value));
+        } else if let Some(value) = trimmed.strip_prefix("tier:") {
+            let v = extract(value);
+            tier = match v.as_str() {
+                "core" => Some(SkillTier::Core),
+                "domain" => Some(SkillTier::Domain),
+                "meta" => Some(SkillTier::Meta),
+                _ => None,
+            };
         }
     }
 
@@ -84,6 +90,7 @@ pub fn parse_skill(path: &Path, relative_path: PathBuf) -> Result<SkillMeta> {
         name,
         description,
         trigger,
+        tier,
         path: relative_path,
         char_count,
         line_count,

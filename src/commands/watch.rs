@@ -19,7 +19,7 @@ pub fn run(path: &Path, target: Option<AgentTarget>, debounce_ms: u64) -> Result
                 .flatten()
                 .and_then(|s| parse_target(&s.target))
         })
-        .unwrap_or(config.targets.default);
+        .unwrap_or_else(|| config.targets.active.first().copied().unwrap_or_default());
 
     ui::header("Watching for changes");
     ui::info(&format!(
@@ -200,10 +200,9 @@ fn write_changed(
 
 fn parse_target(s: &str) -> Option<AgentTarget> {
     match s {
-        "generic" => Some(AgentTarget::Generic),
-        "claude" => Some(AgentTarget::Claude),
-        "cursor" => Some(AgentTarget::Cursor),
-        "copilot" => Some(AgentTarget::Copilot),
+        "claude-code" => Some(AgentTarget::ClaudeCode),
+        "opencode" => Some(AgentTarget::OpenCode),
+        "pi" => Some(AgentTarget::Pi),
         _ => None,
     }
 }

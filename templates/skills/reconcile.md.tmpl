@@ -1,0 +1,131 @@
+---
+name: reconcile
+tier: core
+description: >
+  Deep verification of project documentation against ground truth. Run when documentation
+  feels stale, after major changes, or when /status shows drift. Compares what docs SAY
+  against what code/config/runtime ACTUALLY IS. Fixes discrepancies. More thorough than
+  /tidy - this checks semantic accuracy, not just structural integrity.
+  Manual: when documentation drift is suspected or after large refactors.
+---
+
+# Reconcile
+
+Verify documentation against ground truth. Find and fix drift between what's documented
+and what's real.
+
+## Step 1: Identify documentation to verify
+
+Read the project's documentation files:
+
+1. `PROJECT.md` - purpose, domains, constraints
+2. `CLAUDE.md` / `.strata/context.md` - architecture, conventions, commands
+3. `README.md` - setup, usage, features
+4. `MEMORY.md` - persistent knowledge, decisions
+5. `INDEX.md` - file map
+
+For each, note claims that can be verified: file paths, command outputs, architecture
+descriptions, feature lists, dependency versions.
+
+## Step 2: Verify against ground truth
+
+For each verifiable claim, check the actual state:
+
+### File paths and structure
+```bash
+# Check every path mentioned in docs
+# For each path in PROJECT.md, CLAUDE.md, README.md:
+ls -la <mentioned-path>           # does it exist?
+```
+
+Flag: paths that don't exist, paths that moved, new important files not mentioned.
+
+### Commands and scripts
+```bash
+# For each command documented (build, test, deploy):
+# Actually run it and compare output to what docs describe
+```
+
+Flag: commands that fail, commands with different output, undocumented commands that exist.
+
+### Architecture claims
+- Read the code structure. Does the documented architecture match?
+- Are module boundaries where docs say they are?
+- Do dependency directions match the described architecture?
+
+Flag: modules that moved, new modules not documented, removed modules still documented.
+
+### Feature lists
+- For each feature claimed in README/PROJECT.md: is it actually implemented?
+- For each implemented feature: is it documented?
+
+Flag: documented features that don't exist, features that exist but aren't documented.
+
+### Configuration
+- Are documented config options real?
+- Are there config options that aren't documented?
+- Do default values match what's documented?
+
+## Step 3: Fix discrepancies
+
+For each discrepancy found:
+
+1. **Determine which is correct** - the doc or the code. Usually the code is truth.
+2. **Update the stale artifact** - usually the documentation.
+3. **Update verification dates** - `last_verified` or `_Last updated_` timestamps.
+
+**Order of fixes:**
+1. Wrong information (actively misleading) - fix immediately
+2. Missing information (gaps) - add if important for onboarding
+3. Stale dates (cosmetic) - update after verifying content
+
+## Step 4: Report
+
+```
+RECONCILE: [project name]
+========================================
+
+Verified: N claims across M documents
+
+Fixed (N items):
+  - PROJECT.md: Updated architecture section (auth module moved to src/middleware/)
+  - README.md: Removed reference to deprecated --legacy flag
+  - CLAUDE.md: Added new test command (cargo nextest)
+
+Still accurate:
+  - Build commands
+  - File structure
+  - Core conventions
+
+Gaps found (not fixed):
+  - [LOW] New caching module undocumented - needs architecture description written
+  - [MEDIUM] Deploy procedure changed but README still has old steps
+
+Last verified: [today's date]
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Trusting docs over code | Code is ground truth, docs are claims | Verify every claim against the actual system |
+| Only checking file existence | A file can exist but contain different things than documented | Check content and behavior, not just paths |
+| Updating docs without reading current content | Might overwrite recent changes by someone else | Read current doc, then update specific claims |
+| Skipping command verification | "It probably still works" - famous last words | Actually run documented commands |
+| Reconciling during active development | Chasing a moving target | Reconcile after a feature is complete |
+
+## DO NOT
+
+- Fix code to match documentation (docs follow code, not the other way around)
+- Rewrite entire documentation files when only specific claims are wrong
+- Skip the report - other contributors need to know what changed
+- Reconcile files you didn't verify - mark unverified sections explicitly
+
+## Quality Self-Check
+
+After reconciling:
+1. Every file path mentioned in docs verified against disk?
+2. Every documented command tested?
+3. Architecture description matches actual code structure?
+4. Verification dates updated on all checked documents?
+5. Report includes both fixes and remaining gaps?

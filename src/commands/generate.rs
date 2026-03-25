@@ -26,7 +26,14 @@ pub fn run(path: &Path, target: Option<AgentTarget>, install_skills: bool) -> Re
                 .and_then(|n| n.to_str())
                 .unwrap_or("?");
             let scan = crate::scanner::scan_project(member_root, member_config)?;
-            let resolved_target = target.unwrap_or(member_config.targets.default);
+            let resolved_target = target.unwrap_or_else(|| {
+                member_config
+                    .targets
+                    .active
+                    .first()
+                    .copied()
+                    .unwrap_or_default()
+            });
             super::fix::regenerate_index_md(member_root, &scan, member_config)?;
             let files = generate_all(member_root, member_config, &scan, resolved_target)?;
             write_all(member_root, &files)?;
@@ -53,7 +60,8 @@ pub fn run(path: &Path, target: Option<AgentTarget>, install_skills: bool) -> Re
     }
 
     let scan = crate::scanner::scan_project(&root, &config)?;
-    let resolved_target = target.unwrap_or(config.targets.default);
+    let resolved_target =
+        target.unwrap_or_else(|| config.targets.active.first().copied().unwrap_or_default());
 
     // Refresh INDEX.md as part of generation
     super::fix::regenerate_index_md(&root, &scan, &config)?;
@@ -107,16 +115,15 @@ pub fn generate_all(
     }
 
     // Agent-specific target file
-    if let Some(target_output) = crate::targets::resolve_target(target) {
-        let rendered = crate::targets::render_target(
-            &config.project.name,
-            &tier1,
-            &target_output,
-            &scan.project_type,
-        )?;
-        let rel = target_output.path.to_string_lossy().replace('\\', "/");
-        files.push((rel, rendered));
-    }
+    let target_output = crate::targets::resolve_target(target);
+    let rendered = crate::targets::render_target(
+        &config.project.name,
+        &tier1,
+        &target_output,
+        &scan.project_type,
+    )?;
+    let rel = target_output.path.to_string_lossy().replace('\\', "/");
+    files.push((rel, rendered));
 
     Ok(files)
 }
@@ -143,20 +150,16 @@ pub fn write_all(root: &Path, files: &[(String, String)]) -> Result<()> {
 fn install_starter_skills(root: &Path) -> Result<()> {
     let skills_dir = root.join("skills");
 
-    let review_dir = skills_dir.join("review");
-    let review_path = review_dir.join("SKILL.md");
-    if !review_path.exists() {
-        fs::create_dir_all(&review_dir)?;
-        fs::write(&review_path, crate::templates::render_review_skill())?;
-        ui::file_action("create", "skills/review/SKILL.md");
-    }
-
-    let commit_dir = skills_dir.join("commit");
-    let commit_path = commit_dir.join("SKILL.md");
-    if !commit_path.exists() {
-        fs::create_dir_all(&commit_dir)?;
-        fs::write(&commit_path, crate::templates::render_commit_skill())?;
-        ui::file_action("create", "skills/commit/SKILL.md");
+    for name in ["review", "commit"] {
+        let dest = skills_dir.join(name);
+        let skill_path = dest.join("SKILL.md");
+        if !skill_path.exists() {
+            if let Some(content) = crate::templates::render_skill(name) {
+                fs::create_dir_all(&dest)?;
+                fs::write(&skill_path, content)?;
+                ui::file_action("create", &format!("skills/{name}/SKILL.md"));
+            }
+        }
     }
 
     Ok(())

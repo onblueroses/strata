@@ -1,9 +1,11 @@
 ---
 name: debug
+tier: core
 description: >
   Structured debugging methodology. Use when investigating any bug, error,
   unexpected behavior, or test failure - even if the cause seems obvious.
   Prevents the "change random things and hope" anti-pattern.
+  Auto-trigger: when user reports a bug, error, or unexpected behavior.
 ---
 
 # Debug
@@ -29,11 +31,11 @@ skipping steps is the #1 cause of wasted debugging time.
 
 | Bad | Why | Better |
 |-----|-----|--------|
-| Adding print statements everywhere | Generates noise, doesn't narrow scope | Binary search: one print at the midpoint of the suspected path |
-| Fixing the symptom without understanding the cause | Creates recurring bugs and tech debt | Trace to root cause, even if the symptom fix is faster |
-| "It works on my machine" | Environment differences are a clue, not a dismissal | Document exact env diff and test in the failing environment |
-| Changing multiple things at once | Can't tell which change fixed it | One change, one test, then next change |
-| Debugging in production first | Risk of data corruption, user impact | Reproduce locally first; production debugging is last resort |
+| Print statements everywhere | Generates noise, doesn't narrow scope | Binary search: one print at the midpoint |
+| Fixing the symptom | Creates recurring bugs | Trace to root cause |
+| "Works on my machine" | Environment diff is a clue | Document exact env diff, test in failing env |
+| Changing multiple things | Can't tell which change fixed it | One change, one test, then next |
+| Debugging in production | Risk of data corruption | Reproduce locally first |
 
 ## Concrete Tests
 
@@ -49,4 +51,4 @@ Before reporting the bug fixed:
 2. New test written that catches this specific bug?
 3. Root cause identified and explained (not just symptom patched)?
 4. Checked for same pattern in related code?
-5. No debug artifacts left (print statements, temporary comments, hardcoded values)?
+5. No debug artifacts left (print statements, temporary comments)?

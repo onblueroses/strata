@@ -1,54 +1,121 @@
 ---
 name: review
+tier: core
 description: >
-  Pre-commit review. Run before every git commit to catch security issues,
-  style violations, and code quality problems in staged changes. Reads the
-  full file for context, not just the diff.
+  Pre-commit code review. Checks staged changes against project constraints,
+  security issues, AI code slop, and style violations. Reads full files for
+  context, not just the diff. Automatically adds privacy checks for public repos.
+  Auto-trigger: MANDATORY before any git commit. Run this first, then commit.
 ---
 
 # Review
 
-Run this before committing changes. Read every changed file in full (not just the diff).
+Lightweight pre-commit review. Checks staged changes against project constraints and common issues.
 
-## Security
-
-- No secrets, keys, or tokens in committed files
-- No SQL injection, XSS, or command injection vectors
-- Auth checks present on protected routes
-- Sensitive data not logged or exposed in error messages
-
-**Test:** grep the diff for `sk-`, `ghp_`, `AKIA`, `Bearer `, or any 32+ char hex/base64 near a key-like variable name.
-
-## Correctness
-
-- Edge cases handled (empty input, nulls, boundary values)
-- Error paths tested - failures don't silently corrupt state
-- Types match across file boundaries (API contracts, shared interfaces)
-- No leftover debug code, TODO placeholders, or template values
-
-**Test:** any added `console.log(`, `debugger`, or `print(` in non-test files?
-
-## Maintainability
-
-- Changes are minimal - no unrelated refactors bundled in
-- New abstractions justified by multiple use sites
-- Comments explain *why*, not *what*
-- Test coverage for new behavior
-
-## Common AI Code Mistakes
-
-| Bad (AI tends to write) | Why it's bad |
-|------------------------|--------------|
-| Bare `except:` or empty `catch {}` | Silently swallows errors, hides bugs |
-| `as any` or `@ts-ignore` | Defeats type safety, creates time bombs |
-| Comments restating the code | Noise that rots when code changes |
-| Try/catch around code that cannot throw | Defensive theater, obscures real error paths |
-| Mutable default args `def f(items=[])` | Shared state across calls, classic Python bug |
-
-## Report Format
+## Usage
 
 ```
-REVIEW: [N files changed]
+/review                  # Review staged changes
+/review --all            # Review all uncommitted changes
+```
+
+## Prerequisites
+
+Check if `/verify` has passed this session. Look for `.strata/.verify-passed` marker.
+If it doesn't exist but code files were edited, tell the agent to run `/verify` first.
+
+## Instructions
+
+### 1. Get the diff
+
+```bash
+git diff --cached --stat
+git diff --cached
+```
+
+If `--all` flag, use `git diff HEAD` instead. If nothing is staged, say so and stop.
+
+### 2. Detect public repo
+
+```bash
+gh repo view --json isPrivate --jq '.isPrivate' 2>/dev/null
+```
+
+If output is `false`, apply privacy checks in Step 4a. Silent detection - don't announce it.
+
+### 3. Read constraints
+
+Read the project instruction file (CLAUDE.md or AGENTS.md) from the repo root.
+Extract constraints, style rules, and any review checklist.
+
+### 4. Check against constraints
+
+For each changed file, read the full file (not just the diff) for context.
+
+**Security:**
+- No API keys, tokens, passwords, or secrets in code
+- No `.env` contents committed
+- No `eval()` or `innerHTML` with user input
+- No SQL string concatenation
+
+**Code Quality:**
+- No `console.log` / `print()` / `dbg!()` debug statements in non-test files
+- No commented-out code blocks (>3 lines)
+- No TODO/FIXME without context
+- No obvious copy-paste errors
+
+**AI Code Slop** - check changed lines for:
+
+| Category | Pattern | Why it's bad |
+|----------|---------|--------------|
+| Structure | Single-method classes that should be functions | Over-abstraction |
+| Structure | God functions >50 lines | Unreadable, untestable |
+| Defensive theater | Bare `except:` / empty `catch {}` | Silently swallows errors |
+| Defensive theater | Try/catch around code that cannot throw | Noise |
+| Noise | Comments restating the code | Rots when code changes |
+| Noise | `// Helper function to...` wrappers | Adds indirection with no value |
+| TypeScript | `as any` casts, `@ts-ignore` | Defeats type safety |
+| Python | `.push()` / `.size()` on Python objects | Wrong language API |
+| Python | Mutable default args `def f(items=[])` | Shared state bug |
+
+**Mechanical tests (run these, don't just eyeball):**
+- **Secret grep:** `sk-`, `ghp_`, `AKIA`, `Bearer `, or 32+ char hex/base64 near key-like variable
+- **Debug grep:** `console.log(`, `console.debug(`, `print(`, `debugger` in non-test files
+- **Bare except:** `except` without a specific exception type
+- **Any cast:** `as any` or `): any`
+- **Empty catch:** `catch` block with empty body
+
+### 4a. Privacy checks (public repos only)
+
+When repo is public, grep the diff for:
+
+**[CRITICAL]** Secrets: `sk-`, `ghp_`, `ghr_`, `npm_`, `AKIA`, `AIza`, long base64 strings
+**[HIGH]** Internal IPs, hostnames, or infrastructure details
+**[HIGH]** Private project names or business identifiers
+**[MEDIUM]** Domain-revealing example data that should be generic
+
+### 4b. Run linters (if available)
+
+Detect and run project linters:
+- Python: `ruff check`, `mypy --ignore-missing-imports`
+- TypeScript/JS: `eslint`, `tsc --noEmit`
+- Rust: `cargo clippy`
+
+Report findings alongside manual checks.
+
+### 4c. Doc staleness check
+
+For each changed file, check whether changes invalidate nearby docs:
+- CLAUDE.md / AGENTS.md at root
+- README.md
+- Any docs that reference changed modules
+
+Flag stale values: port numbers, URLs, counts, architecture descriptions, deploy commands.
+
+### 5. Report
+
+```
+REVIEW: [N files changed] [public repo]
 ========================================
 
 [PASS] No issues found
@@ -64,10 +131,29 @@ Recommendation: [ready to commit / fix N issues first]
 CRITICAL = security or data loss only. Don't inflate severity.
 Clean diff = PASS. Don't invent issues to justify the review.
 
+## Good vs Bad Findings
+
+| Bad | Good |
+|-----|------|
+| "Consider adding error handling" | `[HIGH] api.ts:34 - SQL built with string concatenation` |
+| "Missing type annotations" | `[CRITICAL] config.ts:5 - API key hardcoded: sk-proj-abc...` |
+| "This could be more readable" | `[MEDIUM] utils.ts:89 - console.log('debug') in production code` |
+| "console.log in test file" | (not a finding - expected in test files) |
+
 ## Quality Self-Check
 
-Before reporting, verify:
+Before reporting:
 1. Read every changed file (not just the diff)?
-2. Checked for security issues even in "boring" changes?
-3. All findings backed by a specific rule or concrete test?
-4. Correct severity? CRITICAL = security/data loss only.
+2. Checked project instruction file for specific constraints?
+3. Security checks run even on "boring" changes?
+4. All findings backed by a specific rule or concrete test?
+5. Correct severity? CRITICAL = security/data loss only.
+
+## DO NOT
+
+- **DO NOT invent issues.** Clean diff = PASS. Normal, not suspicious.
+- **DO NOT flag test files** for debug statements. Expected there.
+- **DO NOT report style issues** not in project constraints. "More readable" is an opinion.
+- **DO NOT suggest refactoring** unrelated code. Review only the diff.
+- **DO NOT use CRITICAL** for non-security issues.
+- **DO NOT block for LOW issues.** Mention them; still recommend ready to commit.

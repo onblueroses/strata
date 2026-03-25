@@ -1,41 +1,129 @@
 ---
 name: commit
+tier: core
 description: >
-  Conventional commit message format. Use when creating any git commit to
-  ensure consistent, meaningful messages that explain why, not what.
+  Smart multi-commit. Groups uncommitted changes by logical intent and creates
+  separate atomic commits. Runs /review once across everything, then commits
+  each group in dependency order. No manual approval for grouping.
+  Auto-trigger: MANDATORY when committing work with multiple unrelated changes.
 ---
 
 # Commit
 
-## Format
+Groups uncommitted changes into logical atomic commits. One `/review` pass,
+automatic grouping, dependency-ordered commits.
+
+## Usage
 
 ```
-<type>(<scope>): <subject>
-
-<body>
+/commit                # Group and commit all uncommitted changes
+/commit --push         # Same, then push after all commits
+/commit --dry-run      # Show proposed groups without committing
 ```
 
-## Types
+## Prerequisites
 
-- **feat**: new feature or capability
-- **fix**: bug fix
-- **refactor**: restructure without behavior change
-- **docs**: documentation only
-- **test**: add or update tests
-- **chore**: build, CI, dependency updates
+Check for `.strata/.verify-passed` marker. If missing but code was edited, stop and
+tell the user to run `/verify` first.
 
-## Rules
+## Instructions
 
-- Subject line: imperative mood, lowercase, no period, under 72 chars
-- Body: explain *why*, not *what*. The diff shows what changed.
-- One logical change per commit. If you need "and" in the subject, split it.
-- Reference issue numbers when applicable
+### 1. Gather changes
+
+```bash
+git status --short
+git diff HEAD --stat
+git diff HEAD
+```
+
+If working tree is clean: say "Nothing to commit" and stop.
+
+### 2. Run /review once
+
+Invoke `/review --all`. Covers the entire diff in one pass.
+- CRITICAL issues: stop and report
+- HIGH/MEDIUM: note them but proceed
+
+### 3. Group changes by intent
+
+**Grouping heuristics (priority order):**
+
+1. **Shared purpose.** Files implementing the same feature/fix/refactor go together.
+   A `.ts` file + its `.test.ts` + related `.css` = one group.
+2. **Import dependencies.** If file B imports something new from file A, same group -
+   unless A is a shared utility touched by multiple groups.
+3. **Directory cohesion.** Same directory, same reason = one group. But config change
+   and feature change in same dir = separate.
+4. **Commit message test.** If you can't describe two files in one sentence without
+   "and", they're separate groups.
+
+**Merge when in doubt.** Over-splitting produces commits that don't compile alone.
+
+**Single-change shortcut.** If all files share one intent, make one commit.
+
+### 4. Order by dependency
+
+If commit B uses something introduced in commit A, A comes first:
+- New exports consumed by other groups
+- Schema/type changes other groups depend on
+- Config changes affecting other groups
+
+Default order: infrastructure -> libraries -> features -> tests -> docs.
+
+### 5. Commit each group
+
+```bash
+git add <file1> <file2> ...    # Stage only this group's files
+git commit -m "$(cat <<'EOF'
+Subject line here
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"
+```
+
+- Subject: imperative mood, lowercase, no period, under 72 chars
+- Body: explain *why*, not *what*. Only if subject isn't sufficient.
+- One logical change per commit
+
+Between commits, verify working tree is consistent. If staging a subset breaks
+the repo, merge those groups.
+
+### 6. Push (if --push)
+
+```bash
+git push
+```
+
+Report errors. Don't retry or force-push.
+
+### 7. Report
+
+```
+COMMIT SUMMARY
+==============
+[N] commits created
+
+1. abc1234 - Subject line (3 files)
+2. def5678 - Subject line (2 files)
+
+[Pushed to origin/branch-name]
+```
 
 ## Good vs Bad
 
-| Bad | Why | Good |
-|-----|-----|------|
-| `update code` | Says nothing useful | `fix(auth): reject expired tokens in middleware` |
-| `fix bug and add tests and refactor utils` | Three commits in one | Split into three commits |
-| `Fixed the login` | Past tense, no scope | `fix(login): handle empty password field` |
-| `refactor: make code better` | No specificity | `refactor(api): extract validation into middleware` |
+| Bad | Good |
+|-----|------|
+| `update code` | `fix(auth): reject expired tokens in middleware` |
+| `fix bug and add tests` | Two separate commits |
+| `Fixed the login` | `fix(login): handle empty password field` |
+| `misc changes` | Specific subject per commit |
+
+## DO NOT
+
+- **DO NOT ask for approval on grouping.** Fully automatic.
+- **DO NOT run /review per commit.** One pass covers everything.
+- **DO NOT create empty commits.**
+- **DO NOT force-push.**
+- **DO NOT split test files from their implementation.**
+- **DO NOT use generic messages** like "misc changes" or "updates".

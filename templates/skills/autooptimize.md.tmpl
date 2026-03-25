@@ -1,0 +1,127 @@
+---
+name: autooptimize
+tier: meta
+description: >
+  Autonomous optimization loop. Generates hypotheses, implements on isolated branches,
+  benchmarks, keeps improvements, discards regressions. Inspired by autoresearch.
+  Requires per-project config in .strata/autooptimize.toml.
+  Manual: when you want autonomous performance optimization of a codebase.
+---
+
+# Autooptimize
+
+Automated optimization loop. Hypothesis -> implement -> benchmark -> keep or discard.
+
+## Prerequisites
+
+Create `.strata/autooptimize.toml`:
+
+```toml
+[benchmark]
+command = "cargo bench"           # or "npm run bench", "pytest --benchmark-only"
+metric = "time"                   # what to optimize: "time", "memory", "size", "score"
+direction = "lower"               # "lower" = smaller is better, "higher" = bigger is better
+baseline_file = "benchmarks/baseline.json"
+
+[limits]
+max_iterations = 10               # stop after N attempts
+max_regression_pct = 5.0          # reject if metric worsens by more than 5%
+improvement_threshold_pct = 1.0   # only keep if improvement > 1%
+
+[scope]
+include = ["src/"]                # files to consider optimizing
+exclude = ["src/tests/"]          # files to never touch
+```
+
+## Step 1: Establish baseline
+
+```bash
+# Run benchmark, save results
+[benchmark.command] > baseline_output.txt
+# Parse the metric from output
+# Save as baseline value
+```
+
+## Step 2: Generate hypotheses
+
+Analyze the code in `[scope.include]` for optimization opportunities:
+
+- Hot paths (loops, frequent function calls)
+- Unnecessary allocations or copies
+- Algorithmic complexity improvements
+- Cache opportunities
+- Parallelization opportunities
+
+Rank by expected impact. Pick the top hypothesis.
+
+## Step 3: Implement on isolated branch
+
+```bash
+git checkout -b autooptimize/hypothesis-N
+```
+
+Make the change. Keep it minimal and focused - one optimization per branch.
+
+## Step 4: Benchmark
+
+```bash
+[benchmark.command] > attempt_output.txt
+```
+
+Compare against baseline:
+- If improvement > `improvement_threshold_pct`: KEEP
+- If regression > `max_regression_pct`: DISCARD
+- If within threshold: DISCARD (noise, not worth the complexity)
+
+## Step 5: Keep or discard
+
+**Keep:** Merge the branch, update baseline, log the improvement.
+**Discard:** Delete the branch, log why it was rejected.
+
+## Step 6: Loop
+
+Repeat from Step 2 until:
+- `max_iterations` reached
+- No more hypotheses above the improvement threshold
+- User interrupts
+
+## Report
+
+After the loop completes:
+
+```
+AUTOOPTIMIZE: [project name]
+========================================
+
+Iterations: 7/10
+Baseline: 145ms
+Final: 98ms (-32.4%)
+
+Kept (3):
+  #2: Replace Vec with SmallVec for short lists (+8.2%)
+  #4: Cache parsed config instead of re-reading (+15.1%)
+  #6: Parallelize independent lint rules (+12.3%)
+
+Rejected (4):
+  #1: Inline hot function (-0.3%, noise)
+  #3: Pre-allocate HashMap (+2.1% regression, hash collision increase)
+  #5: Memoize path resolution (-0.1%, noise)
+  #7: Batch file reads (+1.2% regression, memory increase)
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Optimizing without a benchmark | No way to know if it's actually faster | Always measure before and after |
+| Multiple changes per branch | Can't isolate which change helped | One optimization per branch |
+| Keeping marginal improvements | Adds complexity for < 1% gain | Set a meaningful threshold |
+| Optimizing cold paths | Low impact, same effort | Profile first, optimize hot paths |
+
+## Quality Self-Check
+
+1. Baseline established before any changes?
+2. Each optimization isolated on its own branch?
+3. Benchmarks run multiple times (not just once)?
+4. Only kept improvements above the threshold?
+5. Report includes both kept and rejected attempts?

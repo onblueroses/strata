@@ -1,0 +1,100 @@
+---
+name: n8n-mcp-tools-expert
+tier: domain
+domain: n8n
+description: >
+  Guide for using n8n MCP tools effectively. Covers tool selection, parameter formats,
+  workflow management, node search, and common integration patterns.
+  Auto-trigger: when using n8n MCP tools or integrating with n8n via MCP.
+---
+
+# n8n MCP Tools Expert
+
+Use n8n's MCP integration tools effectively.
+
+## Tool Selection Guide
+
+| Task | Tool | Key parameters |
+|------|------|----------------|
+| Search for a node type | `search_nodes` | query (node name or category) |
+| Get node details | `get_node` | name (e.g., "n8n-nodes-base.httpRequest") |
+| List workflows | `list_workflows` | active (true/false), tags |
+| Get workflow | `get_workflow` | id (workflow ID) |
+| Create workflow | `create_workflow` | name, nodes, connections |
+| Update workflow | `update_workflow` | id, nodes, connections |
+| Activate/deactivate | `activate_workflow` / `deactivate_workflow` | id |
+| Execute workflow | `execute_workflow` | id, data (optional input) |
+| Get executions | `list_executions` | workflowId, status, limit |
+
+## Node Search Patterns
+
+When searching for nodes:
+
+```
+// Search by function
+search_nodes("send email")          -> Email, Gmail, Outlook nodes
+search_nodes("database")            -> Postgres, MySQL, MongoDB, SQLite
+search_nodes("schedule")            -> Schedule Trigger, Cron
+search_nodes("transform data")      -> Set, Code, Item Lists
+
+// Search by service
+search_nodes("slack")               -> Slack node
+search_nodes("google sheets")       -> Google Sheets node
+```
+
+## Workflow Structure
+
+When creating or updating workflows, the structure is:
+
+```json
+{
+  "nodes": [
+    {
+      "name": "Node Display Name",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [250, 300],
+      "parameters": { ... }
+    }
+  ],
+  "connections": {
+    "Source Node Name": {
+      "main": [[
+        { "node": "Target Node Name", "type": "main", "index": 0 }
+      ]]
+    }
+  }
+}
+```
+
+**Rules:**
+- Node names must be unique within a workflow
+- Positions are [x, y] coordinates for canvas placement
+- Connections reference nodes by their display name
+- `main` is the default output; some nodes have multiple outputs (IF node: `[trueOutput, falseOutput]`)
+
+## Common Patterns
+
+### Create a webhook-triggered workflow
+1. Create workflow with Webhook trigger node
+2. Add processing nodes connected to webhook
+3. Activate the workflow
+4. Test with the webhook URL from the trigger node
+
+### Duplicate and modify a workflow
+1. `get_workflow` with source ID
+2. Modify the nodes/connections as needed
+3. `create_workflow` with modified data and new name
+
+### Monitor workflow health
+1. `list_executions` with `status: "error"` to find failures
+2. Investigate failed execution data
+3. Fix and re-execute if needed
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Creating workflows without testing | Errors discovered in production | Create, test with manual execution, then activate |
+| Modifying active workflows directly | Disrupts running executions | Deactivate, modify, test, reactivate |
+| Hardcoding node positions at [0,0] | Overlapping nodes, unusable canvas | Space nodes ~200px apart horizontally |
+| Not checking execution status after running | Missed errors | Always check execution result |

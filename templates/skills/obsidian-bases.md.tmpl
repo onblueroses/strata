@@ -1,0 +1,94 @@
+---
+name: obsidian-bases
+tier: domain
+domain: obsidian
+description: >
+  Create and edit Obsidian Bases (.base files) with views, filters, formulas, and
+  summaries. Covers the JSON format, column types, filter syntax, formula expressions,
+  and view configurations.
+  Manual: when working with .base files or creating database-like views of notes.
+---
+
+# Obsidian Bases
+
+Create and manage .base files for structured views of Obsidian notes.
+
+## File Format
+
+`.base` files are JSON with this structure:
+
+```json
+{
+  "name": "My Base",
+  "source": "folder:Projects",
+  "columns": [
+    { "id": "name", "type": "text", "name": "Name" },
+    { "id": "status", "type": "select", "name": "Status",
+      "options": ["active", "done", "blocked"] },
+    { "id": "priority", "type": "number", "name": "Priority" },
+    { "id": "due", "type": "date", "name": "Due Date" }
+  ],
+  "filters": [],
+  "sorts": [{ "column": "priority", "direction": "desc" }],
+  "view": "table"
+}
+```
+
+## Source Types
+
+| Source | Syntax | Notes |
+|--------|--------|-------|
+| Folder | `"folder:Projects"` | All notes in folder |
+| Tag | `"tag:#project"` | All notes with tag |
+| Link | `"link:[[Hub Note]]"` | Notes linked from a note |
+| Query | `"query:status = active"` | Dataview-style query |
+
+## Column Types
+
+| Type | Values | Notes |
+|------|--------|-------|
+| `text` | String | Default for unknown fields |
+| `number` | Integer or float | Supports formulas |
+| `date` | ISO date string | `YYYY-MM-DD` format |
+| `select` | Single value from options | Define `options` array |
+| `multiselect` | Multiple values | Array of strings |
+| `checkbox` | true/false | Renders as checkbox |
+| `link` | `[[note name]]` | Obsidian wikilink |
+
+## Filter Syntax
+
+```json
+{
+  "filters": [
+    { "column": "status", "operator": "eq", "value": "active" },
+    { "column": "priority", "operator": "gte", "value": 3 },
+    { "column": "due", "operator": "before", "value": "today" }
+  ]
+}
+```
+
+| Operator | For types | Meaning |
+|----------|-----------|---------|
+| `eq` / `neq` | All | Equal / not equal |
+| `gt` / `gte` / `lt` / `lte` | number, date | Comparison |
+| `contains` | text, multiselect | Substring or includes |
+| `empty` / `notEmpty` | All | Field presence |
+| `before` / `after` | date | Date comparison |
+
+## View Types
+
+| View | Best for |
+|------|----------|
+| `table` | Structured data, sortable columns |
+| `board` | Kanban-style, grouped by a select column |
+| `calendar` | Time-based, grouped by date column |
+| `gallery` | Visual cards with images |
+| `list` | Simple list view |
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Editing .base files as markdown | They're JSON, markdown edits break them | Edit as JSON or use Obsidian UI |
+| Huge filters with 10+ conditions | Slow, hard to debug | Split into multiple bases |
+| Not defining column types | Default text type loses sorting/filtering | Explicit types for every column |

@@ -1,9 +1,11 @@
 ---
 name: plan
+tier: core
 description: >
-  Break down implementation tasks before coding. Use before starting any
-  non-trivial feature, refactor, or multi-file change. Prevents scope creep,
-  missed edge cases, and "I'll figure it out as I go" on complex work.
+  Architecture planning for non-trivial implementations. Explores the codebase,
+  identifies constraints, and produces a phased plan. For 3+ files, creates a
+  persistent spec. Prevents scope creep and "figure it out as I go" on complex work.
+  Auto-trigger: when asked to plan, architect, or design a multi-file change.
 ---
 
 # Plan
@@ -25,22 +27,25 @@ Think before typing. A 10-minute plan prevents hours of rework.
 6. **Define done** - What must be true when complete? Tests pass, docs updated,
    no regressions, specific acceptance criteria met.
 
+**For 3+ files:** Create a persistent spec via `/spec [feature-name]` so the plan
+survives context compaction.
+
 ## Anti-Examples
 
 | Bad | Why | Better |
 |-----|-----|--------|
-| "Step 1: implement the feature" | Not a plan, just restating the goal | Break into specific file changes with acceptance criteria |
-| Planning for 2 hours on a 30-minute task | Over-planning wastes more time than under-planning | If it touches <3 files with clear requirements, just do it |
-| "We might need X later, so build it now" | Speculative complexity, root of over-engineering | Build for current requirements; refactor when the need is real |
-| Skipping the file inventory step | Discover mid-implementation that your approach conflicts with existing code | Always read before write |
-| Starting with the easy parts | Risky parts discovered late when you're committed to the approach | Address the riskiest unknown first |
+| "Step 1: implement the feature" | Restating the goal | Break into specific file changes with criteria |
+| Planning 2 hours for a 30-min task | Over-planning | If <3 files with clear requirements, just do it |
+| "We might need X later" | Speculative complexity | Build for current requirements |
+| Skipping file inventory | Conflicts discovered mid-implementation | Always read before write |
+| Starting with easy parts | Risky parts found late | Address riskiest unknown first |
 
 ## Concrete Tests
 
 - Can you explain the plan in under 2 minutes?
 - Does every step have a clear "done" signal?
-- Is the riskiest part addressed in the first 1-2 steps (not saved for last)?
-- Could you hand this plan to another developer and they'd know what to do?
+- Is the riskiest part in the first 1-2 steps?
+- Could another developer follow this plan?
 
 ## Quality Self-Check
 

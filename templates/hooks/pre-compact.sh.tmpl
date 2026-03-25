@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Pre-compact hook - runs before context window compression.
-# Saves working state so the agent can resume after compaction.
+# Pre-compact hook - saves working state so the agent can resume after compaction.
 
 set -euo pipefail
 
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 echo "Pre-compact: saving context at $TIMESTAMP"
 
-SESSIONS_DIR=".strata/sessions"
+STRATA_DIR=".strata"
+SESSIONS_DIR="$STRATA_DIR/sessions"
 
 # Save context to sessions directory if it exists
 if [ -d "$SESSIONS_DIR" ]; then
@@ -29,7 +29,7 @@ if [ -d "$SESSIONS_DIR" ]; then
         fi
 
         # Note active specs
-        SPECS_DIR=".strata/specs"
+        SPECS_DIR="$STRATA_DIR/specs"
         if [ -d "$SPECS_DIR" ]; then
             active=$(grep -rl 'Status:.*in-progress' "$SPECS_DIR" 2>/dev/null || true)
             if [ -n "$active" ]; then
@@ -41,6 +41,13 @@ if [ -d "$SESSIONS_DIR" ]; then
                 done
                 echo ""
             fi
+        fi
+
+        # Note verification status
+        if [ -f "$STRATA_DIR/.verify-passed" ]; then
+            echo "## Verification"
+            echo "Status: PASSED"
+            echo ""
         fi
     } > "$SAVE_FILE"
 

@@ -37,7 +37,8 @@ fn main() {
             domains,
             path,
             preset,
-        } => commands::init::run(Path::new(&path), name, domains, preset),
+            no_enforce,
+        } => commands::init::run(Path::new(&path), name, domains, preset, no_enforce),
         Command::Check { path } => commands::check::run(Path::new(&path)),
         Command::Lint {
             path,

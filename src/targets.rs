@@ -4,9 +4,36 @@ use crate::scanner::project_type::{Language, ProjectType};
 use minijinja::{Environment, context};
 use std::path::PathBuf;
 
-const CLAUDE_TMPL: &str = include_str!("../templates/targets/claude.md.tmpl");
-const CURSOR_TMPL: &str = include_str!("../templates/targets/cursorrules.tmpl");
-const COPILOT_TMPL: &str = include_str!("../templates/targets/copilot.md.tmpl");
+const CLAUDE_CODE_TMPL: &str = include_str!("../templates/targets/claude-code.md.tmpl");
+const OPENCODE_TMPL: &str = include_str!("../templates/targets/opencode.md.tmpl");
+const PI_TMPL: &str = include_str!("../templates/targets/pi.md.tmpl");
+
+/// How a target agent handles hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookMechanism {
+    /// Hooks defined in `.claude/settings.json`.
+    SettingsJson,
+    /// JS/TS plugin system.
+    PluginSystem,
+    /// TS extensions.
+    Extensions,
+}
+
+/// Capabilities and paths for a specific agent target.
+#[expect(
+    dead_code,
+    reason = "skill_dir, config_dir, hook_mechanism used in Phase 2 (enforcement hooks)"
+)]
+pub struct TargetCapabilities {
+    /// Where the agent reads project instructions.
+    pub instruction_file: PathBuf,
+    /// Where skills are stored for this agent.
+    pub skill_dir: PathBuf,
+    /// Agent-specific config directory.
+    pub config_dir: PathBuf,
+    /// How this agent handles hooks.
+    pub hook_mechanism: HookMechanism,
+}
 
 /// Describes where and how to write agent-specific output.
 pub struct TargetOutput {
@@ -18,28 +45,47 @@ pub struct TargetOutput {
 
 fn build_target_env() -> Result<Environment<'static>> {
     let mut env = Environment::new();
-    env.add_template("target/claude.md", CLAUDE_TMPL)?;
-    env.add_template("target/cursorrules", CURSOR_TMPL)?;
-    env.add_template("target/copilot.md", COPILOT_TMPL)?;
+    env.add_template("target/claude-code.md", CLAUDE_CODE_TMPL)?;
+    env.add_template("target/opencode.md", OPENCODE_TMPL)?;
+    env.add_template("target/pi.md", PI_TMPL)?;
     Ok(env)
 }
 
-/// Resolve an agent target to its output configuration.
-pub fn resolve_target(target: AgentTarget) -> Option<TargetOutput> {
+/// Get the capabilities for a given agent target.
+pub fn capabilities(target: AgentTarget) -> TargetCapabilities {
     match target {
-        AgentTarget::Generic => None,
-        AgentTarget::Claude => Some(TargetOutput {
-            path: PathBuf::from("CLAUDE.md"),
-            template_name: "target/claude.md",
-        }),
-        AgentTarget::Cursor => Some(TargetOutput {
-            path: PathBuf::from(".cursorrules"),
-            template_name: "target/cursorrules",
-        }),
-        AgentTarget::Copilot => Some(TargetOutput {
-            path: PathBuf::from(".github/copilot-instructions.md"),
-            template_name: "target/copilot.md",
-        }),
+        AgentTarget::ClaudeCode => TargetCapabilities {
+            instruction_file: PathBuf::from("CLAUDE.md"),
+            skill_dir: PathBuf::from("skills"),
+            config_dir: PathBuf::from(".claude"),
+            hook_mechanism: HookMechanism::SettingsJson,
+        },
+        AgentTarget::OpenCode => TargetCapabilities {
+            instruction_file: PathBuf::from("AGENTS.md"),
+            skill_dir: PathBuf::from("skills"),
+            config_dir: PathBuf::from(".opencode"),
+            hook_mechanism: HookMechanism::PluginSystem,
+        },
+        AgentTarget::Pi => TargetCapabilities {
+            instruction_file: PathBuf::from("AGENTS.md"),
+            skill_dir: PathBuf::from("skills"),
+            config_dir: PathBuf::from(".pi"),
+            hook_mechanism: HookMechanism::Extensions,
+        },
+    }
+}
+
+/// Resolve an agent target to its output configuration.
+pub fn resolve_target(target: AgentTarget) -> TargetOutput {
+    let caps = capabilities(target);
+    let template_name = match target {
+        AgentTarget::ClaudeCode => "target/claude-code.md",
+        AgentTarget::OpenCode => "target/opencode.md",
+        AgentTarget::Pi => "target/pi.md",
+    };
+    TargetOutput {
+        path: caps.instruction_file,
+        template_name,
     }
 }
 
@@ -87,31 +133,47 @@ mod tests {
     use super::*;
 
     #[test]
-    fn generic_returns_none() {
-        assert!(resolve_target(AgentTarget::Generic).is_none());
-    }
-
-    #[test]
-    fn claude_target_path() {
-        let t = resolve_target(AgentTarget::Claude).unwrap();
+    fn claude_code_target_path() {
+        let t = resolve_target(AgentTarget::ClaudeCode);
         assert_eq!(t.path, PathBuf::from("CLAUDE.md"));
     }
 
     #[test]
-    fn cursor_target_path() {
-        let t = resolve_target(AgentTarget::Cursor).unwrap();
-        assert_eq!(t.path, PathBuf::from(".cursorrules"));
+    fn opencode_target_path() {
+        let t = resolve_target(AgentTarget::OpenCode);
+        assert_eq!(t.path, PathBuf::from("AGENTS.md"));
     }
 
     #[test]
-    fn copilot_target_path() {
-        let t = resolve_target(AgentTarget::Copilot).unwrap();
-        assert_eq!(t.path, PathBuf::from(".github/copilot-instructions.md"));
+    fn pi_target_path() {
+        let t = resolve_target(AgentTarget::Pi);
+        assert_eq!(t.path, PathBuf::from("AGENTS.md"));
+    }
+
+    #[test]
+    fn claude_code_capabilities() {
+        let caps = capabilities(AgentTarget::ClaudeCode);
+        assert_eq!(caps.config_dir, PathBuf::from(".claude"));
+        assert_eq!(caps.hook_mechanism, HookMechanism::SettingsJson);
+    }
+
+    #[test]
+    fn opencode_capabilities() {
+        let caps = capabilities(AgentTarget::OpenCode);
+        assert_eq!(caps.config_dir, PathBuf::from(".opencode"));
+        assert_eq!(caps.hook_mechanism, HookMechanism::PluginSystem);
+    }
+
+    #[test]
+    fn pi_capabilities() {
+        let caps = capabilities(AgentTarget::Pi);
+        assert_eq!(caps.config_dir, PathBuf::from(".pi"));
+        assert_eq!(caps.hook_mechanism, HookMechanism::Extensions);
     }
 
     #[test]
     fn render_replaces_placeholders() {
-        let t = resolve_target(AgentTarget::Claude).unwrap();
+        let t = resolve_target(AgentTarget::ClaudeCode);
         let pt = ProjectType::unknown();
         let rendered = render_target("my-project", "Some context here", &t, &pt).unwrap();
         assert!(rendered.contains("my-project"));
@@ -120,7 +182,7 @@ mod tests {
 
     #[test]
     fn render_includes_project_type() {
-        let t = resolve_target(AgentTarget::Claude).unwrap();
+        let t = resolve_target(AgentTarget::ClaudeCode);
         let pt = ProjectType {
             language: Language::Rust,
             frameworks: vec![],
@@ -133,7 +195,7 @@ mod tests {
 
     #[test]
     fn render_omits_project_type_when_unknown() {
-        let t = resolve_target(AgentTarget::Claude).unwrap();
+        let t = resolve_target(AgentTarget::ClaudeCode);
         let pt = ProjectType::unknown();
         let rendered = render_target("test", "ctx", &t, &pt).unwrap();
         assert!(!rendered.contains("Project Type"));

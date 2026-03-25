@@ -1,6 +1,7 @@
 use crate::config::{
-    ContextConfig, DomainConfig, HooksConfig, LintConfig, MemoryConfig, Preset, ProjectConfig,
-    SessionsConfig, SkillsConfig, SpecsConfig, StrataConfig, StructureConfig, TargetsConfig,
+    AgentTarget, ContextConfig, DomainConfig, HooksConfig, LintConfig, MemoryConfig, Preset,
+    ProjectConfig, SessionsConfig, SkillsConfig, SpecsConfig, StrataConfig, StructureConfig,
+    TargetsConfig,
 };
 use crate::error::{Result, StrataError};
 use crate::templates;
@@ -14,6 +15,7 @@ pub fn run(
     name: Option<String>,
     domains: Option<Vec<String>>,
     preset: Preset,
+    no_enforce: bool,
 ) -> Result<()> {
     let path = if path == Path::new(".") {
         std::env::current_dir()?
@@ -54,11 +56,13 @@ pub fn run(
     create_directories(&path, &domain_configs)?;
 
     // Build hooks config based on preset
+    let enforce = !no_enforce;
     let hooks = match preset {
         Preset::Standard | Preset::Full => HooksConfig {
             session_start: ".strata/hooks/session-start.sh".to_string(),
             session_stop: ".strata/hooks/session-stop.sh".to_string(),
             pre_compact: ".strata/hooks/pre-compact.sh".to_string(),
+            enforce,
             ..HooksConfig::default()
         },
         Preset::Minimal => HooksConfig::default(),
@@ -94,7 +98,7 @@ pub fn run(
 
     // Preset-specific scaffolding
     if matches!(preset, Preset::Standard | Preset::Full) {
-        scaffold_standard(&path)?;
+        scaffold_standard(&path, config.hooks.enforce, &config.targets.active)?;
     }
     if preset == Preset::Full {
         scaffold_full(&path)?;
@@ -225,7 +229,7 @@ fn generate_files(
 }
 
 /// Scaffold standard preset: hooks, starter skills, MEMORY.md.
-fn scaffold_standard(root: &Path) -> Result<()> {
+fn scaffold_standard(root: &Path, enforce_hooks: bool, targets: &[AgentTarget]) -> Result<()> {
     // Hooks directory with 3 scripts
     let hooks_dir = root.join(".strata").join("hooks");
     fs::create_dir_all(&hooks_dir)?;
@@ -239,7 +243,7 @@ fn scaffold_standard(root: &Path) -> Result<()> {
 
     fs::write(
         hooks_dir.join("session-stop.sh"),
-        templates::render_session_stop_hook(),
+        templates::render_session_stop_hook(enforce_hooks)?,
     )?;
     ui::file_action("create", ".strata/hooks/session-stop.sh");
 
@@ -249,47 +253,25 @@ fn scaffold_standard(root: &Path) -> Result<()> {
     )?;
     ui::file_action("create", ".strata/hooks/pre-compact.sh");
 
-    // Starter skills
-    let review_dir = root.join("skills").join("review");
-    fs::create_dir_all(&review_dir)?;
-    fs::write(
-        review_dir.join("SKILL.md"),
-        templates::render_review_skill(),
-    )?;
-    ui::file_action("create", "skills/review/SKILL.md");
+    // Agent-specific hook wiring
+    if targets.contains(&AgentTarget::ClaudeCode) {
+        let claude_dir = root.join(".claude");
+        fs::create_dir_all(&claude_dir)?;
+        let settings_path = claude_dir.join("settings.json");
+        if !settings_path.exists() {
+            fs::write(&settings_path, templates::render_claude_code_settings())?;
+            ui::file_action("create", ".claude/settings.json");
+        }
+    }
 
-    let commit_dir = root.join("skills").join("commit");
-    fs::create_dir_all(&commit_dir)?;
-    fs::write(
-        commit_dir.join("SKILL.md"),
-        templates::render_commit_skill(),
-    )?;
-    ui::file_action("create", "skills/commit/SKILL.md");
-
-    for (name, content) in [
-        ("debug", templates::render_debug_skill()),
-        ("test", templates::render_test_skill()),
-        ("plan", templates::render_plan_skill()),
-        ("pr", templates::render_pr_skill()),
-        ("explore", templates::render_explore_skill()),
-        ("release", templates::render_release_skill()),
-        ("security", templates::render_security_skill()),
-        ("optimize", templates::render_optimize_skill()),
-        ("verify", templates::render_verify_skill()),
-        ("end", templates::render_end_skill()),
-        ("pickup", templates::render_pickup_skill()),
-        ("tidy", templates::render_tidy_skill()),
-        ("research", templates::render_research_skill()),
-        ("deploy", templates::render_deploy_skill()),
-        ("status", templates::render_status_skill()),
-        ("get-to-work", templates::render_get_to_work_skill()),
-        ("trace", templates::render_trace_skill()),
-        ("learn", templates::render_learn_skill()),
-    ] {
-        let skill_dir = root.join("skills").join(name);
-        fs::create_dir_all(&skill_dir)?;
-        fs::write(skill_dir.join("SKILL.md"), content)?;
-        ui::file_action("create", &format!("skills/{name}/SKILL.md"));
+    // Core skills via registry
+    for name in templates::core_skills() {
+        if let Some(content) = templates::render_skill(name) {
+            let skill_dir = root.join("skills").join(name);
+            fs::create_dir_all(&skill_dir)?;
+            fs::write(skill_dir.join("SKILL.md"), content)?;
+            ui::file_action("create", &format!("skills/{name}/SKILL.md"));
+        }
     }
 
     // MEMORY.md starter
@@ -319,7 +301,7 @@ fn scaffold_standard(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Scaffold full preset additions: specs dir, sessions dir.
+/// Scaffold full preset additions: specs dir, sessions dir, domain skills.
 fn scaffold_full(root: &Path) -> Result<()> {
     let specs_dir = root.join(".strata").join("specs");
     fs::create_dir_all(&specs_dir)?;
@@ -329,5 +311,66 @@ fn scaffold_full(root: &Path) -> Result<()> {
     fs::create_dir_all(&sessions_dir)?;
     ui::file_action("create", ".strata/sessions/");
 
+    // Getting started reference doc
+    let refs_dir = root.join("references");
+    let getting_started_path = refs_dir.join("getting-started.md");
+    if !getting_started_path.exists() {
+        fs::write(
+            &getting_started_path,
+            templates::render_getting_started_reference(),
+        )?;
+        ui::file_action("create", "references/getting-started.md");
+    }
+
+    // Meta skills (opt-in tooling)
+    for name in templates::meta_skills() {
+        if let Some(content) = templates::render_skill(name) {
+            let skill_dir = root.join("skills").join(name);
+            fs::create_dir_all(&skill_dir)?;
+            fs::write(skill_dir.join("SKILL.md"), content)?;
+            ui::file_action("create", &format!("skills/{name}/SKILL.md"));
+        }
+    }
+
+    // Detect project type and install matching domain skills
+    let project_type = crate::scanner::project_type::detect_project_type(root, &[]);
+    let domains = domains_for_project_type(&project_type);
+
+    for domain in domains {
+        for name in templates::domain_skills(domain) {
+            if let Some(content) = templates::render_skill(name) {
+                let skill_dir = root.join("skills").join(name);
+                fs::create_dir_all(&skill_dir)?;
+                fs::write(skill_dir.join("SKILL.md"), content)?;
+                ui::file_action("create", &format!("skills/{name}/SKILL.md"));
+            }
+        }
+    }
+
     Ok(())
+}
+
+/// Map detected project type to domain skill categories.
+fn domains_for_project_type(pt: &crate::scanner::project_type::ProjectType) -> Vec<&'static str> {
+    use crate::scanner::project_type::{Framework, Language};
+
+    let mut domains = Vec::new();
+
+    // Frontend domain: JS/TS projects with frontend frameworks
+    let has_frontend_framework = pt.frameworks.iter().any(|f| {
+        matches!(
+            f,
+            Framework::Nextjs | Framework::React | Framework::Vue | Framework::Svelte
+        )
+    });
+    if has_frontend_framework {
+        domains.push("frontend");
+    }
+
+    // Security domain: always useful for non-unknown projects
+    if pt.language != Language::Unknown {
+        domains.push("security");
+    }
+
+    domains
 }
