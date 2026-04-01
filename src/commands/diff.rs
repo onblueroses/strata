@@ -2,7 +2,6 @@ use crate::config::StrataConfig;
 use crate::error::Result;
 use crate::state;
 use crate::ui;
-// similar v2 has no Histogram variant; Patience anchors on unique lines (same intent)
 use similar::{Algorithm, ChangeTag, TextDiff};
 use std::path::Path;
 
@@ -81,9 +80,13 @@ fn print_file_diff(old: &str, new: &str) {
     let del_style = console::Style::new().red();
     let ctx_style = console::Style::new().dim();
 
-    for group in diff.grouped_ops(3) {
+    let groups = diff.grouped_ops(3);
+    for (i, group) in groups.iter().enumerate() {
+        if i > 0 {
+            println!("  {}", ctx_style.apply_to("..."));
+        }
         for op in group {
-            for change in diff.iter_changes(&op) {
+            for change in diff.iter_changes(op) {
                 let line = change.value().trim_end_matches('\n');
                 match change.tag() {
                     ChangeTag::Insert => println!("  {}", add_style.apply_to(format!("+{line}"))),

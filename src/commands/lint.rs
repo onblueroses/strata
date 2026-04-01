@@ -16,16 +16,8 @@ fn format_location(d: &Diagnostic) -> String {
 /// Print a 3-line context snippet around a violation line.
 /// Soft-fails silently if the file can't be read.
 fn print_diagnostic_context(root: &Path, location: &str, line: u32) {
-    // Strip workspace member prefix (e.g. "member/file.md" -> "file.md")
-    let file_path = if let Some((_, rest)) = location.split_once('/') {
-        // Only strip if the first component looks like a member dir (no extension)
-        let prefix = location.split('/').next().unwrap_or("");
-        if prefix.contains('.') { location } else { rest }
-    } else {
-        location
-    };
-
-    let Ok(content) = std::fs::read_to_string(root.join(file_path)) else {
+    // location is relative to root (e.g. "file.md" or "member/file.md" for workspaces)
+    let Ok(content) = std::fs::read_to_string(root.join(location)) else {
         return;
     };
 
