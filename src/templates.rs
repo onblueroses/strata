@@ -71,6 +71,9 @@ const CONTEXT_SAVE_SKILL_TMPL: &str = include_str!("../templates/skills/context-
 const BROWSER_AUTOMATION_SKILL_TMPL: &str =
     include_str!("../templates/skills/browser-automation.md.tmpl");
 const VISUALIZE_SKILL_TMPL: &str = include_str!("../templates/skills/visualize.md.tmpl");
+const EVALUATE_SKILL_TMPL: &str = include_str!("../templates/skills/evaluate.md.tmpl");
+const MYCELIUM_SKILL_TMPL: &str = include_str!("../templates/skills/mycelium.md.tmpl");
+const XBOW_SKILL_TMPL: &str = include_str!("../templates/skills/xbow.md.tmpl");
 const GETTING_STARTED_REF_TMPL: &str =
     include_str!("../templates/references/getting-started.md.tmpl");
 const CODE_QUALITY_REF_TMPL: &str = include_str!("../templates/references/code-quality.md.tmpl");
@@ -223,6 +226,9 @@ pub fn render_skill(name: &str) -> Option<String> {
         "context-save" => CONTEXT_SAVE_SKILL_TMPL,
         "browser-automation" => BROWSER_AUTOMATION_SKILL_TMPL,
         "visualize" => VISUALIZE_SKILL_TMPL,
+        "evaluate" => EVALUATE_SKILL_TMPL,
+        "mycelium" => MYCELIUM_SKILL_TMPL,
+        "xbow" => XBOW_SKILL_TMPL,
         _ => return None,
     };
     Some(content.to_string())
@@ -282,6 +288,9 @@ pub fn registered_skills() -> &'static [&'static str] {
         "context-save",
         "browser-automation",
         "visualize",
+        "evaluate",
+        "mycelium",
+        "xbow",
     ]
 }
 
@@ -333,7 +342,7 @@ pub fn domain_skills(domain: &str) -> &'static [&'static str] {
             "n8n-node-configuration",
             "n8n-mcp-tools-expert",
         ],
-        "security" => &["security-review"],
+        "security" => &["security-review", "xbow"],
         "obsidian" => &[
             "obsidian-bases",
             "obsidian-cli",
@@ -355,6 +364,8 @@ pub fn meta_skills() -> &'static [&'static str] {
         "context-save",
         "browser-automation",
         "visualize",
+        "evaluate",
+        "mycelium",
     ]
 }
 

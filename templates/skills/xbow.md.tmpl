@@ -1,0 +1,516 @@
+---
+name: xbow
+tier: domain
+description: >
+  Stack-aware security scanner. Detects project type, runs only relevant checks.
+  Auto-trigger: when user mentions security concerns, "is this safe", or code review reveals
+  potential vulnerabilities.
+---
+
+# XBOW Security Scanner
+
+Stack-aware, comprehensive security scanning. Detects your stack first, then runs only applicable checks. Covers source code, configuration, live endpoints, and server fingerprinting.
+
+## Usage
+
+```
+/xbow                    # Scan current project
+/xbow <path>             # Scan specific path
+/xbow <url>              # Scan live endpoint + source code
+/xbow --verify           # Re-run scan to confirm previous fixes
+/xbow --quick            # Secrets + config + fingerprinting only (pre-deploy fast check)
+```
+
+Arguments via `$ARGUMENTS`.
+
+## Skip Conditions
+
+- **Skip if** the target path doesn't exist or is empty
+- **Skip if** target contains only non-code files (images, fonts, data)
+- **Skip if** third-party or vendored code you don't control
+
+## Guard Clause
+
+Before starting, check `.claude/xbow-last-scan.md`. If it exists, is less than 24 hours old, and targets the same path/URL, ask: "Scan from [date] exists. Re-scan or view previous results?"
+
+## Priority Mode (--quick)
+
+Run only: Phase 0 + Phase 1 (Secrets) + Phase 2.4 (Configuration) + Phase 2.7 (Fingerprinting). Catches leaked secrets, debug mode, and server identity exposure in under 30 seconds. Skip injection, auth, crypto, dependencies, dynamic testing.
+
+---
+
+## DO NOT
+
+- **Auto-fix CRITICAL** findings without showing the user first - a broken auth fix is worse than the vulnerability
+- **Flag test files** - `test_*.py`, `*.test.ts`, `__tests__/`, `spec/` have mock credentials by design
+- **Flag `Math.random()`** unless used for tokens, session IDs, or cryptographic purposes
+- **Flag environment variables** as secrets - `process.env.API_KEY` and `os.environ["SECRET"]` are correct patterns
+- **Run `npm audit` / `pip-audit`** without checking if the tool is installed first
+- **Skip Phase 0** - running Python injection checks on a Next.js project wastes time and produces noise
+- **Report injection findings** for static export sites - there is no server runtime to exploit
+- **Ignore fingerprinting** on "clean" code that passes all other checks - headers and paths leak identity even when source is perfect
+
+---
+
+## Phase 0: Detect Stack
+
+Use Glob and Read - no agents.
+
+**Project markers:**
+
+| File | Stack |
+|------|-------|
+| `package.json` | Node.js / JS / TS |
+| `requirements.txt` / `pyproject.toml` / `setup.py` | Python |
+| `go.mod` | Go |
+| `Cargo.toml` | Rust |
+| `composer.json` | PHP |
+| `Gemfile` | Ruby |
+| `*.sln` / `*.csproj` | .NET |
+| `index.html` (no package.json) | Static HTML |
+
+Read the manifest to detect framework (Express, Next.js, Fastify, Flask, FastAPI, Django, etc.).
+
+**Infrastructure markers:**
+- `nginx.conf` / `sites-available/` → nginx reverse proxy → set `HAS_NGINX=true`
+- `Dockerfile` / `docker-compose.yml` → containerized
+- `.github/workflows/` → CI/CD
+- `terraform/` / `*.tf` → IaC
+
+**Set scan flags:**
+```
+LANG=node|python|go|rust|php|ruby|dotnet|static
+FRAMEWORK=nextjs|express|flask|fastapi|django|...
+IS_STATIC_EXPORT=true|false  (Next.js output:'export', or Astro/Vite/static)
+HAS_DB=true|false
+HAS_AUTH=true|false
+HAS_NGINX=true|false
+HAS_INFRA=true|false
+HAS_URL=true|false
+FILE_COUNT=N
+```
+
+**Tell the user before proceeding:**
+```
+Detected: Next.js 15 static export, ~37 files
+Infra: nginx (my-site.com)
+URL: https://my-site.com
+Running: fingerprinting, XSS, config, deps, dynamic headers...
+Skipping: injection (static export - no server runtime), auth (no login), DB (no database)
+```
+
+---
+
+## Phase 1: Secrets Scan
+
+Always run. Secrets appear everywhere.
+
+If you have a dedicated secrets scanner installed, run it. Otherwise, Grep for (scope to detected stack's file extensions only):
+
+- API keys/tokens: `api[_-]?key|apikey|api[_-]?secret|token\s*[:=]`
+- AWS: `AKIA[0-9A-Z]{16}|aws_access_key|aws_secret`
+- Private keys: `BEGIN.*PRIVATE KEY|BEGIN RSA|BEGIN EC`
+- Passwords in code: `password\s*[:=]\s*['"][^'"]+['"]` (exclude examples/placeholders)
+- Connection strings: `mongodb://|postgres://|mysql://|redis://|amqp://`
+
+Check `.gitignore` covers `.env` (not just `.env*.local`) and `*.pem`, `*.key`.
+
+| Stack | Extensions |
+|-------|-----------|
+| Node/JS/TS | `*.js`, `*.jsx`, `*.ts`, `*.tsx`, `*.mjs`, `*.cjs` |
+| Python | `*.py`, `*.pyi` |
+| Go | `*.go` |
+| Rust | `*.rs` |
+| PHP | `*.php` |
+| Ruby | `*.rb`, `*.erb` |
+| .NET | `*.cs`, `*.cshtml` |
+| Static | `*.html`, `*.js` |
+
+---
+
+## Phase 2: Static Analysis
+
+Run only sections relevant to detected flags.
+
+### 2.1 Injection (skip if IS_STATIC_EXPORT=true)
+
+**Node/JS/TS:**
+- SQL: string concatenation in queries `query(.*\+|execute(.*\+`
+- Command: `child_process|exec\(|eval\(`
+- NoSQL: `\$where|\$regex.*req\.`
+- Prototype pollution: `__proto__|constructor\.prototype`
+
+**Python:**
+- SQL: `f"SELECT|f'SELECT|execute(.*%|execute(.*f"`
+- Command: `os\.system|subprocess.*shell=True|eval\(`
+- SSTI: `render_template_string|Template\(`
+
+**Go:** `fmt\.Sprintf.*SELECT|Exec\(.*\+`, `exec\.Command` with user input
+
+**Note:** SQL variable validated against an explicit whitelist → flag LOW, not HIGH.
+
+### 2.2 XSS (web app with HTML output, skip if IS_STATIC_EXPORT=true)
+
+`innerHTML|outerHTML|document\.write|dangerouslySetInnerHTML|v-html` - verify each uses hardcoded content, not user input.
+
+Python templates: `\|safe`, `autoescape.*false`, `Markup\(`
+
+### 2.3 Auth (if HAS_AUTH)
+
+- Weak password hashing: `md5|sha1` near password context (SHA256 fine for data integrity, not passwords)
+- Hardcoded creds: `admin.*password|password.*123`
+- Unprotected routes: routes missing auth middleware (exclude login, register, health, static)
+- IDOR: direct object access without ownership check
+
+### 2.4 Configuration
+
+- Debug mode: `DEBUG\s*=\s*True|debug:\s*true|NODE_ENV.*development`
+- CORS wildcards: `Access-Control-Allow-Origin.*\*`
+- Missing security headers in nginx/app config
+- Sensitive files missing from `.gitignore`: `.env`, `*.pem`, `*.key`, `config.local.*`
+
+### 2.5 Cryptographic Issues
+
+- Weak algorithms: `DES|RC4` (flag MD5/SHA1 only in password/crypto context, not checksums or IDs)
+- Insecure random for security-sensitive use: `Math\.random|random\.random` in token/session/key generation
+- Hardcoded encryption keys
+
+### 2.6 Dependencies
+
+| Stack | Command |
+|-------|---------|
+| Node | `npm audit --json` |
+| Python | `pip-audit` or `pip check` |
+| Go | `govulncheck ./...` |
+| Rust | `cargo audit` |
+| Ruby | `bundle audit` |
+| .NET | `dotnet list package --vulnerable` |
+
+Check tool is installed before running. Skip with note if unavailable. Flag CRITICAL/HIGH only - ignore LOW/MODERATE in devDependencies with no runtime exposure.
+
+### 2.7 Fingerprinting & Metadata
+
+**Always run for web apps.** Server identity is low-effort reconnaissance.
+
+**Nginx config (if HAS_NGINX):** Read the active nginx config file.
+- `etag` directive absent or `etag on` → nginx defaults to `hex(mtime)-hex(size)` which reveals deployment timestamp → [LOW]
+- `server_tokens off` present but no `more_clear_headers 'Server'` → brand still leaks in header → [LOW]
+- `more_clear_headers 'Server'` absent → [LOW]
+- `more_clear_headers 'Last-Modified'` absent → [LOW]
+- `more_clear_headers 'X-Powered-By'` absent → [LOW]
+- `autoindex on` → [MEDIUM]
+
+**Next.js specifics (if FRAMEWORK=nextjs):** Read `next.config.js` / `next.config.mjs`
+- `poweredByHeader: false` absent → X-Powered-By: Next.js leaks → [LOW]
+- `productionBrowserSourceMaps: true` → full source in browser DevTools → [MEDIUM]
+- No obfuscation script and no `assetPrefix` CDN → `/_next/` paths fingerprint Next.js → [LOW]
+
+**HTML source:**
+- Generator meta tags: `<meta name="generator"` → [LOW]
+- HTML comments with framework/version: `<!-- Next.js|WordPress|generated by|built with` → [LOW]
+- `__NEXT_DATA__` in HTML: check if it contains non-public config (API URLs, feature flags, internal paths) → [MEDIUM] if yes
+
+**Source maps:**
+- `.map` files in `out/` or `public/` → [MEDIUM]
+- `.map` files referenced in JS/CSS without nginx block → [MEDIUM]
+
+---
+
+## Phase 3: Dynamic Testing (if HAS_URL)
+
+Use URL from `$ARGUMENTS`. All commands use `curl` via bash.
+
+### 3.1 Identity Headers (always run)
+
+```bash
+# These should return NO output:
+curl -sI <url> | grep -iE "^(server|x-powered-by|x-generator|x-aspnet-version|x-runtime|via|x-drupal|x-wp-):"
+
+# ETag format: hex-hex means nginx mtime leak
+curl -sI <url> | grep -i "^etag:"
+
+# Last-Modified leaks deployment time
+curl -sI <url> | grep -i "^last-modified:"
+```
+
+`Server: nginx/1.18.0` → [HIGH] (version). `Server: nginx` → [LOW] (brand). `ETag: "abc-def"` → [LOW] (mtime).
+
+### 3.2 Security Headers (always run)
+
+```bash
+curl -sI <url> | grep -iE "^(strict-transport-security|content-security-policy|x-frame-options|x-content-type-options|referrer-policy|permissions-policy):"
+```
+
+All six should be present. Flag each missing one as [MEDIUM].
+
+### 3.3 SSL/TLS
+
+```bash
+echo | openssl s_client -connect <hostname>:443 2>/dev/null | grep -E "Protocol|Cipher"
+```
+
+TLS 1.0 or 1.1 → [HIGH]. Weak ciphers (RC4, DES, EXPORT) → [HIGH]. Expired cert → [CRITICAL].
+
+### 3.4 Sensitive Paths
+
+```bash
+for path in /.git/config /.env /.env.local /backup.sql /config.php /.htaccess /admin /wp-login.php /phpinfo.php /_next/BUILD_ID /api/debug; do
+  code=$(curl -so /dev/null -w "%{http_code}" <url>$path)
+  [ "$code" != "404" ] && echo "[$code] $path"
+done
+```
+
+`200` on `/.git/config` or `/.env` → [CRITICAL]. `200` on `/_next/BUILD_ID` → [LOW] (confirms Next.js, leaks build hash).
+
+Also fetch `robots.txt` and read its content - a 200 is expected, but check if it discloses internal paths like `/admin`, `/api/`, or `/internal/`. Flag any sensitive path exposure as [LOW].
+
+### 3.5 Framework Path Fingerprints
+
+```bash
+# Unobfuscated Next.js (should 404 if obfuscated)
+curl -so /dev/null -w "%{http_code}" <url>/_next/static/
+# Obfuscated path (should 200 if using _s/ convention)
+curl -so /dev/null -w "%{http_code}" <url>/_s/static/
+
+# Source maps
+curl -so /dev/null -w "%{http_code}" <url>/_next/static/chunks/main.js.map
+
+# Other frameworks
+curl -so /dev/null -w "%{http_code}" <url>/wp-content/
+curl -so /dev/null -w "%{http_code}" <url>/__nuxt/
+```
+
+`200` on unobfuscated `/_next/` → [LOW]. `200` on source map → [MEDIUM].
+
+### 3.6 Port Exposure (if HAS_DB or HAS_NGINX)
+
+```bash
+for port in 3306 5432 6379 27017 9200 8080 8443; do
+  nc -zw2 <hostname> $port 2>/dev/null && echo "OPEN: $port"
+done
+```
+
+Any DB/cache port open to internet → [HIGH].
+
+---
+
+## Phase 4: Report and Fix
+
+### Report Format
+
+Present all findings before fixing:
+```
+FINDINGS
+--------
+[CRITICAL] .env committed to git - contains API_SECRET_KEY
+[HIGH]     dynamic: Server: nginx/1.18.0 leaks exact nginx version
+[MEDIUM]   dynamic: Content-Security-Policy header missing
+[MEDIUM]   source: productionBrowserSourceMaps enabled in next.config.mjs
+[LOW]      nginx: etag on - leaks deployment timestamp in ETag header
+[LOW]      nginx: more_clear_headers 'Server' missing
+[LOW]      source: /_next/ paths not obfuscated - fingerprints Next.js
+```
+
+Ask (via AskUserQuestion): Fix all / Fix CRITICAL+HIGH only / Review first / Custom.
+
+Priority order: CRITICAL → HIGH → MEDIUM → LOW.
+
+For each fix: (1) read the file, (2) apply fix using Fix Library below, (3) verify syntax valid.
+
+After fixes: list changes, do NOT auto-commit.
+
+---
+
+## Fix Library
+
+Use these exact implementations. Do not improvise.
+
+---
+
+### Nginx: Strip fingerprinting headers
+
+**Step 1:** Check for headers-more module:
+```bash
+apt list --installed 2>/dev/null | grep headers-more
+```
+If missing: `apt install libnginx-mod-http-headers-more-filter` (no nginx recompile needed, auto-enabled).
+
+**Step 2:** Add to each nginx `server {}` block (and any sub-location blocks that override):
+```nginx
+etag off;
+more_clear_headers 'Server';
+more_clear_headers 'Last-Modified';
+more_clear_headers 'X-Powered-By';
+more_clear_headers 'X-Generator';
+```
+
+**Step 3:** `nginx -t && systemctl reload nginx`
+
+**Verify:** `curl -sI <url> | grep -iE "server|etag|last-modified|x-powered-by"` → no output.
+
+---
+
+### Nginx: Security headers baseline
+
+```nginx
+add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+add_header X-Content-Type-Options nosniff always;
+add_header X-Frame-Options DENY always;
+add_header Referrer-Policy strict-origin-when-cross-origin always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+# CSP: customize per-site. unsafe-inline/unsafe-eval required for Three.js/GSAP.
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';" always;
+```
+
+Note: `always` is required - without it, nginx skips headers on error responses.
+
+---
+
+### Nginx: Block source maps and directory listing
+
+```nginx
+# Block .map files
+location ~* \.map$ {
+    return 404;
+}
+
+# Ensure directory listing is off (should be default but verify)
+autoindex off;
+```
+
+---
+
+### Next.js: Disable X-Powered-By and source maps
+
+In `next.config.js` / `next.config.mjs`:
+```js
+const nextConfig = {
+  poweredByHeader: false,
+  productionBrowserSourceMaps: false,
+};
+```
+
+---
+
+### Next.js static export: /_next/ path obfuscation
+
+**Why needed:** `assetPrefix` only prefixes URLs for CDN - it does not rename the `_next/` directory and does not rewrite the webpack publicPath string hardcoded in JS bundles. Only a find-replace across all output files works.
+
+Core pattern:
+1. After `next build`, walk `out/` directory
+2. Rename `out/_next/` → `out/_s/` (or chosen name)
+3. Find-replace `/_next/` → `/_s/` in all `.html`, `.js`, `.css`, `.json`, `.xml`, `.txt` files
+4. Update nginx to serve `/_s/static/` with long-cache headers instead of `/_next/static/`
+
+**package.json:**
+```json
+"build:deploy": "next build && node scripts/obfuscate-assets.mjs"
+```
+
+Always use `build:deploy` for production, never plain `build`.
+
+**Verify:**
+```bash
+curl -so /dev/null -w "%{http_code}" <url>/_next/BUILD_ID  # Must be 404
+curl -so /dev/null -w "%{http_code}" <url>/_s/static/      # Must be 200 or chunk hash
+```
+
+---
+
+### Deploy: Fix file permissions after SCP
+
+Files SCPed from Windows can arrive with `700`/`600` (owner-only). nginx runs as `www-data` and gets 403. Always run after deploying:
+
+```bash
+find /var/www/<site> -type d -exec chmod 755 {} \;
+find /var/www/<site> -type f -exec chmod 644 {} \;
+```
+
+---
+
+### Secrets: Move hardcoded values to .env
+
+1. Replace value with `process.env.VAR_NAME` or `os.environ["VAR_NAME"]`
+2. Add to `.env`
+3. Verify `.gitignore` covers `.env` (not just `.env*.local`)
+4. If already committed: rotate the secret immediately - git history persists even after removal
+
+---
+
+## Phase 5: Verify
+
+Run after fixes. Do not skip.
+
+### 5.1 Fingerprinting headers removed
+
+```bash
+curl -sI <url> | grep -iE "server|x-powered-by|x-generator|etag|last-modified"
+```
+Expected: no output.
+
+### 5.2 Security headers present
+
+```bash
+curl -sI <url> | grep -iE "strict-transport|content-security|x-frame|x-content-type|referrer|permissions"
+```
+Expected: all six lines present.
+
+### 5.3 Framework path obfuscated
+
+```bash
+curl -so /dev/null -w "%{http_code}" <url>/_next/BUILD_ID   # Must be 404
+curl -so /dev/null -w "%{http_code}" <url>/_s/static/       # Must not be 404
+```
+
+### 5.4 Source maps blocked
+
+```bash
+curl -so /dev/null -w "%{http_code}" <url>/_s/static/chunks/main.js.map
+```
+Expected: 404.
+
+### 5.5 Sensitive paths still blocked
+
+Re-run Phase 3.4 path check. All must be 404.
+
+### 5.6 Tests
+
+Run `npm test` / `pytest` / `go test ./...` if available. A security fix that breaks tests ships broken.
+
+---
+
+## Quality Self-Check
+
+Before presenting final report:
+1. **Stack-matched** - skipped injection for static exports? Auth checks when HAS_AUTH=false?
+2. **Test files excluded** - no findings from `*.test.*`, `__tests__/`, `spec/`?
+3. **Severity accurate** - secrets/injection → CRITICAL. Missing headers → MEDIUM. ETag/brand → LOW.
+4. **False positives filtered** - each finding is real? `process.env.KEY` is not a hardcoded secret.
+5. **Fix Library used** - exact nginx directives, not invented variants?
+6. **Results saved** - written to `.claude/xbow-last-scan.md`?
+
+---
+
+## Output
+
+```
+XBOW Security Scan
+==================
+Project: [path]
+Stack: [detected stack + framework]
+Files scanned: [count]
+Checks run: [list]
+Checks skipped: [list + reason]
+
+Issues Found: N | Fixed: N | Remaining: N (accepted/deferred)
+
+Fixes Applied:
+  [HIGH]   Stripped Server header via more_clear_headers (headers-more installed)
+  [MEDIUM] Added all 6 security headers to nginx
+  [LOW]    etag off in nginx - ETag header removed
+  [LOW]    /_next/ → /_s/ via scripts/obfuscate-assets.mjs + build:deploy script
+
+Tests: [pass/fail/not available]
+
+Status: SECURE | N ISSUES REMAINING
+```
