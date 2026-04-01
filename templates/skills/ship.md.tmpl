@@ -2,120 +2,210 @@
 name: ship
 tier: core
 description: >
-  Pre-publish quality gate for user-facing work. Run before deploying, releasing, or
-  sharing anything users will see. Catches interaction gaps, missing states, broken
-  flows, accessibility issues, and content problems that automated tests miss. Covers
-  web apps, CLIs, APIs, and documentation. Not a substitute for tests - this catches
-  what tests don't.
-  Auto-trigger: when deploying or publishing user-facing changes.
+  Pre-publish frontend quality gate. Catches AI slop, interaction gaps, and design
+  inconsistencies before a page goes live. References frontend-design SKILL.md as
+  the single source of truth for all rules.
+  Auto-trigger: when deploying or publishing any page/site with frontend changes.
+  Runs automatically before /deploy on frontend projects.
 ---
 
-# Ship
+# /ship - Pre-publish frontend quality gate
 
-Pre-publish audit. Catch the things automated tests miss before users find them.
+Pre-publish audit that catches AI slop, interaction gaps, and design inconsistencies
+before a page goes live. References `frontend-design` SKILL.md as the single source
+of truth for all rules - no duplication.
 
-## Step 1: Identify what's shipping
+---
 
-What type of artifact is being published?
-
-| Type | Focus areas |
-|------|-------------|
-| **Web page/app** | Visual completeness, interaction states, responsive, accessibility, loading states |
-| **API** | Error responses, validation messages, rate limiting, auth edge cases |
-| **CLI tool** | Help text, error messages, edge case inputs, exit codes |
-| **Library/package** | README accuracy, API docs, changelog, breaking changes noted |
-| **Documentation** | Links work, examples run, screenshots current, no stale information |
-
-## Step 2: State coverage audit
-
-Every interactive element must handle ALL states. Check each:
-
-### For web pages/apps
-
-| Element | States to verify |
-|---------|-----------------|
-| Buttons | default, hover, active, disabled, loading |
-| Forms | empty, valid, invalid, submitting, success, error |
-| Lists | empty state, 1 item, many items, loading, error |
-| Images | loading, loaded, broken/missing, alt text |
-| Navigation | current page indicator, all links work, mobile menu |
-| Modals/dialogs | open, close (X, escape, backdrop click), scroll content |
-
-### For APIs
-
-| Scenario | Verify |
-|----------|--------|
-| Valid input | Correct response shape and status code |
-| Invalid input | Descriptive error message, correct 4xx code |
-| Missing auth | 401 with clear message, not 500 |
-| Rate limited | 429 with retry-after header |
-| Server error | 500 with safe message (no stack traces) |
-
-### For CLIs
-
-| Scenario | Verify |
-|----------|--------|
-| No arguments | Help text or useful error |
-| `--help` | Accurate, complete, examples work |
-| Invalid arguments | Clear error message pointing to the problem |
-| Missing required input | Tells user what's missing |
-| Interrupt (Ctrl+C) | Graceful shutdown, no corrupt state |
-
-## Step 3: Content audit
-
-- **No placeholder text** - search for "lorem", "TODO", "CHANGEME", "example.com" in non-example contexts
-- **No debug artifacts** - console.log, debugger statements, test accounts, mock data
-- **Copy is complete** - no truncated sentences, no "TBD", no "[insert here]"
-- **Error messages are helpful** - tell users what happened AND what to do about it
-
-## Step 4: Edge cases
-
-Test the boundaries:
-
-- **Empty state** - what does the user see when there's no data?
-- **Long content** - does text overflow, truncate gracefully, or break layout?
-- **Rapid actions** - double-click submit, rapid navigation, race conditions
-- **Offline/slow** - what happens with no network or high latency?
-- **Permissions** - unauthorized users see appropriate messaging, not blank pages or errors
-
-## Step 5: Verdict
+## Usage
 
 ```
-SHIP: [project/feature name]
-========================================
-
-[READY] / [BLOCKED - N issues]
-
-Checked:
-  - State coverage: [N elements] x [N states] verified
-  - Content: no placeholders, no debug artifacts
-  - Edge cases: empty state, long content, rapid actions
-  - Accessibility: keyboard nav, contrast, alt text
-
-Issues (if any):
-  - [BLOCKER] Form submit button has no loading state - users can double-submit
-  - [BLOCKER] API returns stack trace on 500 errors
-  - [WARNING] Empty state for user list shows blank page instead of helpful message
+/ship <url>             # Audit a running page (default)
+/ship --codebase        # Audit source files only (no running server)
 ```
 
-**READY** = no blockers. Warnings are acceptable if documented.
-**BLOCKED** = fix blockers before shipping. Warnings don't block.
+**Argument:** `$ARGUMENTS` (URL or `--codebase`)
 
-## Anti-Examples
+---
 
-| Bad | Why | Better |
-|-----|-----|--------|
-| "Tests pass so it's ready" | Tests check code correctness, not user experience | Tests + ship audit together |
-| Checking only the happy path | Users will find every unhappy path | Check error states, empty states, edge cases |
-| Skipping mobile/responsive check | Mobile is often > 50% of traffic | Check critical flows at mobile viewport |
-| Shipping with TODOs in user-visible text | Users see your implementation notes | Search for placeholders before shipping |
-| "We'll fix it in the next release" | Users are experiencing the bug NOW | Fix blockers before shipping |
+## Skip conditions
 
-## Quality Self-Check
+Stop immediately (no audit) if ALL of these are true:
+- No `.tsx`, `.jsx`, `.astro`, `.vue`, `.svelte`, `.html`, or `.css` files were changed
+- The user says "ship as-is"
+- The change is purely backend (API routes, database, CLI)
 
-Before marking READY:
-1. Every interactive element has all required states?
-2. Error messages are user-friendly (not technical jargon)?
-3. No placeholder text, debug artifacts, or test data in production?
-4. At least one edge case tested (empty state, long content, or rapid actions)?
-5. Overall verdict reflects actual state - not optimism?
+If skipping, say: "No frontend changes detected. Skipping /ship."
+
+---
+
+## Step 0: Load rules
+
+Read `skills/frontend-design/SKILL.md` in full. This is the authoritative rule set.
+Every check in Steps 2-4 references rules by section name from that file.
+Do NOT hardcode rule lists here - if the skill changes, this command inherits the changes.
+
+---
+
+## Step 1: Before screenshots
+
+Take two screenshots via BrowserMCP (fall back to Playwright MCP if unavailable):
+
+1. **Desktop** - viewport 1440x900
+2. **Mobile** - viewport 375x812
+
+For `--codebase` mode: skip screenshots, work from source files only.
+
+Label these "BEFORE" and keep for comparison in Step 6.
+
+---
+
+## Step 2: Mechanical audit
+
+Run each sub-check against the SKILL.md rules. For each finding, record:
+- Severity: **CRITICAL** / **HIGH** / **MEDIUM** / **LOW**
+- File and line (if source available)
+- Which SKILL.md rule it violates
+
+### 2a. Typography
+- Banned fonts (Rule 1 font table)
+- Missing `tabular-nums` on aligned numbers (Rule 1 numeric typography)
+- Missing `size-adjust`/`ascent-override` on fallback `@font-face` (Rule 1 CLS prevention)
+- Light-on-dark without increased `line-height` (Rule 1 light-on-dark rule)
+
+### 2b. Color
+- Pure black `#000` or pure white `#fff` (Section 7 visual bans + Rule 2 OKLCH rules)
+- Purple/blue accents or neon gradients (Rule 2 Lila Ban)
+- Zero-chroma grays (Rule 2 OKLCH, minimum 0.005)
+- Missing tinted neutrals
+
+### 2c. Anti-patterns
+- Full Section 7 checklist (visual, typography, layout, content, external resources)
+- Full Section 7 "Cheap Sophistication Tricks" checklist
+- Unsplash URLs, generic names, fake round numbers, filler words
+
+### 2d. Interactions
+- Walk every interactive element through the 8-state table (Rule 5)
+- Missing focus-visible ring, missing disabled state, missing loading skeleton
+- Missing empty states
+
+### 2e. Responsive
+- Check 375px mobile layout (Rule 3 mobile override)
+- Asymmetric layouts without single-column fallback below `md:`
+- `h-screen` instead of `min-h-[100dvh]` (Section 3 viewport stability)
+- Container queries where `@media` is used for component-level sizing (Section 3)
+
+### 2f. Performance
+- Animated properties other than `transform`/`opacity` (Section 6)
+- Grain/noise on scrolling containers instead of fixed overlay (Section 6)
+- `z-index` spam (Section 6)
+
+### 2g. Contrast and legibility
+- Text over busy backgrounds without three-layer text-shadow (Section 8)
+- Insufficient contrast (visual check from screenshots)
+- Missing `line-height` increase for light-on-dark text
+
+---
+
+## Step 3: Design critique (holistic)
+
+Step back from mechanical checks. Review as a design director:
+
+1. **AI test** - Could this pass for a Vercel template or generic SaaS landing page? (Section 14 squint test)
+2. **Visual hierarchy** - Is there a clear reading order? Does the eye know where to go?
+3. **Emotional resonance** - Does it feel like something, or is it forgettable?
+4. **Squint test** - Squint at the screenshot. Are there distinct zones of contrast, or is it a uniform gray wash?
+
+Findings from this step are HIGH or MEDIUM severity.
+
+---
+
+## Step 4: Complexity distill
+
+Look for unnecessary complexity:
+
+1. **Redundant elements** - Two things doing the same job (duplicate CTAs, repeated explanations)
+2. **Missing progressive disclosure** - Everything shown at once when it should reveal on interaction
+3. **Visual noise** - Decorative elements that don't earn their pixel cost (Section 9: low-opacity images, invisible gradients)
+4. **Over-animation** - Motion that doesn't serve a purpose (Section 5 duration categories)
+
+Findings from this step are MEDIUM or LOW severity.
+
+---
+
+## Step 5: Fix
+
+Act on findings by severity:
+
+| Severity | Action |
+|----------|--------|
+| **CRITICAL** | Fix directly in source. These are broken states (missing focus rings, banned fonts in production, pure black on white). |
+| **HIGH** | Fix directly in source. These are quality gaps (missing interaction states, AI-tell patterns, contrast failures). |
+| **MEDIUM** | Fix if the change is safe and isolated (single file, no side effects). Otherwise flag for manual review. |
+| **LOW** | Report only. Do not fix. |
+
+After fixing, re-read every modified file to verify no regressions.
+
+---
+
+## Step 6: After screenshots
+
+Take the same two screenshots (desktop 1440x900, mobile 375x812).
+
+Compare BEFORE vs AFTER. Verify:
+- All CRITICAL/HIGH fixes are visually confirmed
+- No regressions introduced (layout shifts, broken elements, missing content)
+- Overall impression improved
+
+For `--codebase` mode: skip this step.
+
+---
+
+## Step 7: Report
+
+Output a structured report:
+
+```
+## /ship audit: [page name or URL]
+
+### Summary
+[1-2 sentence overall assessment]
+
+### Findings
+
+| # | Severity | Category | Description | File:Line | Status |
+|---|----------|----------|-------------|-----------|--------|
+| 1 | CRITICAL | Typography | Inter font in production | app/layout.tsx:12 | FIXED |
+| 2 | HIGH | Interaction | Button missing focus-visible | components/cta.tsx:45 | FIXED |
+| 3 | MEDIUM | Color | Untinted neutral gray | globals.css:8 | FLAGGED |
+| 4 | LOW | Complexity | Redundant subtitle | page.tsx:30 | REPORTED |
+
+### Design notes
+[Critique and distill observations, if any]
+
+### Before/After
+[Reference screenshots if taken]
+```
+
+---
+
+## Quality self-check
+
+Before presenting the report, verify:
+
+1. Every finding references a specific SKILL.md section or rule (not invented criteria)
+2. Every CRITICAL/HIGH finding was either fixed or has a clear reason it wasn't
+3. No fixes introduced new violations (re-read modified files)
+4. The report is actionable - every FLAGGED item has enough context to fix manually
+5. Screenshots were compared (if applicable)
+
+---
+
+## DO NOT
+
+- Duplicate rule lists from SKILL.md - reference by section name only
+- Fix LOW severity items - report them, the user decides
+- Skip the 8-state interaction walk - this catches the most common gaps
+- Run this on pages with no frontend changes
+- Invent design rules not in SKILL.md - if you think something's wrong but no rule covers it, note it in "Design notes" as an observation, not a finding
+- Take screenshots without labeling them BEFORE/AFTER

@@ -2,92 +2,100 @@
 name: trace
 tier: core
 description: >
-  Session history timeline for a topic or feature. Run when asking "what happened
-  to X?", "when did we change Y?", or "what decisions were made about Z?". Searches
-  session notes, git history, and specs to reconstruct a chronological timeline.
-  Prevents re-debating settled decisions or losing track of why something was done.
+  Entity history trace across sessions. Chronological timeline with session chains.
+  Auto-trigger: when user asks "what happened to X" or wants entity history across sessions.
 ---
 
 # Trace
 
-Reconstruct the history of a feature, decision, or topic across sessions.
+Show chronological history of an entity across sessions.
 
-## Step 1: Identify the target
+## Usage
 
-What are we tracing? Could be:
-- A feature name ("authentication", "deploy pipeline")
-- A file or module ("src/auth/", "config.rs")
-- A decision ("why did we switch to SQLite?")
-- A concept ("error handling", "caching strategy")
+```
+/trace <entity> [period]
+/trace my-project 7d          # last 7 days (default)
+/trace my-site 14d            # last 14 days
+/trace infrastructure 2026-02-11..2026-02-13  # date range
+```
 
-## Step 2: Search sources
+Arguments via `$ARGUMENTS`. First arg is entity name, second is optional period.
 
-Search these sources in parallel for mentions of the target:
+## Entity Name Resolution
 
-### 2a. Git history
+Build the entity list dynamically from your MEMORY.md Entities table. Each entity has a name (directory under `life/projects/` or `life/areas/`) and optional aliases. Match the user's input against these directory names (exact match first, then prefix match).
+
+Example pattern:
+```
+| Name       | Path                   | Aliases             |
+|------------|------------------------|---------------------|
+| my-project | life/projects/my-project | proj, mp           |
+| my-site    | life/projects/my-site  | site, frontend      |
+| infra      | life/areas/infra       | vps, server         |
+```
+
+If no match found in MEMORY.md, glob `life/{projects,areas}/*/summary.md` and try prefix matching against the directory names. If still no match, list available entities and ask.
+
+## Instructions
+
+**DO NOT:**
+- Scan ALL daily notes if the entity isn't found - ask the user first
+- Show raw JSON in the output - format it as readable timeline
+- Include sessions where the entity was only tangentially mentioned (not in entities_touched)
+- Truncate decision text - decisions with reasoning are the most valuable part of a trace
+
+### 1. Resolve entity
+
+Glob for `life/projects/*/summary.md` and `life/areas/*/summary.md`. Extract directory names from the results. Match the user's input against these directory names (exact match first, then prefix match).
+
+If no match, tell the user which entities exist and ask them to clarify.
+
+### 2. Read Recent Sessions table
+
+Read the entity's `summary.md` and extract the `## Recent Sessions` table. This gives the quick overview.
+
+### 3. Scan daily notes
+
+Parse the period argument:
+- `Nd` = last N days (default: `7d`)
+- `YYYY-MM-DD..YYYY-MM-DD` = explicit date range
+
+Glob daily notes matching `~/life/daily/YYYY-MM-DD-*.json` for each date in range. Parse each JSON file and filter by `entities_touched` - match if any entry starts with the entity path (prefix match handles both `life/projects/my-project` and `life/projects/my-project/summary.md`).
+
+For each matching note, extract: date, session_name, session_id, summary, decisions.
+
+### 4. VPS log check (optional)
+
+If the entity is infrastructure-related or the `--vps` flag is present, SSH to the VPS and check relevant logs. Replace `ENTITY_NAME` with the resolved entity directory name:
+
 ```bash
-git log --all --oneline --grep="<target>"        # commit messages
-git log --all --oneline -S "<target>"             # code changes
-git log --all --oneline -- "*<target>*"           # file path changes
+ssh root@<your-vps-ip> 'grep -ri "ENTITY_NAME" /var/log/ 2>/dev/null | tail -20'
 ```
 
-### 2b. Session notes
-Search `.strata/sessions/` for daily notes and context saves mentioning the target.
-Read the summary, decisions, and next-steps sections of matching sessions.
+Skip silently if SSH fails or returns nothing useful.
 
-### 2c. Specs
-Search `.strata/specs/` for specs related to the target. Read the Decisions table
-and Learnings section of matching specs.
+### 5. Output
 
-### 2d. Documentation
-```bash
-grep -r "<target>" PROJECT.md MEMORY.md INDEX.md
+```
+TRACE: [entity name]
+Period: [start] to [end]
+=====================================
+
+## Quick View (from Recent Sessions)
+[Table from summary.md]
+
+## Timeline
+[Date] session-name (session_id)
+  Summary: ...
+  Decisions: ...
+
+[Date] session-name (session_id)
+  Summary: ...
+  ...
+
+## Stats
+Sessions: N in period
+Last verified: YYYY-MM-DD
 ```
 
-## Step 3: Build timeline
-
-Assemble findings into a chronological timeline:
-
-```markdown
-## Trace: [target]
-Period: [earliest date] to [latest date]
-
-### Timeline
-
-| Date | Source | Event |
-|------|--------|-------|
-| 2026-02-15 | commit abc1234 | Initial implementation of [target] |
-| 2026-02-20 | session notes | Decided to switch from X to Y because [reason] |
-| 2026-03-01 | spec auth-v2 | Redesign planned, phase 1 complete |
-| 2026-03-10 | commit def5678 | Removed deprecated [target] code |
-
-### Key Decisions
-- [Date]: [Decision] - [Rationale]
-- [Date]: [Decision] - [Rationale]
-
-### Current State
-[What is the current status of this feature/topic?]
-```
-
-## Step 4: Highlight conflicts
-
-If the timeline reveals contradictory decisions or reversals, call them out:
-- "On Feb 20 we decided X, but on Mar 5 we reversed to Y. The rationale for Y was [reason]."
-- Current state should reflect the most recent decision.
-
-## Anti-Examples
-
-| Bad | Why | Better |
-|-----|-----|--------|
-| Only checking git log | Misses session decisions, spec rationale | Search all 4 sources |
-| Reporting raw grep output | Noise, not insight | Build a curated timeline |
-| Re-debating past decisions found in the trace | Decisions were made with context you may not have now | Respect past decisions unless new information invalidates them |
-| Tracing without a clear target | Too broad, returns everything | Narrow to a specific feature, file, or decision |
-
-## Quality Self-Check
-
-1. All 4 sources searched (git, sessions, specs, docs)?
-2. Timeline is chronological?
-3. Key decisions include rationale, not just "decided X"?
-4. Current state clearly stated?
-5. Contradictions or reversals explicitly noted?
+If no sessions found in the period, say so and suggest expanding the range.

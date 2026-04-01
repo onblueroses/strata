@@ -2,64 +2,45 @@
 name: learn
 tier: core
 description: >
-  Capture a pattern, insight, or gotcha mid-session before it's forgotten. Run when
-  you discover something reusable - a workaround, an architecture pattern, a tool
-  behavior, or a constraint that isn't documented. Appends to MEMORY.md so future
-  sessions benefit. Takes 30 seconds now, saves 30 minutes later.
+  Capture a pattern or insight mid-session. Appends to MEMORY.md.
+  Manual: when you notice a reusable pattern, workaround, or insight worth preserving.
 ---
 
-# Learn
+# Learn - Mid-Session Pattern Capture
 
-Persist a discovery to project memory so it's available in future sessions.
+Capture a pattern, gotcha, or insight right now before it's forgotten.
 
-## Step 1: Classify the learning
+## Steps
 
-What type of insight is this?
+1. Ask the user what they learned using AskUserQuestion:
+   - Question: "What did you just learn or notice?"
+   - Options:
+     - "Gotcha / workaround" - Something that broke and how to fix it
+     - "Tool/tech pattern" - A technique or command that works well
+     - "Architecture decision" - A choice with reasoning worth preserving
 
-| Type | Examples | Where it goes |
-|------|----------|---------------|
-| **Gotcha** | "SQLite locks on concurrent writes", "CSS Grid gap doesn't work in Safari 14" | Gotchas section |
-| **Tool behavior** | "cargo test runs in parallel by default", "Next.js caches aggressively in dev" | Tech section |
-| **Architecture decision** | "Chose SQLite over PostgreSQL because single-user, embedded" | Decisions section |
-| **Pattern** | "Use the Result type for all fallible operations", "Retry with exponential backoff" | Patterns section |
-| **Convention** | "All API routes return {data, error} shape", "Tests mirror source structure" | Conventions section |
+2. Based on their response, ask a follow-up: "Which section of MEMORY.md?" with options:
+   - "Gotchas" - Traps, bugs, workarounds
+   - "Tech" - Tools, configs, commands
+   - "Key Decisions" - Choices with reasoning
+   - "Projects" - Project-specific knowledge
 
-## Step 2: Check for duplicates
+3. Read the MEMORY.md file (located at `.claude/memory/MEMORY.md` or the path shown in your project's memory config)
 
-Read MEMORY.md. Search for keywords from the new learning. If a similar entry
-already exists:
-- If the new info contradicts it: update the existing entry
-- If the new info extends it: append to the existing entry
-- If it's a duplicate: skip
+4. Check for duplicates - search for key terms from the user's input. If a similar entry exists, update it instead of adding a new one.
 
-## Step 3: Write the entry
+5. Format the entry as a concise bullet point matching the existing style in that section:
+   - Terse, specific, include file paths and command syntax
+   - Bold the key term: `- **Thing**: explanation`
+   - Max 2-3 lines per entry
+   - No session-specific context (task details, temp state)
 
-**Format rules:**
-- One line. Two lines maximum if absolutely necessary.
-- Match the style of surrounding entries in the same section.
-- Be specific. "SQLite locks on concurrent writes in WAL mode" beats "SQLite has locking issues".
-- Include the WHY if it's not obvious. "Use `--release` for benchmarks (debug builds are 10-100x slower)".
+6. Use Edit to append the entry to the correct section of MEMORY.md.
 
-## Step 4: Append
+7. Confirm exactly what was added and where.
 
-Add the entry to the appropriate section of MEMORY.md. If the section doesn't exist,
-create it with a `##` heading.
-
-Confirm what was added and where.
-
-## Anti-Examples
-
-| Bad | Why | Better |
-|-----|-----|--------|
-| "SQLite is good" | Vague, not actionable | "SQLite WAL mode handles ~100 concurrent readers but only 1 writer" |
-| Writing a paragraph | Memory entries should be scannable | One concise line with specifics |
-| Adding without checking for duplicates | Duplicate entries waste tokens on every load | Search MEMORY.md first |
-| Capturing something already in the README | Redundant, creates drift when one is updated | Only capture what isn't documented elsewhere |
-| "Learned that tests are important" | Obvious, not project-specific | Capture surprising or non-obvious discoveries |
-
-## Quality Self-Check
-
-1. Is this actually new information (not already in MEMORY.md or README)?
-2. Would this save time in a future session?
-3. Is it specific enough to act on?
-4. Does it match the style of existing entries?
+## Rules
+- Match existing MEMORY.md style exactly (look at nearby entries)
+- Never duplicate - update existing entries if the topic already exists
+- Don't add things that belong in entity summaries (project state) or daily notes (session events)
+- This is for cross-session knowledge only

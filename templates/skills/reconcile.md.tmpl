@@ -2,130 +2,228 @@
 name: reconcile
 tier: core
 description: >
-  Deep verification of project documentation against ground truth. Run when documentation
-  feels stale, after major changes, or when /status shows drift. Compares what docs SAY
-  against what code/config/runtime ACTUALLY IS. Fixes discrepancies. More thorough than
-  /tidy - this checks semantic accuracy, not just structural integrity.
-  Manual: when documentation drift is suspected or after large refactors.
+  Deep verification of entity documentation against ground truth. Finds documentation drift.
+  Auto-trigger: when /status shows STALE entities, starting work on a stale entity, or weekly review.
 ---
 
 # Reconcile
 
-Verify documentation against ground truth. Find and fix drift between what's documented
-and what's real.
+Deep verification of entity documentation against ground truth. Finds and fixes drift.
 
-## Step 1: Identify documentation to verify
+Supports flags:
+- `--local` - skip VPS SSH checks (useful when VPS is unreachable or only local entities need checking)
+- `--entity <name>` or `--quick` - single-entity mode (see **Priority Mode** at the end)
 
-Read the project's documentation files:
-
-1. `PROJECT.md` - purpose, domains, constraints
-2. `CLAUDE.md` / `.strata/context.md` - architecture, conventions, commands
-3. `README.md` - setup, usage, features
-4. `MEMORY.md` - persistent knowledge, decisions
-5. `INDEX.md` - file map
-
-For each, note claims that can be verified: file paths, command outputs, architecture
-descriptions, feature lists, dependency versions.
-
-## Step 2: Verify against ground truth
-
-For each verifiable claim, check the actual state:
-
-### File paths and structure
-```bash
-# Check every path mentioned in docs
-# For each path in PROJECT.md, CLAUDE.md, README.md:
-ls -la <mentioned-path>           # does it exist?
-```
-
-Flag: paths that don't exist, paths that moved, new important files not mentioned.
-
-### Commands and scripts
-```bash
-# For each command documented (build, test, deploy):
-# Actually run it and compare output to what docs describe
-```
-
-Flag: commands that fail, commands with different output, undocumented commands that exist.
-
-### Architecture claims
-- Read the code structure. Does the documented architecture match?
-- Are module boundaries where docs say they are?
-- Do dependency directions match the described architecture?
-
-Flag: modules that moved, new modules not documented, removed modules still documented.
-
-### Feature lists
-- For each feature claimed in README/PROJECT.md: is it actually implemented?
-- For each implemented feature: is it documented?
-
-Flag: documented features that don't exist, features that exist but aren't documented.
-
-### Configuration
-- Are documented config options real?
-- Are there config options that aren't documented?
-- Do default values match what's documented?
-
-## Step 3: Fix discrepancies
-
-For each discrepancy found:
-
-1. **Determine which is correct** - the doc or the code. Usually the code is truth.
-2. **Update the stale artifact** - usually the documentation.
-3. **Update verification dates** - `last_verified` or `_Last updated_` timestamps.
-
-**Order of fixes:**
-1. Wrong information (actively misleading) - fix immediately
-2. Missing information (gaps) - add if important for onboarding
-3. Stale dates (cosmetic) - update after verifying content
-
-## Step 4: Report
-
-```
-RECONCILE: [project name]
-========================================
-
-Verified: N claims across M documents
-
-Fixed (N items):
-  - PROJECT.md: Updated architecture section (auth module moved to src/middleware/)
-  - README.md: Removed reference to deprecated --legacy flag
-  - CLAUDE.md: Added new test command (cargo nextest)
-
-Still accurate:
-  - Build commands
-  - File structure
-  - Core conventions
-
-Gaps found (not fixed):
-  - [LOW] New caching module undocumented - needs architecture description written
-  - [MEDIUM] Deploy procedure changed but README still has old steps
-
-Last verified: [today's date]
-```
-
-## Anti-Examples
-
-| Bad | Why | Better |
-|-----|-----|--------|
-| Trusting docs over code | Code is ground truth, docs are claims | Verify every claim against the actual system |
-| Only checking file existence | A file can exist but contain different things than documented | Check content and behavior, not just paths |
-| Updating docs without reading current content | Might overwrite recent changes by someone else | Read current doc, then update specific claims |
-| Skipping command verification | "It probably still works" - famous last words | Actually run documented commands |
-| Reconciling during active development | Chasing a moving target | Reconcile after a feature is complete |
+---
 
 ## DO NOT
 
-- Fix code to match documentation (docs follow code, not the other way around)
-- Rewrite entire documentation files when only specific claims are wrong
-- Skip the report - other contributors need to know what changed
-- Reconcile files you didn't verify - mark unverified sections explicitly
+- **DO NOT auto-fix ambiguous cases** - ask the user via AskUserQuestion. If ground truth doesn't clearly resolve a mismatch, it's ambiguous.
+- **DO NOT overwrite intentional documentation of planned (future) state** - "Service X planned" is not a mismatch just because Service X doesn't exist yet. When in doubt, ask.
+- **DO NOT update items.json unless a specific fact value changed** - a reconcile that only confirms existing facts should not touch items.json at all.
+- **DO NOT skip cross-entity checks when 2+ entities are reconciled** - step 5 is mandatory whenever multiple entities are in scope.
+- **DO NOT rewrite surrounding prose when fixing a claim** - edit only the specific incorrect value.
+
+---
+
+## Instructions
+
+### 0. Navigation integrity
+
+Check structural integrity of the navigation layer before verifying entity content. This step is fast (local filesystem only, no SSH). Run it always, even in `--entity` priority mode.
+
+**INDEX.md vs reference files:**
+- Glob `.claude/reference/*.md` (excluding INDEX.md itself)
+- Read INDEX.md, extract all doc names from the table
+- FLAG: files in directory but not in INDEX.md (missing entry)
+- FLAG: files listed in INDEX.md but not on disk (stale entry)
+
+**MEMORY.md entity table vs actual entities:**
+- Glob `life/projects/*/summary.md` and `life/areas/*/summary.md`
+- Read MEMORY.md, extract all entity names from the Entities table
+- FLAG: entities on disk but not in MEMORY.md table (missing entry)
+- FLAG: entities in MEMORY.md table but not on disk (stale entry)
+- FLAG: empty entity directories (exist in life/{projects,areas}/ but have no summary.md) - suggest cleanup via `~/to-delete/`
+
+**MEMORY.md reference doc table vs INDEX.md:**
+- MEMORY.md has an inline copy of the reference doc table. Compare it against INDEX.md.
+- FLAG: docs in INDEX.md but not in MEMORY.md table (MEMORY.md out of sync)
+- FLAG: docs in MEMORY.md table but not in INDEX.md (stale MEMORY.md entry)
+- Auto-fix: update MEMORY.md table to match INDEX.md (INDEX.md is authoritative)
+
+**Entity Local path verification:**
+- For each entity in MEMORY.md that has a Local path in the table, verify the directory exists
+- FLAG: claimed Local path that doesn't exist on disk (wrong path or repo moved/deleted)
+
+**Project CLAUDE.md existence:**
+- For each entity in MEMORY.md that has a CLAUDE.md path in the table, verify the file exists
+- FLAG: claimed CLAUDE.md that doesn't exist
+
+**Decision library:**
+- Verify `life/resources/decision-library.md` exists
+- Count entries - warn if approaching 50-entry cap
+
+**Auto-fix:** Add missing entries to INDEX.md (with placeholder "Read when" value to fill in). Add missing entities to MEMORY.md table. Flag removals for user confirmation via AskUserQuestion.
+
+---
+
+### 1. Discover entities
+
+Glob `life/{projects,areas}/*/summary.md` to find every entity. Build a list of entity paths.
+
+**Priority mode:** If `--entity <name>` is set, match only the named entity. Skip all others.
+
+### 2. Gather VPS ground truth
+
+**Skip if** `--local` flag is set or the target entity (in priority mode) has no VPS components.
+
+SSH to the VPS in a single batched session. Capture all output for comparison in step 4.
+
+```bash
+# Process and port state
+pm2 jlist
+docker ps --format '{{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || echo "no docker"
+ss -tlnp | grep -E ':(80|443|3000|3001|3002|5678|8080|8443)\b'
+
+# Nginx and auth
+nginx -T 2>/dev/null | grep -E 'server_name|listen|proxy_pass|root |auth_basic|location'
+grep -r 'auth_basic' /etc/nginx/sites-enabled/ 2>/dev/null
+
+# System services
+systemctl list-units --type=service --state=running --no-pager | grep -E 'nginx|pm2|docker|n8n|fail2ban'
+
+# Crons
+crontab -l 2>/dev/null
+
+# Key directories
+ls -la /var/www/ 2>/dev/null
+
+# Versions
+node --version 2>/dev/null
+pm2 --version 2>/dev/null
+nginx -v 2>/dev/null 2>&1
+```
+
+Use SSH directly: `ssh root@<your-vps-ip> 'commands'`. For long lists, write to a temp script, SCP over, execute remotely.
+
+### 3. Gather local ground truth
+
+Check local state for entities with local components:
+
+- **Project directories**: Do documented paths exist? (`ls` each one)
+- **Git state**: Repos clean? What branch? Unpushed commits?
+- **Claude commands/skills**: Do documented commands exist? (`ls .claude/commands/`, `.claude/skills/`)
+- **Hook scripts**: Do documented hooks still exist and match described behavior?
+
+### 4. Per-entity verification
+
+For each entity, read its `summary.md` and `items.json`. Read all entity summaries in a single parallel tool call. Compare documented claims against ground truth from steps 2-3.
+
+Focus on verifiable, falsifiable claims:
+
+| Claim type | How to verify |
+|---|---|
+| "Service X is running" | pm2 jlist / systemctl output |
+| "Port NNNN" | ss -tlnp output |
+| "Domain X routes to Y" | nginx -T output |
+| "Auth enabled/disabled" | auth_basic grep output |
+| "Version X.Y.Z" | Version command output |
+| "Cron runs at ..." | crontab -l output |
+| "Directory at /path/" | ls output |
+| "Project is at ~/projects/foo" | Local ls |
+| "Using tool X" | Local file/command check |
+
+Skip subjective claims ("~75% done") and claims requiring human judgment.
+
+### 5. Cross-entity consistency
+
+**Skip if** only 1 entity is in scope.
+
+After verifying individually, check for contradictions between entities:
+
+| Shared fact | Entities that may conflict |
+|---|---|
+| Auth status (password protection) | Site entity vs `infrastructure` |
+| PM2 process names and ports | Site entity vs `infrastructure` |
+| Service versions | Multiple entities may cite different versions |
+| Domain routing | Site entity vs `infrastructure` |
+| Deploy paths | Site entity vs `infrastructure` |
+| Cron schedules | Any entity vs `infrastructure` |
+
+For each pair referencing the same fact, compare claims. Flag disagreements.
+
+### 6. Build the report
+
+Present a single table to the user. **Save commit hashes from step 7** - include them in the report.
+
+Status values: `OK`, `MISMATCH`, `STALE` (can't verify but old), `CROSS-ENTITY` (two entities disagree).
+
+**Good vs bad report entries:**
+
+| Quality | Entry |
+|---|---|
+| Bad | `my-project / auth / wrong / MISMATCH / fixed` |
+| Good | `life/projects/my-project / "auth_basic off" (summary.md line 14) / nginx: auth_basic "Restricted" in sites-enabled/my-project / MISMATCH / Fixed in summary.md, committed abc1234` |
+| Bad | `infrastructure / port / ok / OK / -` |
+| Good | `life/areas/infrastructure / "my-project on port 3003" / pm2: port 3003 confirmed / OK / -` |
+
+### 7. Apply fixes
+
+**Auto-fix** (no user confirmation needed):
+- Clear-cut mismatches where ground truth is unambiguous (auth_basic present or absent)
+- Outdated version numbers where command output gives current version
+- Stale port numbers where ss/pm2 output is definitive
+- Cross-entity contradictions where ground truth resolves the disagreement
+
+**Flag for user** (use AskUserQuestion):
+- Ambiguous cases where ground truth doesn't clearly indicate the correct value
+- Documented "planned" state for something that doesn't exist yet
+- Any fix that would change meaning or intent of documentation
+
+When fixing, edit only the specific incorrect claim. **Save the commit hashes** - you need them for step 6's report and step 9's summary.
+
+### 8. Update last_verified
+
+For every entity checked (regardless of fixes needed), update `last_verified: YYYY-MM-DD` in summary.md.
+
+If previous date was 7+ days ago, warn: "Entity [name] last verified [date] - may have drifted."
+
+### 9. Sync and summarize
+
+Commit and push the life repo:
+
+```bash
+cd ~/life && git add -A && git diff --cached --quiet || git commit -m "Reconcile: entity verification (YYYY-MM-DD)" && git push
+```
+
+Tell the user:
+- How many entities checked
+- How many mismatches found and fixed (with commit hashes)
+- Items flagged for manual review
+- Which entities had `last_verified` updated
+
+Skip lines where nothing happened. Keep it brief.
 
 ## Quality Self-Check
 
-After reconciling:
-1. Every file path mentioned in docs verified against disk?
-2. Every documented command tested?
-3. Architecture description matches actual code structure?
-4. Verification dates updated on all checked documents?
-5. Report includes both fixes and remaining gaps?
+After building the report but before presenting it, verify:
+
+1. **Navigation integrity ran** - did Step 0 execute? Are INDEX.md and MEMORY.md entity table in sync with disk?
+2. **last_verified completeness** - did every reconciled entity get `last_verified` updated to today?
+3. **Cross-entity check ran** - if 2+ entities were in scope, did step 5 execute?
+4. **MISMATCH resolution** - is every MISMATCH finding either fixed or explicitly flagged for user review? None left unaddressed.
+5. **Commit hashes** - does the report include git commit hashes for all fixes applied?
+
+---
+
+## Priority Mode
+
+**When to use:** `--entity <name>` or `--quick` flag. Single-entity quick reconciliation.
+
+Execute steps with reduced scope:
+1. **Step 1** - discover only the target entity
+2. **Steps 2-4** - gather ground truth and verify only the target entity
+3. **Step 5** - skip (single entity, no cross-checks needed)
+4. **Steps 6-9** - report, fix, update last_verified, sync as normal
+
+**Catch mechanism:** Deferred cross-entity checks run on the next full reconcile. The entity's `last_verified` still updates, so staleness checks won't re-trigger for it.
