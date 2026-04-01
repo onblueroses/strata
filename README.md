@@ -1,8 +1,8 @@
 # strata
 
-AI workspace manager for agent-navigable project structures.
+Agent harness layer for AI-native codebases. Drop it in, get structure.
 
-strata encodes a five-layer navigation architecture and manages the full AI agent workspace: lifecycle hooks, specs, sessions, multi-agent target generation, skill evaluation, and monorepo workspaces. It scaffolds the structure, validates integrity, detects drift, and auto-repairs issues.
+strata gives AI agents a navigable workspace: five-layer navigation architecture, lifecycle hooks, specs, sessions, multi-agent target generation (Claude Code, OpenCode, Pi), skill evaluation, and monorepo support. It scaffolds the structure, validates integrity, detects drift, and auto-repairs issues.
 
 ## Quick Start
 

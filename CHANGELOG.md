@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **3 new skill templates**: `evaluate` (repo/content pattern extraction), `mycelium` (git-notes-based agent notes), `xbow` (stack-aware security scanner) - registered as meta/domain skills
+- **19 updated skill templates**: `commit`, `deep-understand`, `deploy`, `end`, `get-to-work`, `learn`, `pickup`, `reconcile`, `research`, `review`, `ship`, `spec`, `status`, `tidy`, `trace`, `verify` backported from live use with 6+ months of refinement
+- **`.gitattributes`** with `* text=auto eol=lf` to prevent CRLF/LF mismatch in templates
+
+### Changed
+- Repositioned as "agent harness layer" (README, Cargo.toml description)
+
+### Fixed
 - **miette rich error diagnostics** - `StrataError` now derives `miette::Diagnostic` with diagnostic codes and actionable help text
 - **SARIF v2.1.0 output** - `strata lint --format sarif` for CI integration (GitHub Code Scanning, VS Code)
 - **Snapshot tests** with `insta` for JSON and SARIF lint output
