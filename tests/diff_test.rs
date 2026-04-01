@@ -123,6 +123,40 @@ fn test_diff_detects_source_change() {
 }
 
 #[test]
+fn test_diff_shows_content_lines() {
+    let dir = common::temp_project();
+    setup_project(&dir);
+
+    // Generate to create state
+    let gen_result = std::process::Command::new(common::strata_bin())
+        .args(["generate"])
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to run strata generate");
+    assert!(gen_result.status.success());
+
+    // Modify a source file so generated content changes
+    fs::write(
+        dir.child("PROJECT.md").path(),
+        "# Diff Test\n\nUpdated purpose text.\n",
+    )
+    .unwrap();
+
+    let diff_result = std::process::Command::new(common::strata_bin())
+        .args(["diff"])
+        .current_dir(dir.path())
+        .output()
+        .expect("Failed to run strata diff");
+    assert!(diff_result.status.success());
+    let stdout = String::from_utf8_lossy(&diff_result.stdout);
+    // Diff content lines should appear (+ for added, - for removed)
+    assert!(
+        stdout.contains('+') || stdout.contains('-'),
+        "Should show diff lines with +/- prefixes: {stdout}"
+    );
+}
+
+#[test]
 fn test_diff_clean_after_regeneration() {
     let dir = common::temp_project();
     setup_project(&dir);

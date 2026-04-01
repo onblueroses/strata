@@ -2,6 +2,8 @@ use crate::config::StrataConfig;
 use crate::error::Result;
 use crate::state;
 use crate::ui;
+// similar v2 has no Histogram variant; Patience anchors on unique lines (same intent)
+use similar::{Algorithm, ChangeTag, TextDiff};
 use std::path::Path;
 
 pub fn run(path: &Path, target: Option<crate::config::AgentTarget>) -> Result<()> {
@@ -28,9 +30,8 @@ pub fn run(path: &Path, target: Option<crate::config::AgentTarget>) -> Result<()
                 unchanged.push(rel_path.as_str());
             }
             _ => {
-                // Changed, or new file not in previous state
                 let reason = detect_change_reason(&gen_state, rel_path, &root, &config);
-                modified.push((rel_path.as_str(), reason));
+                modified.push((rel_path.clone(), content.clone(), reason));
             }
         }
     }
@@ -40,7 +41,7 @@ pub fn run(path: &Path, target: Option<crate::config::AgentTarget>) -> Result<()
         return Ok(());
     }
 
-    for (path, reason) in &modified {
+    for (rel_path, new_content, reason) in &modified {
         let suffix = reason
             .as_ref()
             .map_or(String::new(), |r| format!(" (sources changed: {r})"));
@@ -49,10 +50,14 @@ pub fn run(path: &Path, target: Option<crate::config::AgentTarget>) -> Result<()
         println!(
             "  {} {}{}",
             action_style.apply_to("modified"),
-            path_style.apply_to(path),
+            path_style.apply_to(rel_path.as_str()),
             path_style.apply_to(&suffix)
         );
+
+        let disk_content = std::fs::read_to_string(root.join(rel_path)).unwrap_or_default();
+        print_file_diff(&disk_content, new_content);
     }
+
     for path in &unchanged {
         let action_style = console::Style::new().dim();
         println!("  {} {path}", action_style.apply_to("unchanged"));
@@ -65,6 +70,29 @@ pub fn run(path: &Path, target: Option<crate::config::AgentTarget>) -> Result<()
     ));
 
     Ok(())
+}
+
+fn print_file_diff(old: &str, new: &str) {
+    let diff = TextDiff::configure()
+        .algorithm(Algorithm::Patience)
+        .diff_lines(old, new);
+
+    let add_style = console::Style::new().green();
+    let del_style = console::Style::new().red();
+    let ctx_style = console::Style::new().dim();
+
+    for group in diff.grouped_ops(3) {
+        for op in group {
+            for change in diff.iter_changes(&op) {
+                let line = change.value().trim_end_matches('\n');
+                match change.tag() {
+                    ChangeTag::Insert => println!("  {}", add_style.apply_to(format!("+{line}"))),
+                    ChangeTag::Delete => println!("  {}", del_style.apply_to(format!("-{line}"))),
+                    ChangeTag::Equal => println!("  {}", ctx_style.apply_to(format!(" {line}"))),
+                }
+            }
+        }
+    }
 }
 
 /// Try to identify what sources changed for a modified file.

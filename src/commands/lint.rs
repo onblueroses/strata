@@ -13,6 +13,48 @@ fn format_location(d: &Diagnostic) -> String {
     }
 }
 
+/// Print a 3-line context snippet around a violation line.
+/// Soft-fails silently if the file can't be read.
+fn print_diagnostic_context(root: &Path, location: &str, line: u32) {
+    // Strip workspace member prefix (e.g. "member/file.md" -> "file.md")
+    let file_path = if let Some((_, rest)) = location.split_once('/') {
+        // Only strip if the first component looks like a member dir (no extension)
+        let prefix = location.split('/').next().unwrap_or("");
+        if prefix.contains('.') { location } else { rest }
+    } else {
+        location
+    };
+
+    let Ok(content) = std::fs::read_to_string(root.join(file_path)) else {
+        return;
+    };
+
+    let lines: Vec<&str> = content.lines().collect();
+    let zero_idx = (line as usize).saturating_sub(1);
+
+    if zero_idx >= lines.len() {
+        return;
+    }
+
+    let start = zero_idx.saturating_sub(1);
+    let end = (zero_idx + 1).min(lines.len().saturating_sub(1));
+
+    let sep_style = console::Style::new().dim();
+    let num_style = console::Style::new().cyan();
+
+    println!("    {}", sep_style.apply_to("|"));
+    for (i, text) in lines.iter().enumerate().take(end + 1).skip(start) {
+        let lineno = i + 1;
+        println!(
+            "  {} {} {}",
+            num_style.apply_to(format!("{lineno:>3}")),
+            sep_style.apply_to("|"),
+            text
+        );
+    }
+    println!("    {}", sep_style.apply_to("|"));
+}
+
 pub fn run(path: &Path, rule: Option<&str>, quiet: bool, format: OutputFormat) -> Result<()> {
     let root = StrataConfig::find_root(path)?;
     let (config, _) = StrataConfig::load(&root)?;
@@ -74,6 +116,9 @@ pub fn run(path: &Path, rule: Option<&str>, quiet: bool, format: OutputFormat) -
                     Severity::Error => ui::error(&msg),
                     Severity::Warning => ui::warning(&msg),
                     Severity::Info => ui::info(&msg),
+                }
+                if let Some(line) = d.line {
+                    print_diagnostic_context(&root, &d.location, line);
                 }
             }
             println!();
