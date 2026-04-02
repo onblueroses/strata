@@ -216,6 +216,14 @@ fn print_eval_text(result: &eval::EvalResult) {
         result.accuracy * 100.0,
         result.duration.as_secs_f64()
     );
+    // Show reliability metrics when multi-run data is available
+    if (result.pass_at_k - result.pass_hat_k).abs() > f64::EPSILON {
+        println!(
+            "  pass@k: {:.0}% (any run ok)  pass^k: {:.0}% (all runs ok)",
+            result.pass_at_k * 100.0,
+            result.pass_hat_k * 100.0,
+        );
+    }
     println!();
 
     for qr in &result.results {

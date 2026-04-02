@@ -152,6 +152,14 @@ pub struct EvalResult {
     /// Semantic judge results, if any `LlmJudge` assertions were evaluated.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub semantic_results: Vec<SemanticResult>,
+    /// pass@k: fraction of queries where at least one run succeeded.
+    /// Approaches 1.0 even for flaky skills. Only meaningful when `runs_per_query > 1`.
+    #[serde(default)]
+    pub pass_at_k: f64,
+    /// pass^k: fraction of queries where ALL runs succeeded.
+    /// Collapses toward 0.0 for flaky skills. Only meaningful when `runs_per_query > 1`.
+    #[serde(default)]
+    pub pass_hat_k: f64,
 }
 
 /// Record of one optimization iteration.

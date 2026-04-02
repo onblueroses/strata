@@ -117,6 +117,8 @@ pub fn run_optimize_loop(
                     accuracy: 0.0,
                     duration: Duration::ZERO,
                     semantic_results: Vec::new(),
+                    pass_at_k: 0.0,
+                    pass_hat_k: 0.0,
                 },
             })
             .collect();
@@ -210,6 +212,7 @@ fn truncate_display(s: &str, max: usize) -> String {
     if single_line.len() <= max {
         single_line
     } else {
-        format!("{}...", &single_line[..max])
+        let end = crate::util::snap_to_char_floor(&single_line, max);
+        format!("{}...", &single_line[..end])
     }
 }

@@ -102,11 +102,29 @@ pub fn run_eval(
 
     ui::clear_progress();
 
-    // Aggregate results
     let all_runs = results_mutex
         .into_inner()
         .map_err(|e| crate::error::StrataError::Eval(format!("Lock poisoned: {e}")))?;
 
+    Ok(aggregate_results(
+        skill_name,
+        description,
+        queries,
+        all_runs,
+        trigger_threshold,
+        start,
+    ))
+}
+
+/// Aggregate per-run results into `QueryResult`s and compute summary metrics.
+fn aggregate_results(
+    skill_name: &str,
+    description: &str,
+    queries: &[EvalQuery],
+    all_runs: Vec<Vec<crate::eval::TriggerTestResult>>,
+    trigger_threshold: f64,
+    start: Instant,
+) -> EvalResult {
     let mut query_results = Vec::with_capacity(queries.len());
 
     for (qi, runs) in all_runs.into_iter().enumerate() {
@@ -143,7 +161,20 @@ pub fn run_eval(
         0.0
     };
 
-    Ok(EvalResult {
+    // pass@k: at least one run matched expectations. pass^k: all runs matched.
+    let (mut any_ok, mut all_ok) = (0usize, 0usize);
+    for qr in &query_results {
+        let expected = qr.query.should_trigger;
+        if qr.runs.iter().any(|r| r.triggered == expected) {
+            any_ok += 1;
+        }
+        if qr.runs.iter().all(|r| r.triggered == expected) {
+            all_ok += 1;
+        }
+    }
+    let denom = total_queries.max(1) as f64;
+
+    EvalResult {
         skill_name: skill_name.to_string(),
         description: description.to_string(),
         results: query_results,
@@ -152,5 +183,7 @@ pub fn run_eval(
         accuracy,
         duration: start.elapsed(),
         semantic_results: Vec::new(),
-    })
+        pass_at_k: any_ok as f64 / denom,
+        pass_hat_k: all_ok as f64 / denom,
+    }
 }
