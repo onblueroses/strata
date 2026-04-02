@@ -2,9 +2,13 @@
 set -e
 export PATH="$HOME/.cargo/bin:$PATH"
 
-echo '+cargo nextest run'
-cargo nextest run --no-tests=pass
-echo '+cargo clippy -- -D warnings'
-cargo clippy -- -D warnings
+HOST_TARGET=$(rustc -vV | sed -n 's|host: ||p')
+
 echo '+cargo fmt -- --check'
 cargo fmt -- --check
+
+echo '+cargo clippy --all-targets -- -D warnings'
+cargo clippy --all-targets --target "$HOST_TARGET" -- -D warnings
+
+echo '+cargo nextest run'
+cargo nextest run --no-tests=pass --target "$HOST_TARGET"

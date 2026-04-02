@@ -4,6 +4,8 @@ Agent harness layer for AI-native codebases. Drop it in, get structure.
 
 strata gives AI agents a navigable workspace: five-layer navigation architecture, lifecycle hooks, specs, sessions, multi-agent target generation (Claude Code, OpenCode, Pi), skill evaluation, and monorepo support. It scaffolds the structure, validates integrity, detects drift, and auto-repairs issues.
 
+AI agents working on large codebases have no reliable way to stay oriented. They re-read the same files each session, lose state at context boundaries, and when multiple agents touch the same project they drift toward inconsistent conventions. strata gives the codebase a stable vocabulary the agent can rely on: a live index of what exists, lifecycle hooks that preserve context across resets, and structural rules that hold regardless of which agent is working or when.
+
 ## Quick Start
 
 ```bash
