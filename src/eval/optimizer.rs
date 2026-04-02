@@ -116,6 +116,7 @@ pub fn run_optimize_loop(
                     passed_queries: 0,
                     accuracy: 0.0,
                     duration: Duration::ZERO,
+                    semantic_results: Vec::new(),
                 },
             })
             .collect();

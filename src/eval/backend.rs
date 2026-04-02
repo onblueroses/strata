@@ -1,6 +1,8 @@
 use crate::config::SkillsConfig;
 use crate::error::{Result, StrataError};
-use crate::eval::{IterationRecord, QueryResult, TriggerTestResult};
+use crate::eval::{
+    Assertion, AssertionKind, IterationRecord, QueryResult, SemanticResult, TriggerTestResult,
+};
 use std::fmt::Write as _;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -30,6 +32,29 @@ pub trait EvalBackend: Send + Sync {
         false_triggers: &[QueryResult],
         history: &[IterationRecord],
     ) -> Result<String>;
+
+    /// Evaluate assertions against an LLM output.
+    ///
+    /// Deterministic kinds (`Contains`, `NotContains`, `Regex`) are evaluated
+    /// inline without any subprocess. `LlmJudge` assertions spawn a judge
+    /// subprocess call.
+    ///
+    /// Returns one `SemanticResult` per assertion, in input order.
+    ///
+    /// The default implementation returns an error; backends that do not
+    /// support judging can leave this unimplemented.
+    #[expect(dead_code, reason = "CLI wiring for assertion evaluation pending")]
+    fn judge_output(
+        &self,
+        output: &str,
+        assertions: &[Assertion],
+        timeout: Duration,
+    ) -> Result<Vec<SemanticResult>> {
+        let _ = (output, assertions, timeout);
+        Err(StrataError::Eval(
+            "judge_output not supported by this backend".to_string(),
+        ))
+    }
 }
 
 /// Create a backend from config.
@@ -229,6 +254,212 @@ impl EvalBackend for ClaudeCodeBackend {
 
         let response = String::from_utf8_lossy(&output.stdout);
         extract_new_description(&response)
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "self-contained judge: prompt build + subprocess + XML parse"
+    )]
+    fn judge_output(
+        &self,
+        output: &str,
+        assertions: &[Assertion],
+        timeout: Duration,
+    ) -> Result<Vec<SemanticResult>> {
+        // Local fn defined before statements to satisfy clippy::items_after_statements.
+        // Extracts the content between matching XML open/close tags.
+        fn extract_tag<'a>(block: &'a str, tag: &str) -> Option<&'a str> {
+            let open = format!("<{tag}>");
+            let close = format!("</{tag}>");
+            let start = block.find(&open)? + open.len();
+            let end = block.find(&close)?;
+            if end >= start {
+                Some(&block[start..end])
+            } else {
+                None
+            }
+        }
+
+        if assertions.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut results = Vec::with_capacity(assertions.len());
+
+        // Collect LlmJudge assertions; evaluate deterministic ones inline.
+        let llm_assertions: Vec<(usize, &str)> = assertions
+            .iter()
+            .enumerate()
+            .filter_map(|(i, a)| {
+                if let AssertionKind::LlmJudge(criterion) = &a.kind {
+                    Some((i, criterion.as_str()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Evaluate deterministic assertions inline (no subprocess).
+        for assertion in assertions {
+            let start = Instant::now();
+            let (passed, predicate) = match &assertion.kind {
+                AssertionKind::Contains(s) => {
+                    (output.contains(s.as_str()), format!("contains: {s}"))
+                }
+                AssertionKind::NotContains(s) => {
+                    (!output.contains(s.as_str()), format!("not_contains: {s}"))
+                }
+                AssertionKind::Regex(pattern) => {
+                    // Patterns without metacharacters are plain substring matches. For patterns
+                    // with metacharacters, strip anchors/wildcards and match the core literal.
+                    let has_meta = pattern.contains([
+                        '*', '?', '[', ']', '^', '$', '(', ')', '|', '+', '{', '}', '\\',
+                    ]);
+                    let matched = if has_meta {
+                        let stripped =
+                            pattern.trim_matches(|c| c == '^' || c == '$' || c == '*' || c == '.');
+                        if stripped.is_empty() {
+                            true
+                        } else {
+                            output.contains(stripped)
+                        }
+                    } else {
+                        output.contains(pattern.as_str())
+                    };
+                    (matched, format!("regex: {pattern}"))
+                }
+                AssertionKind::LlmJudge(_) => continue,
+            };
+            results.push(SemanticResult {
+                predicate,
+                passed,
+                justification: if passed {
+                    "deterministic check passed".to_string()
+                } else {
+                    "deterministic check failed".to_string()
+                },
+                duration: start.elapsed(),
+            });
+        }
+
+        if llm_assertions.is_empty() {
+            return Ok(results);
+        }
+
+        // Build judge prompt for LlmJudge assertions.
+        let criteria: Vec<&str> = llm_assertions.iter().map(|(_, c)| *c).collect();
+        let prompt = {
+            let mut p = String::new();
+            p.push_str(
+                "You are an impartial evaluator. Given an output and a list of criteria, \
+                 judge whether the output satisfies each criterion.\n\n",
+            );
+            p.push_str("## Output to evaluate\n\n```\n");
+            p.push_str(output);
+            p.push_str("\n```\n\n## Criteria\n\n");
+            for (i, criterion) in criteria.iter().enumerate() {
+                let _ = writeln!(p, "{}. {criterion}", i + 1);
+            }
+            p.push_str(
+                "\n## Instructions\n\n\
+                 For each criterion, decide if the output satisfies it. \
+                 Be strict: if the output only partially satisfies a criterion, mark it as not passed.\n\n\
+                 Respond with ONLY this XML structure, one <judgment> per criterion in the same order:\n\n\
+                 <judgments>\n\
+                   <judgment>\n\
+                     <predicate>exact criterion text</predicate>\n\
+                     <passed>true</passed>\n\
+                     <justification>one sentence explaining your decision</justification>\n\
+                   </judgment>\n\
+                 </judgments>\n",
+            );
+            p
+        };
+
+        let start = Instant::now();
+        let mut cmd = build_command(&self.claude_bin);
+        cmd.arg("-p")
+            .arg(&prompt)
+            .arg("--output-format")
+            .arg("text")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+
+        if let Some(ref model) = self.model {
+            cmd.arg("--model").arg(model);
+        }
+
+        cmd.env_remove("CLAUDECODE");
+        cmd.env_remove("CLAUDE_CODE_ENTRYPOINT");
+
+        let child_output = cmd
+            .output()
+            .map_err(|e| StrataError::Eval(format!("Failed to run claude for judging: {e}")))?;
+
+        let elapsed = start.elapsed();
+        if elapsed > timeout {
+            return Err(StrataError::Eval("Judge call timed out".to_string()));
+        }
+
+        if !child_output.status.success() {
+            return Err(StrataError::Eval(format!(
+                "Claude judge failed with status {}",
+                child_output.status
+            )));
+        }
+
+        // Parse XML judge response.
+        let response = String::from_utf8_lossy(&child_output.stdout);
+        let judgments_start = response.find("<judgments>").ok_or_else(|| {
+            StrataError::Eval("Judge response missing <judgments> tag".to_string())
+        })?;
+        let judgments_end = response.find("</judgments>").ok_or_else(|| {
+            StrataError::Eval("Judge response missing </judgments> tag".to_string())
+        })?;
+        let judgments_block = &response[judgments_start..judgments_end + "</judgments>".len()];
+
+        let mut llm_results: Vec<SemanticResult> = Vec::new();
+        let mut remaining = judgments_block;
+        while let Some(jstart) = remaining.find("<judgment>") {
+            let jend = remaining
+                .find("</judgment>")
+                .unwrap_or(remaining.len().saturating_sub(1));
+            let block = &remaining[jstart..jend + "</judgment>".len()];
+
+            let predicate = extract_tag(block, "predicate").unwrap_or_default();
+            let passed_str = extract_tag(block, "passed").unwrap_or_default();
+            let justification = extract_tag(block, "justification").unwrap_or_default();
+
+            llm_results.push(SemanticResult {
+                predicate: predicate.trim().to_string(),
+                passed: passed_str.trim() == "true",
+                justification: justification.trim().to_string(),
+                duration: elapsed,
+            });
+
+            remaining = &remaining[jend + "</judgment>".len()..];
+        }
+
+        if llm_results.is_empty() {
+            return Err(StrataError::Eval(
+                "Judge response contained no <judgment> blocks".to_string(),
+            ));
+        }
+
+        // Pad to match criteria count so callers always get one result per criterion.
+        while llm_results.len() < criteria.len() {
+            let criterion = criteria[llm_results.len()];
+            llm_results.push(SemanticResult {
+                predicate: criterion.to_string(),
+                passed: false,
+                justification: "judgment not returned by judge".to_string(),
+                duration: Duration::ZERO,
+            });
+        }
+
+        results.extend(llm_results);
+        Ok(results)
     }
 }
 
@@ -577,6 +808,103 @@ fn extract_new_description(response: &str) -> Result<String> {
 mod tests {
     use super::*;
 
+    // Test-only helpers that mirror the inlined logic in ClaudeCodeBackend::judge_output,
+    // kept here so unit tests can exercise them in isolation.
+
+    fn extract_xml_tag<'a>(block: &'a str, tag: &str) -> Option<&'a str> {
+        let open = format!("<{tag}>");
+        let close = format!("</{tag}>");
+        let start = block.find(&open)? + open.len();
+        let end = block.find(&close)?;
+        if end >= start {
+            Some(&block[start..end])
+        } else {
+            None
+        }
+    }
+
+    fn build_judge_prompt(output: &str, criteria: &[&str]) -> String {
+        let mut p = String::new();
+        p.push_str(
+            "You are an impartial evaluator. Given an output and a list of criteria, \
+             judge whether the output satisfies each criterion.\n\n",
+        );
+        p.push_str("## Output to evaluate\n\n```\n");
+        p.push_str(output);
+        p.push_str("\n```\n\n## Criteria\n\n");
+        for (i, criterion) in criteria.iter().enumerate() {
+            let _ = writeln!(p, "{}. {criterion}", i + 1);
+        }
+        p.push_str(
+            "\n## Instructions\n\n\
+             For each criterion, decide if the output satisfies it. \
+             Be strict: if the output only partially satisfies a criterion, mark it as not passed.\n\n\
+             Respond with ONLY this XML structure, one <judgment> per criterion in the same order:\n\n\
+             <judgments>\n\
+               <judgment>\n\
+                 <predicate>exact criterion text</predicate>\n\
+                 <passed>true</passed>\n\
+                 <justification>one sentence explaining your decision</justification>\n\
+               </judgment>\n\
+             </judgments>\n",
+        );
+        p
+    }
+
+    fn parse_judge_response(
+        response: &str,
+        criteria: &[&str],
+        per_judgment_duration: Duration,
+    ) -> Result<Vec<SemanticResult>> {
+        let judgments_start = response.find("<judgments>").ok_or_else(|| {
+            StrataError::Eval("Judge response missing <judgments> tag".to_string())
+        })?;
+        let judgments_end = response.find("</judgments>").ok_or_else(|| {
+            StrataError::Eval("Judge response missing </judgments> tag".to_string())
+        })?;
+        let judgments_block = &response[judgments_start..judgments_end + "</judgments>".len()];
+
+        let mut results = Vec::new();
+        let mut remaining = judgments_block;
+        while let Some(start) = remaining.find("<judgment>") {
+            let end = remaining
+                .find("</judgment>")
+                .unwrap_or(remaining.len().saturating_sub(1));
+            let block = &remaining[start..end + "</judgment>".len()];
+
+            let predicate = extract_xml_tag(block, "predicate").unwrap_or_default();
+            let passed_str = extract_xml_tag(block, "passed").unwrap_or_default();
+            let justification = extract_xml_tag(block, "justification").unwrap_or_default();
+
+            results.push(SemanticResult {
+                predicate: predicate.trim().to_string(),
+                passed: passed_str.trim() == "true",
+                justification: justification.trim().to_string(),
+                duration: per_judgment_duration,
+            });
+
+            remaining = &remaining[end + "</judgment>".len()..];
+        }
+
+        if results.is_empty() {
+            return Err(StrataError::Eval(
+                "Judge response contained no <judgment> blocks".to_string(),
+            ));
+        }
+
+        while results.len() < criteria.len() {
+            let criterion = criteria[results.len()];
+            results.push(SemanticResult {
+                predicate: criterion.to_string(),
+                passed: false,
+                justification: "judgment not returned by judge".to_string(),
+                duration: Duration::ZERO,
+            });
+        }
+
+        Ok(results)
+    }
+
     #[test]
     fn parse_stream_tool_use_in_assistant_message() {
         let mut parser = StreamParser::new("review");
@@ -668,5 +996,66 @@ mod tests {
         let response = format!("<new_description>{long_desc}</new_description>");
         let desc = extract_new_description(&response).unwrap();
         assert_eq!(desc.len(), 1024);
+    }
+
+    #[test]
+    fn build_judge_prompt_contains_output_and_criteria() {
+        let output = "The function calculates the sum of two integers.";
+        let criteria = &["mentions return type", "does not use jargon"];
+        let prompt = build_judge_prompt(output, criteria);
+        assert!(prompt.contains(output));
+        assert!(prompt.contains("mentions return type"));
+        assert!(prompt.contains("does not use jargon"));
+        assert!(prompt.contains("<judgments>"));
+    }
+
+    #[test]
+    fn parse_judge_response_valid_two_judgments() {
+        let response = r#"Here is my evaluation:
+<judgments>
+  <judgment>
+    <predicate>mentions return type</predicate>
+    <passed>true</passed>
+    <justification>The output explicitly describes the return type.</justification>
+  </judgment>
+  <judgment>
+    <predicate>does not use jargon</predicate>
+    <passed>false</passed>
+    <justification>Uses the term "integer" which may not be accessible to all readers.</justification>
+  </judgment>
+</judgments>"#;
+        let criteria = &["mentions return type", "does not use jargon"];
+        let results = parse_judge_response(response, criteria, Duration::from_millis(100)).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results[0].passed);
+        assert_eq!(results[0].predicate, "mentions return type");
+        assert!(!results[1].passed);
+        assert!(results[1].justification.contains("integer"));
+    }
+
+    #[test]
+    fn parse_judge_response_missing_judgments_tag() {
+        let response = "I don't understand the format.";
+        let criteria = &["some criterion"];
+        assert!(parse_judge_response(response, criteria, Duration::ZERO).is_err());
+    }
+
+    #[test]
+    fn parse_judge_response_empty_response() {
+        let response = "";
+        let criteria = &["some criterion"];
+        assert!(parse_judge_response(response, criteria, Duration::ZERO).is_err());
+    }
+
+    #[test]
+    fn parse_judge_response_pads_missing_judgments() {
+        // Only one judgment returned, but two criteria requested.
+        let response = "<judgments>\n  <judgment>\n    <predicate>first criterion</predicate>\n    <passed>true</passed>\n    <justification>ok</justification>\n  </judgment>\n</judgments>";
+        let criteria = &["first criterion", "second criterion"];
+        let results = parse_judge_response(response, criteria, Duration::ZERO).unwrap();
+        assert_eq!(results.len(), 2);
+        assert!(results[0].passed);
+        assert!(!results[1].passed); // padded with failure
+        assert_eq!(results[1].predicate, "second criterion");
     }
 }

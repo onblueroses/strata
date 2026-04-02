@@ -25,6 +25,48 @@ impl std::fmt::Display for OutputFormat {
     }
 }
 
+/// The kind of assertion to run against an LLM output.
+///
+/// Deterministic kinds (`Contains`, `NotContains`, `Regex`) are evaluated inline
+/// without any LLM call. `LlmJudge` triggers a judge subprocess.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub enum AssertionKind {
+    /// Output must contain this substring.
+    Contains(String),
+    /// Output must not contain this substring.
+    NotContains(String),
+    /// Output must match this regex pattern.
+    Regex(String),
+    /// Output must satisfy this natural-language criterion (evaluated by an LLM judge).
+    LlmJudge(String),
+}
+
+/// A single assertion against an LLM output, with an optional weight for
+/// pass-threshold scoring.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Assertion {
+    pub kind: AssertionKind,
+    /// Contribution weight for pass-threshold scoring. Defaults to 1.0.
+    #[serde(default = "default_assertion_weight")]
+    pub weight: f64,
+}
+
+fn default_assertion_weight() -> f64 {
+    1.0
+}
+
+/// Acceptable range for a stochastic benchmark metric.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BenchmarkBand {
+    /// Hard floor — fail below this.
+    pub min: f64,
+    /// Goal value.
+    pub target: f64,
+    /// Acceptable deviation from target before flagging degradation.
+    pub tolerance: f64,
+}
+
 /// A single query in an eval set.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalQuery {
@@ -35,6 +77,17 @@ pub struct EvalQuery {
     /// Optional category for grouping in reports.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
+    /// Assertions to evaluate against the output.
+    /// Deterministic kinds are free; `LlmJudge` triggers a subprocess.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub assertions: Vec<Assertion>,
+    /// Optional band for stochastic benchmark metrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub benchmark_band: Option<BenchmarkBand>,
+    /// Fraction of weighted assertions that must pass (0.0..=1.0).
+    /// Defaults to 1.0 (all assertions must pass) when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pass_threshold: Option<f64>,
 }
 
 /// Result of testing a single query once.
@@ -73,6 +126,19 @@ pub struct QueryResult {
     pub runs: Vec<TriggerTestResult>,
 }
 
+/// Result of a single LLM judge assertion against an output.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticResult {
+    /// The natural-language criterion that was judged.
+    pub predicate: String,
+    /// Whether the output satisfied the criterion.
+    pub passed: bool,
+    /// Judge's explanation (first-class output, not discarded).
+    pub justification: String,
+    /// How long the judge call took.
+    pub duration: Duration,
+}
+
 /// Full eval result across all queries.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalResult {
@@ -83,6 +149,9 @@ pub struct EvalResult {
     pub passed_queries: usize,
     pub accuracy: f64,
     pub duration: Duration,
+    /// Semantic judge results, if any `LlmJudge` assertions were evaluated.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub semantic_results: Vec<SemanticResult>,
 }
 
 /// Record of one optimization iteration.
@@ -105,6 +174,47 @@ pub struct OptimizeResult {
     pub baseline_test: EvalResult,
 }
 
+/// Emit warnings for suspicious `EvalQuery` configurations.
+///
+/// These are not hard errors — a misconfigured query still runs — but the
+/// warnings surface likely mistakes at load time rather than silently producing
+/// wrong results.
+pub fn validate_eval_query(query: &EvalQuery, index: usize) {
+    let label = query
+        .category
+        .as_deref()
+        .unwrap_or(&query.query[..query.query.len().min(40)]);
+
+    if let Some(band) = &query.benchmark_band {
+        if band.min > band.target {
+            eprintln!(
+                "warn: eval query {index} ({label:?}): benchmark_band.min ({}) > target ({}) — likely misconfigured",
+                band.min, band.target
+            );
+        }
+        if band.tolerance <= 0.0 {
+            eprintln!(
+                "warn: eval query {index} ({label:?}): benchmark_band.tolerance ({}) must be > 0",
+                band.tolerance
+            );
+        }
+    }
+
+    if !query.assertions.is_empty() && !query.should_trigger {
+        eprintln!(
+            "warn: eval query {index} ({label:?}): has assertions but should_trigger=false — assertions are only evaluated when the skill fires"
+        );
+    }
+
+    if let Some(threshold) = query.pass_threshold {
+        if threshold <= 0.0 || threshold > 1.0 {
+            eprintln!(
+                "warn: eval query {index} ({label:?}): pass_threshold ({threshold}) must be in (0.0, 1.0]"
+            );
+        }
+    }
+}
+
 /// Load and validate an eval set from a JSON file.
 pub fn load_eval_set(path: &Path) -> Result<Vec<EvalQuery>> {
     let content = std::fs::read_to_string(path).map_err(|e| {
@@ -121,6 +231,9 @@ pub fn load_eval_set(path: &Path) -> Result<Vec<EvalQuery>> {
     })?;
     if queries.is_empty() {
         return Err(StrataError::Eval("Eval set is empty".to_string()));
+    }
+    for (i, query) in queries.iter().enumerate() {
+        validate_eval_query(query, i);
     }
     Ok(queries)
 }
@@ -171,6 +284,9 @@ mod tests {
                 query: format!("query {i}"),
                 should_trigger: i % 2 == 0,
                 category: None,
+                assertions: Vec::new(),
+                benchmark_band: None,
+                pass_threshold: None,
             })
             .collect()
     }
@@ -233,5 +349,133 @@ mod tests {
         let queries = load_eval_set(&path).unwrap();
         assert_eq!(queries.len(), 1);
         assert!(queries[0].should_trigger);
+    }
+
+    #[test]
+    fn eval_query_minimal_json_deserializes_with_defaults() {
+        let json = r#"[{"query": "review my code", "should_trigger": true}]"#;
+        let queries: Vec<EvalQuery> = serde_json::from_str(json).unwrap();
+        assert_eq!(queries.len(), 1);
+        assert!(queries[0].assertions.is_empty());
+        assert!(queries[0].benchmark_band.is_none());
+        assert!(queries[0].pass_threshold.is_none());
+    }
+
+    #[test]
+    fn eval_query_with_contains_assertion() {
+        let json = r#"[{
+            "query": "write a function",
+            "should_trigger": true,
+            "assertions": [{"kind": {"Contains": "def "}}]
+        }]"#;
+        let queries: Vec<EvalQuery> = serde_json::from_str(json).unwrap();
+        assert_eq!(queries[0].assertions.len(), 1);
+        assert_eq!(
+            queries[0].assertions[0].kind,
+            AssertionKind::Contains("def ".to_string())
+        );
+        assert!((queries[0].assertions[0].weight - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn eval_query_with_benchmark_band() {
+        let json = r#"[{
+            "query": "trigger test",
+            "should_trigger": true,
+            "benchmark_band": {"min": 0.7, "target": 0.85, "tolerance": 0.05}
+        }]"#;
+        let queries: Vec<EvalQuery> = serde_json::from_str(json).unwrap();
+        let band = queries[0].benchmark_band.as_ref().unwrap();
+        assert!((band.min - 0.7).abs() < f64::EPSILON);
+        assert!((band.target - 0.85).abs() < f64::EPSILON);
+        assert!((band.tolerance - 0.05).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn eval_query_with_pass_threshold_and_llm_judge() {
+        let json = r#"[{
+            "query": "explain the bug",
+            "should_trigger": true,
+            "pass_threshold": 0.67,
+            "assertions": [
+                {"kind": {"NotContains": "I don't know"}, "weight": 2.0},
+                {"kind": {"LlmJudge": "identifies a specific cause"}, "weight": 1.0}
+            ]
+        }]"#;
+        let queries: Vec<EvalQuery> = serde_json::from_str(json).unwrap();
+        assert!((queries[0].pass_threshold.unwrap() - 0.67).abs() < f64::EPSILON);
+        assert_eq!(queries[0].assertions.len(), 2);
+        assert_eq!(
+            queries[0].assertions[0].kind,
+            AssertionKind::NotContains("I don't know".to_string())
+        );
+        assert!((queries[0].assertions[0].weight - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn eval_query_roundtrip_preserves_fields() {
+        let original = EvalQuery {
+            query: "test query".to_string(),
+            should_trigger: true,
+            category: Some("direct".to_string()),
+            assertions: vec![
+                Assertion {
+                    kind: AssertionKind::Contains("foo".to_string()),
+                    weight: 1.5,
+                },
+                Assertion {
+                    kind: AssertionKind::LlmJudge("is helpful".to_string()),
+                    weight: 2.0,
+                },
+            ],
+            benchmark_band: Some(BenchmarkBand {
+                min: 0.6,
+                target: 0.8,
+                tolerance: 0.1,
+            }),
+            pass_threshold: Some(0.75),
+        };
+
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: EvalQuery = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(restored.query, original.query);
+        assert_eq!(restored.assertions.len(), 2);
+        assert_eq!(
+            restored.assertions[1].kind,
+            AssertionKind::LlmJudge("is helpful".to_string())
+        );
+        assert!((restored.pass_threshold.unwrap() - 0.75).abs() < f64::EPSILON);
+        let band = restored.benchmark_band.unwrap();
+        assert!((band.min - 0.6).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn split_eval_set_preserves_new_fields() {
+        let queries: Vec<EvalQuery> = (0..10)
+            .map(|i| EvalQuery {
+                query: format!("query {i}"),
+                should_trigger: i % 2 == 0,
+                category: None,
+                assertions: vec![Assertion {
+                    kind: AssertionKind::Contains(format!("token{i}")),
+                    weight: 1.0,
+                }],
+                benchmark_band: Some(BenchmarkBand {
+                    min: 0.5,
+                    target: 0.8,
+                    tolerance: 0.05,
+                }),
+                pass_threshold: Some(0.75),
+            })
+            .collect();
+
+        let (train, test) = split_eval_set(&queries, 0.4, 42);
+
+        for q in train.iter().chain(test.iter()) {
+            assert_eq!(q.assertions.len(), 1);
+            assert!(q.benchmark_band.is_some());
+            assert_eq!(q.pass_threshold, Some(0.75));
+        }
     }
 }

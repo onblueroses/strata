@@ -151,5 +151,6 @@ pub fn run_eval(
         passed_queries,
         accuracy,
         duration: start.elapsed(),
+        semantic_results: Vec::new(),
     })
 }
