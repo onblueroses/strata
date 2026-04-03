@@ -72,7 +72,7 @@ You may run multiple Claude Code instances simultaneously. Spec files must not c
    - **If you just exited plan mode:** skip - exploration is already done. Use what's in context.
    - **If `/spec` was invoked directly:** read the relevant files now. Understand what files will be touched, the current architecture, and any constraints.
 
-2b. **Check decision library.** Grep `life/resources/decision-library.md` for the feature domain. If past decisions are relevant, pass them to the Plan subagent in step 3.
+2b. **Check decision library.** Grep `$STRATA_KB/resources/decision-library.md` for the feature domain. If past decisions are relevant, pass them to the Plan subagent in step 3.
 
 2c. **Surface ambiguities (optional).** If the goal is ambiguous or the codebase has multiple valid paths, surface 2-4 clarifying questions via AskUserQuestion BEFORE delegating to Opus. Skip when the path is clear.
 

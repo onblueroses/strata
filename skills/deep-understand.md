@@ -62,7 +62,7 @@ Do this yourself, directly, before spawning any agents. This phase should take s
    - Exclude: `node_modules/`, `.git/`, `dist/`, `build/`, `.obsidian/`, `__pycache__/`, `.next/`
    - Count the remaining files
 
-3. **Classify project size** using the **Project Size** system in `.claude/reference/tier-classification.md`:
+3. **Classify project size**:
    - **Small:** < 30 files
    - **Medium:** 30-200 files
    - **Large:** 200+ files
@@ -113,7 +113,7 @@ Every agent uses `subagent_type: "Explore"`. **Permission profile: Explorer** (R
 **Observability:** After each batch completes, append one log entry per agent to `.claude/agent-log.jsonl`:
 `{"timestamp":"[ISO]","command":"/deep-understand","agent_type":"Explore","model":"[haiku|sonnet]","purpose":"[focus area]","duration_estimate":"[fast|medium]","outcome":"[success|error]","session_id":"[id]"}`
 
-Agent count and model by size (see `.claude/reference/tier-classification.md` for full details):
+Agent count and model by size:
 
 - **Small:** Launch all 3 agents in a single parallel message.
 - **Medium:** Launch in 2 batches - first 3, wait for results, then remaining 2.

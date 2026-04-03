@@ -62,7 +62,7 @@ The three-pass structure replaces Phase 0 (Assess Complexity), Phase 1 (Decompos
 
 ### Phase 0: Assess Complexity (no agents)
 
-Before spawning anything, classify the question using the **Research Complexity** system in `.claude/reference/tier-classification.md`. Read that doc for tier definitions, classification patterns, and override flags (`--quick`, `--deep`).
+Before spawning anything, classify the question complexity. Override with `--quick` (force simple) or `--deep` (force complex). Default classification: Simple (direct lookup, 1-3 searches), Moderate (multi-faceted, 2-3 agents), Complex (deep topic, 4-5 agents).
 
 ---
 

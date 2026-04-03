@@ -17,15 +17,15 @@ Arguments via `$ARGUMENTS`.
 - **No SSH, no VPS** - local filesystem only. Use /reconcile for ground-truth verification.
 - **No file deletion** - move to ~/to-delete/ per convention.
 - **No remote push** - only local commits.
-- Create a follow-up file (`.claude/followup-{session-id}.md`) per the follow-up convention (`.claude/reference/followup-convention.md`). Record uncertain decisions there instead of stopping.
+- Create a follow-up file (`.claude/followup-{session-id}.md`). Record uncertain decisions there instead of stopping.
 
 ## Instructions
 
 ### 0. Setup
 
 1. Parse `$ARGUMENTS` for `--cycle`, `--dry-run` flags.
-2. Create the follow-up file at `.claude/followup-{session-id}.md` with required sections (see follow-up convention reference doc).
-3. Glob `life/{projects,areas}/*/summary.md` to build the entity list.
+2. Create the follow-up file at `.claude/followup-{session-id}.md` with required sections.
+3. Glob `$STRATA_KB/{projects,areas}/*/summary.md` to build the entity list.
 4. Read MEMORY.md entity table for cross-reference.
 
 ### 1. Scan (7 lenses)
@@ -51,7 +51,7 @@ For entities with `## Roadmap` tables, check if any "in progress" items have no 
 
 - Entities without `items.json` -> flag
 - Entities where summary.md is under 200 characters (excluding frontmatter) -> flag as sparse
-- Entity dirs that exist in `life/{projects,areas}/` but aren't in MEMORY.md entity table -> flag as untracked
+- Entity dirs that exist in `$STRATA_KB/{projects,areas}/` but aren't in MEMORY.md entity table -> flag as untracked
 
 #### Lens 4: Cross-entity consistency
 
@@ -61,7 +61,7 @@ Read entities that share infrastructure (check for VPS references, shared domain
 
 #### Lens 5: Follow-through from recent sessions
 
-Read today's and yesterday's daily notes from `life/daily/`. Extract `decisions` and `outputs`. Check if any mention "TODO", "next step", "follow up", or "deferred". Cross-reference against entity backlogs and roadmaps - flag items that were deferred but not tracked.
+Read today's and yesterday's daily notes from `$STRATA_KB/daily/`. Extract `decisions` and `outputs`. Check if any mention "TODO", "next step", "follow up", or "deferred". Cross-reference against entity backlogs and roadmaps - flag items that were deferred but not tracked.
 
 #### Lens 6: MEMORY.md accuracy
 

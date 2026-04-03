@@ -19,7 +19,7 @@ Arguments via `$ARGUMENTS`.
 ## Entity Resolution
 
 Build the entity table from your MEMORY.md Entities section. Each entity has:
-- A name (directory name under `life/projects/` or `life/areas/`)
+- A name (directory name under `$STRATA_KB/projects/` or `$STRATA_KB/areas/`)
 - Aliases (short names users might type)
 - Repos (local directory paths, or "no local repo" for VPS-only or no-code entities)
 
@@ -27,12 +27,12 @@ Example pattern:
 ```
 | Input      | Aliases        | Entity path            | Repos                    |
 |------------|----------------|------------------------|--------------------------|
-| my-project | proj, mp       | life/projects/my-project | projects/my-project/    |
-| my-site    | site, frontend | life/projects/my-site  | projects/my-site/        |
-| infra      | vps, server    | life/areas/infra       | (VPS state, no local repo) |
+| my-project | proj, mp       | $STRATA_KB/projects/my-project | projects/my-project/    |
+| my-site    | site, frontend | $STRATA_KB/projects/my-site  | projects/my-site/        |
+| infra      | vps, server    | $STRATA_KB/areas/infra       | (VPS state, no local repo) |
 ```
 
-If input doesn't match any alias, glob `life/{projects,areas}/*/summary.md` and try prefix match. If still no match, list available entities and ask.
+If input doesn't match any alias, glob `$STRATA_KB/{projects,areas}/*/summary.md` and try prefix match. If still no match, list available entities and ask.
 
 ---
 
@@ -41,8 +41,8 @@ If input doesn't match any alias, glob `life/{projects,areas}/*/summary.md` and 
 ### 1. Read entity documentation
 
 Read these in a single parallel tool call:
-- `~/life/[entity-path]/summary.md`
-- `~/life/[entity-path]/items.json`
+- `$STRATA_KB/[entity-path]/summary.md`
+- `$STRATA_KB/[entity-path]/items.json`
 
 ### 2. Check staleness
 
@@ -92,7 +92,7 @@ From the Recent Sessions table in summary.md, show the last 5 entries. These giv
 ```
 PICKUP: [entity name]
 =====================
-Path: life/[entity-path]
+Path: $STRATA_KB/[entity-path]
 Verified: YYYY-MM-DD ([N]d ago) [OK/STALE]
 
 ## Summary

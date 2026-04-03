@@ -23,7 +23,7 @@ Auto-detect your active projects so Phase 3 can map patterns to real work, not j
    import json, glob, os
    from datetime import datetime, timedelta
    cutoff = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
-   notes = sorted(f for f in glob.glob(os.path.expanduser('~/life/daily/*.json')) if os.path.basename(f)[:10] >= cutoff)
+   notes = sorted(f for f in glob.glob(os.path.expanduser('$STRATA_KB/daily/*.json')) if os.path.basename(f)[:10] >= cutoff)
    for f in notes:
        try:
            d = json.load(open(f))
@@ -39,7 +39,7 @@ Auto-detect your active projects so Phase 3 can map patterns to real work, not j
 
 4. **Pick top 5-6.** If fewer than 5 active entities have any signal, use whatever is available - don't pad with inactive ones.
 
-5. **Load entity summaries.** Read the first ~40 lines of each selected entity's `summary.md` (at `life/projects/{entity}/summary.md` or `life/areas/{entity}/summary.md`). Read all summaries in a single parallel tool call. Extract: purpose, status, architecture outline, current pain points.
+5. **Load entity summaries.** Read the first ~40 lines of each selected entity's `summary.md` (at `$STRATA_KB/projects/{entity}/summary.md` or `$STRATA_KB/areas/{entity}/summary.md`). Read all summaries in a single parallel tool call. Extract: purpose, status, architecture outline, current pain points.
 
 6. **Build the context block.** Structure it as:
    ```
@@ -103,7 +103,7 @@ gh api repos/{owner}/{repo} --jq '{default_branch: .default_branch, description:
 gh api "repos/{owner}/{repo}/git/trees/{default_branch}?recursive=1" --jq '[.tree[] | select(.type=="blob")] | length'
 ```
 
-Classify using **Project Size** tiers from `.claude/reference/tier-classification.md`:
+Classify by **Project Size**:
 - **Small:** < 30 files
 - **Medium:** 30-200 files
 - **Large:** 200+ files

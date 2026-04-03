@@ -18,14 +18,14 @@ No other arguments. Reads the edit list from `.claude/.session-edits-{sessionId}
 
 ## Risk Classifier
 
-Read `.claude/.session-edits-{sessionId}` and classify every path using the **Verify Risk** system in `.claude/reference/tier-classification.md`. The **highest risk file** determines the tier for the whole session.
+Read `.claude/.session-edits-{sessionId}` and classify every path by risk. The **highest risk file** determines the tier for the whole session.
 
 ### Tier: Skip
 
 ALL edited files match these patterns (every file must match, one mismatch escalates):
 
-- `life/**/*.md` - knowledge base markdown
-- `life/**/*.json` - knowledge base data (daily notes, items.json)
+- `$STRATA_KB/**/*.md` - knowledge base markdown
+- `$STRATA_KB/**/*.json` - knowledge base data (daily notes, items.json)
 - `.claude/specs/**` - spec files
 - `.claude/commands/**/*.md` - skill definitions (not hooks or scripts)
 - `.claude/memory/**` - memory files
@@ -261,7 +261,7 @@ Implement -> /verify (MANDATORY) -> /review -> git commit -> /end -> stop
                 |_______ Stop hook blocks if /verify not passed _____|
 ```
 
-For Skip-tier sessions (only .md/.json in life/, .claude/ config), the Stop hook auto-writes the marker - /verify never needs to run explicitly.
+For Skip-tier sessions (only .md/.json in $STRATA_KB/, .claude/ config), the Stop hook auto-writes the marker - /verify never needs to run explicitly.
 
 </details>
 

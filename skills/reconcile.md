@@ -31,11 +31,11 @@ Check structural integrity of the navigation layer before verifying entity conte
 - FLAG: files listed in INDEX.md but not on disk (stale entry)
 
 **MEMORY.md entity table vs actual entities:**
-- Glob `life/projects/*/summary.md` and `life/areas/*/summary.md`
+- Glob `$STRATA_KB/projects/*/summary.md` and `$STRATA_KB/areas/*/summary.md`
 - Read MEMORY.md, extract all entity names from the Entities table
 - FLAG: entities on disk but not in MEMORY.md table (missing entry)
 - FLAG: entities in MEMORY.md table but not on disk (stale entry)
-- FLAG: empty entity directories (exist in life/{projects,areas}/ but have no summary.md) - suggest cleanup via `~/to-delete/`
+- FLAG: empty entity directories (exist in $STRATA_KB/{projects,areas}/ but have no summary.md) - suggest cleanup via `~/to-delete/`
 
 **MEMORY.md reference doc table vs INDEX.md:**
 - MEMORY.md has an inline copy of the reference doc table. Compare it against INDEX.md.
@@ -52,7 +52,7 @@ Check structural integrity of the navigation layer before verifying entity conte
 - FLAG: claimed CLAUDE.md that doesn't exist
 
 **Decision library:**
-- Verify `life/resources/decision-library.md` exists
+- Verify `$STRATA_KB/resources/decision-library.md` exists
 - Count entries - warn if approaching 50-entry cap
 
 **Auto-fix:** Add missing entries to INDEX.md (with placeholder "Read when" value to fill in). Add missing entities to MEMORY.md table. Flag removals for user confirmation via AskUserQuestion.
@@ -61,7 +61,7 @@ Check structural integrity of the navigation layer before verifying entity conte
 
 ### 1. Discover entities
 
-Glob `life/{projects,areas}/*/summary.md` to find every entity. Build a list of entity paths.
+Glob `$STRATA_KB/{projects,areas}/*/summary.md` to find every entity. Build a list of entity paths.
 
 **Priority mode:** If `--entity <name>` is set, match only the named entity. Skip all others.
 
@@ -155,9 +155,9 @@ Status values: `OK`, `MISMATCH`, `STALE` (can't verify but old), `CROSS-ENTITY` 
 | Quality | Entry |
 |---|---|
 | Bad | `my-project / auth / wrong / MISMATCH / fixed` |
-| Good | `life/projects/my-project / "auth_basic off" (summary.md line 14) / nginx: auth_basic "Restricted" in sites-enabled/my-project / MISMATCH / Fixed in summary.md, committed abc1234` |
+| Good | `$STRATA_KB/projects/my-project / "auth_basic off" (summary.md line 14) / nginx: auth_basic "Restricted" in sites-enabled/my-project / MISMATCH / Fixed in summary.md, committed abc1234` |
 | Bad | `infrastructure / port / ok / OK / -` |
-| Good | `life/areas/infrastructure / "my-project on port 3003" / pm2: port 3003 confirmed / OK / -` |
+| Good | `$STRATA_KB/areas/infrastructure / "my-project on port 3003" / pm2: port 3003 confirmed / OK / -` |
 
 ### 7. Apply fixes
 
@@ -185,7 +185,7 @@ If previous date was 7+ days ago, warn: "Entity [name] last verified [date] - ma
 Commit and push the life repo:
 
 ```bash
-cd ~/life && git add -A && git diff --cached --quiet || git commit -m "Reconcile: entity verification (YYYY-MM-DD)" && git push
+cd $STRATA_KB && git add -A && git diff --cached --quiet || git commit -m "Reconcile: entity verification (YYYY-MM-DD)" && git push
 ```
 
 Tell the user:

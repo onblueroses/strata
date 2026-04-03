@@ -4,7 +4,7 @@ Execute steps 1-7 in order. Skip where nothing applies. Low context or trivial s
 
 ## 1. Find and name daily note
 
-Find in `~/life/daily/`: match today's date + session ID from SessionStart hook (or `.claude/auto-context-save.md` after compaction, or most recent `*-unnamed-*.json`). If hooks disabled: create stub using step 3 schema.
+Find in `$STRATA_KB/daily/`: match today's date + session ID from SessionStart hook (or `.claude/auto-context-save.md` after compaction, or most recent `*-unnamed-*.json`). If hooks disabled: create stub using step 3 schema.
 
 **Name** (if `unnamed` present): 2-3 words, `{noun}-{verb}` format (e.g. vault-move, api-deploy). Rename file and update `session_name` field inside.
 
@@ -22,7 +22,7 @@ Schema:
   "date": "YYYY-MM-DD", "session_id": "...", "session_name": "...",
   "project_dir": "...", "started": "...", "ended": "HH:mm",
   "summary": "2-5 sentences", "decisions": ["choice + why"],
-  "outputs": ["path (what changed)"], "entities_touched": ["life/projects/x"],
+  "outputs": ["path (what changed)"], "entities_touched": ["$STRATA_KB/projects/x"],
   "tags": ["2-3"], "takeaway": "one sentence"
 }
 ```
@@ -32,7 +32,7 @@ Schema:
 - `summary`: 400-600 chars. Action-complications-resolution arc. Specifics (numbers, paths). No "In this session" opening - lead with what happened.
 - `decisions`: Choices where alternatives existed. Formats: "Chose X over Y because Z" / "Left X unchanged because Y" / "Deferred X because Z". NOT methods ("used subagents for speed", "ran tests in parallel") - those are how, not what was decided.
 - `outputs`: Paths + parentheticals. 10+: summarize by area. End with `"Git: repo-name abc1234"`. `[]` ok for research.
-- `entities_touched`: Map modified paths to entities via the Entities table in MEMORY.md (always in context) - match the `Local` column to files changed. Cross-check: Deployed to VPS? +`life/areas/infrastructure`. Changed `.claude/`? +`life/areas/claude-code-setup`.
+- `entities_touched`: Map modified paths to entities via the Entities table in MEMORY.md (always in context) - match the `Local` column to files changed. Cross-check: Deployed to VPS? +`$STRATA_KB/areas/infrastructure`. Changed `.claude/`? +`$STRATA_KB/areas/my-area`.
 - `tags`: From vocab: `deploy`, `security`, `frontend`, `skill`, `infrastructure`, `content`, `knowledge-system`, `git`, `vps`, `design`, `research`, `automation`. Max 1 custom.
 - `takeaway`: **Test:** cover the summary with your hand and read the takeaway alone - does it teach something useful on its own? If it's just a compressed restatement, rewrite it. Routine sessions: state the main outcome.
 
@@ -92,12 +92,12 @@ Write departure notes for files edited during this session so future agents know
 
 ## 6. Tacit knowledge
 
-**Skip unless** new preference/constraint observed. Append to `~/life/tacit.md` (cap 20, prune oldest).
+**Skip unless** new preference/constraint observed. Append to `$STRATA_KB/tacit.md` (cap 20, prune oldest).
 
 ## 7. Sync
 
 ```bash
-cd ~/life && git add -A && { git diff --cached --quiet && echo "Nothing to sync" || { git commit -m "Auto-sync: SESSION_NAME (YYYY-MM-DD HH:mm)" && git push; }; }
+cd $STRATA_KB && git add -A && { git diff --cached --quiet && echo "Nothing to sync" || { git commit -m "Auto-sync: SESSION_NAME (YYYY-MM-DD HH:mm)" && git push; }; }
 ```
 Replace SESSION_NAME, use current time. If push fails, report but don't retry (Stop hook backs up).
 

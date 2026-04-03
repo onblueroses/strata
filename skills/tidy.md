@@ -19,7 +19,7 @@ Run all 9 checks. Collect findings, then fix what's safe.
 
 ### 1. MEMORY.md entity table vs disk
 
-Glob `life/{projects,areas}/*/summary.md`. Compare against the Entities table in MEMORY.md.
+Glob `$STRATA_KB/{projects,areas}/*/summary.md`. Compare against the Entities table in MEMORY.md.
 
 - **Missing from table**: entity dir exists on disk but not in MEMORY.md
 - **Stale in table**: entity listed in MEMORY.md but no directory/summary.md on disk
@@ -42,7 +42,7 @@ Compare MEMORY.md's Reference Docs table against INDEX.md. INDEX.md is authorita
 
 ### 4. Orphaned entity directories
 
-Find directories under `life/{projects,areas}/` that exist but have no `summary.md`.
+Find directories under `$STRATA_KB/{projects,areas}/` that exist but have no `summary.md`.
 
 - **Flag only** - may be intentional stubs or work in progress
 
@@ -57,7 +57,7 @@ Read first 10 lines of each entity's summary.md. Extract `last_verified:`.
 
 ### 6. Decision library capacity
 
-Read `life/resources/decision-library.md`. Count entries (lines matching `^##` domain headers and their sub-entries).
+Read `$STRATA_KB/resources/decision-library.md`. Count entries (lines matching `^##` domain headers and their sub-entries).
 
 - **40+ entries**: approaching 50-cap, warn
 - **50+ entries**: at cap, suggest pruning
@@ -65,14 +65,14 @@ Read `life/resources/decision-library.md`. Count entries (lines matching `^##` d
 
 ### 7. Unnamed daily notes
 
-Glob `life/daily/[today]-*unnamed*.json`.
+Glob `$STRATA_KB/daily/[today]-*unnamed*.json`.
 
 - **Flag**: list unnamed sessions from today that should be named
 - **Flag only** - naming is subjective
 
 ### 8. Tacit.md line count
 
-Read `life/tacit.md`. Count non-empty lines.
+Read `$STRATA_KB/tacit.md`. Count non-empty lines.
 
 - **18+ lines**: approaching 20-line cap, warn
 - **20+ lines**: at cap, suggest pruning

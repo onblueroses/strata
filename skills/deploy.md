@@ -17,9 +17,9 @@ Arguments via `$ARGUMENTS`. Always ask for confirmation before executing.
 
 ---
 
-### Step 0: Read reference
+### Step 0: Pre-deploy context
 
-Read `.claude/reference/vps-operations.md` for current service table and safety rules.
+Review the entity's summary.md for current service table, ports, and deploy procedures.
 
 ### Step 1: Identify target
 
@@ -145,7 +145,7 @@ URL:         [public URL]
 ## Safety
 
 - **Never deploy without user confirmation**
-- **Never deploy processes without memory limits** (see vps-operations.md)
+- **Never deploy processes without memory limits**
 - **Never deploy Playwright/Puppeteer running continuously**
 - If anything in pre-flight fails, stop and report - don't force through
 
@@ -171,4 +171,4 @@ Steps 3 (VPS health) and 4 (build) are skipped. If quality self-check fails, imm
 
 ---
 
-*Reference: `.claude/reference/vps-operations.md`*
+*Reference: entity summary.md for service details and deploy procedures.*

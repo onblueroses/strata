@@ -66,17 +66,17 @@ If not in a git repo, skip silently.
 
 ### 4. Today's Sessions
 
-Use Glob to find files matching `~/life/daily/[today]-*.json`.
+Use Glob to find files matching `$STRATA_KB/daily/[today]-*.json`.
 Count total, count named vs unnamed. Report a few named session names.
 
 ### 5. Recent Entity Activity
 
-Use Glob to find `**/summary.md` under `life/projects/` and `life/areas/`.
+Use Glob to find `**/summary.md` under `$STRATA_KB/projects/` and `$STRATA_KB/areas/`.
 List the entities found. The Glob results are sorted by modification time.
 
 ### 6. Entity Staleness
 
-For each entity directory under `life/projects/` and `life/areas/`, read the first 5 lines of `summary.md`. Extract the `last_verified: YYYY-MM-DD` line. Calculate age in days from today.
+For each entity directory under `$STRATA_KB/projects/` and `$STRATA_KB/areas/`, read the first 5 lines of `summary.md`. Extract the `last_verified: YYYY-MM-DD` line. Calculate age in days from today.
 
 Flag levels:
 - 7+ days: **STALE**
@@ -106,7 +106,7 @@ Git: [branch] - [N uncommitted changes]
 Sessions today: [count]
   session-name (ended/open) - summary
 Recent entities:
-  2026-02-12 - life/areas/my-area
+  2026-02-12 - $STRATA_KB/areas/my-area
   ...
 Entity Health:
   my-project:   verified 2026-02-13 (0d ago) OK

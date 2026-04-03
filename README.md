@@ -11,15 +11,15 @@ Not a framework. Not a CLI. A curated set of markdown files and shell scripts - 
 | I want to... | Go to |
 |--------------|-------|
 | Set up strata on my project | [Quick Start](#quick-start) |
-| Browse available skills | [skills/INDEX.md](skills/INDEX.md) |
-| See the hook wiring template | [examples/settings.json](examples/settings.json) |
-| Understand the CLAUDE.md pattern | [examples/CLAUDE.md](examples/CLAUDE.md) |
-| Use the optional Rust CLI | [cli/](#optional-rust-cli) |
+| Browse available skills | [`skills/INDEX.md`](skills/INDEX.md) |
+| See the hook wiring template | [`examples/settings.json`](examples/settings.json) |
+| Understand the CLAUDE.md pattern | [`examples/CLAUDE.md`](examples/CLAUDE.md) |
+| Use the optional Rust CLI | [Rust CLI](#optional-rust-cli) |
 
 ## Quick Start
 
-```
-git clone <this-repo>
+```bash
+git clone https://github.com/onblueroses/strata.git
 ```
 
 Open your AI agent. Paste the contents of [`SETUP.md`](SETUP.md). Done.
@@ -46,20 +46,7 @@ Plain markdown files the agent reads and follows. Each skill: steps, quality che
 | **Domain** | 21 | frontend-design, react, n8n (7), obsidian (4), security-review |
 | **Meta** | 7 | skill-creator, autooptimize, visualize, context-resume |
 
-The bootstrap prompt auto-selects domain skills based on your project type.
-
-Full list with descriptions: [`skills/INDEX.md`](skills/INDEX.md)
-
-<details>
-<summary>All 51 skills</summary>
-
-**Core:** ask-better, commit, debug, deep-understand, deploy, end, evaluate, explore, get-to-work, learn, optimize, pickup, plan, pr, reconcile, release, research, review, security, spec, status, test, tidy, trace, verify, xbow
-
-**Domain:** copywriting, frontend-design, json-canvas, latex-presentation, mobile-preview, n8n-code-javascript, n8n-code-python, n8n-expression-syntax, n8n-mcp-tools-expert, n8n-node-configuration, n8n-validation-expert, n8n-workflow-patterns, obsidian-bases, obsidian-cli, obsidian-markdown, react-best-practices, security-review, ship
-
-**Meta:** autooptimize, browser-automation, context-resume, context-save, mycelium, skill-creator, visualize
-
-</details>
+The bootstrap prompt auto-selects domain skills based on your project type. Full list: [`skills/INDEX.md`](skills/INDEX.md)
 
 ## Hooks
 
@@ -68,32 +55,24 @@ Shell scripts that fire at agent lifecycle events. Wire them via [`examples/sett
 | Hook | Event | What it does |
 |------|-------|-------------|
 | `quality-lint-on-write` | PostToolUse | Runs ruff/eslint after every edit |
-| `quality-crlf-check` | PostToolUse | Catches Windows line endings |
-| `quality-search-path-guard` | PreToolUse | Blocks broad home-dir searches |
-| `gate-codex-pre-push` | PreToolUse | Code review before git push |
 | `gate-verify` | Stop | Enforces verification before session end |
-| `context-nudge` | UserPromptSubmit | Reminds to save context |
-| `context-suggest-compact` | PostToolUse | Suggests compaction at thresholds |
+| `gate-codex-pre-push` | PreToolUse | Code review before git push |
 | `context-pre-compaction-save` | PreCompact | Auto-saves state before compaction |
 | `observe-track-edits` | PostToolUse | Tracks edited files per session |
-| `observe-track-session-events` | PostToolUse | JSONL event log |
-| `observe-track-skill-runs` | PostToolUse | Skill invocation tracking |
-| `session-check-dev-servers` | SessionStart | Warns about runaway dev servers |
-| `allow-claude-dir-edits` | PreToolUse | Auto-approves .claude/ edits |
 
 <details>
-<summary>Hook categories explained</summary>
+<summary>All 13 hooks</summary>
 
-**Quality gates** (blocking - prevent bad patterns):
+**Quality gates** (blocking):
 `quality-lint-on-write`, `quality-crlf-check`, `quality-search-path-guard`, `gate-codex-pre-push`, `gate-verify`
 
-**Context management** (advisory - preserve agent state):
+**Context management** (advisory):
 `context-nudge`, `context-suggest-compact`, `context-pre-compaction-save`
 
-**Observability** (advisory - track what happened):
+**Observability** (advisory):
 `observe-track-edits`, `observe-track-session-events`, `observe-track-skill-runs`
 
-**Session lifecycle** (environment checks):
+**Session lifecycle**:
 `session-check-dev-servers`, `allow-claude-dir-edits`
 
 </details>
@@ -114,22 +93,11 @@ The structural model behind strata. Projects that implement these five layers gi
 AI agents waste tokens navigating unfamiliar codebases. They re-read the same files each session, lose state at context boundaries, and drift toward inconsistent conventions.
 
 Research backs this up:
-- **ETH Zurich (2026)**: Naive context files can reduce agent performance and increase cost 20%+. Quality and relevance matter more than quantity.
+- **ETH Zurich (2026)**: Naive context files can reduce agent performance and increase cost 20%+.
 - **"Codified Context" paper (2026)**: Single-file manifests don't scale. Tiered memory needed for large projects.
 - **AGENTS.md (Linux Foundation)**: 28.6% faster agents in one study, but structure matters more than presence.
 
-The five layers give agents a stable vocabulary: a live index of what exists, boundaries that prevent drift, and descriptions that enable retrieval without loading full files.
-
 </details>
-
-## Examples
-
-| File | What it shows |
-|------|--------------|
-| [`examples/CLAUDE.md`](examples/CLAUDE.md) | Annotated project CLAUDE.md pattern with all recommended sections |
-| [`examples/settings.json`](examples/settings.json) | Hook wiring template for all 7 Claude Code lifecycle events |
-| [`examples/code-quality.md`](examples/code-quality.md) | Code quality principles for AI-assisted development |
-| [`examples/skill-design.md`](examples/skill-design.md) | How to write effective skills |
 
 ## Optional: Rust CLI
 
