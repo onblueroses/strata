@@ -5,9 +5,20 @@ edition = "2024"
 description = "Agent harness layer: structure, validation, and target-generation for AI-native codebases."
 license = "MIT"
 repository = "https://github.com/onblueroses/strata"
+homepage = "https://github.com/onblueroses/strata"
+documentation = "https://docs.rs/strata-cli"
 keywords = ["cli", "scaffolding", "project-structure", "ai", "documentation"]
 categories = ["command-line-utilities", "development-tools"]
 rust-version = "1.85"
+exclude = [
+    ".claude/**",
+    "CLAUDE.md",
+    ".cargo/**",
+    ".cargo-husky/**",
+    ".config/**",
+    ".clippy.toml",
+    "deny.toml",
+]
 
 [[bin]]
 name = "strata"
