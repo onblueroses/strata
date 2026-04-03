@@ -12,6 +12,10 @@ Find in `$STRATA_KB/daily/`: match today's date + session ID from SessionStart h
 
 Run `git status --short` in all modified repos (parallel). For each repo with your changes, invoke `/commit` to group and commit them atomically. Save hashes for step 3. Mention but don't commit pre-existing changes. Skip if clean.
 
+Run `git push` immediately after committing. Report failure but don't retry.
+
+Also check for repos already ahead of origin (`[ahead X]` in `git status -sb`) - push those too.
+
 ## 3. Write daily note
 
 **Guard:** Read existing. If `summary` non-null and accurate, skip to step 4. If incomplete, merge (detailed summary wins, union arrays, keep specific takeaway).
@@ -43,7 +47,7 @@ Schema:
 <details>
 <summary>Reconcile entities</summary>
 
-**Dream-state gate:** Read `~/.claude/state/dream-state.json`. If missing, treat as `{ "last_run": null, "sessions_since": 0 }`.
+**Reconciliation gate:** Read `$STRATA_STATE_DIR/dream-state.json`. If missing, treat as `{ "last_run": null, "sessions_since": 0 }`.
 
 Increment `sessions_since` by 1 immediately (before the skip check below).
 
@@ -54,7 +58,9 @@ Increment `sessions_since` by 1 immediately (before the skip check below).
 
 If skipping: write `{ "last_run": "<existing value>", "sessions_since": <incremented value> }` back to `dream-state.json`. Jump to Step 5.
 
-If running: proceed with steps 4.1-4.6 below. After 4.6, write `{ "last_run": "<ISO timestamp>", "sessions_since": 0 }` to `dream-state.json`.
+**Lock gate (only if not skipping):** Check `$STRATA_STATE_DIR/dream.lock`. If it exists and was modified within the last 5 minutes, a concurrent session is reconciling - skip. Otherwise: create the lock file. Proceed with steps 4.1-4.6. Delete lock after completion.
+
+After 4.6, write `{ "last_run": "<ISO timestamp>", "sessions_since": 0 }` to `dream-state.json`.
 
 **Schema:** `{ "last_run": "ISO-8601 or null", "sessions_since": integer }`
 

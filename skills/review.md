@@ -30,6 +30,20 @@ git diff --cached
 
 If `--all` flag, use `git diff HEAD` instead. If nothing is staged, tell the user and stop.
 
+### 1a. Codex review (first pass)
+
+Run Codex as the first adversarial reviewer before manual checks, if available.
+
+```bash
+# From the repo root:
+timeout 600 codex -c model_reasoning_effort='"xhigh"' review --uncommitted
+```
+
+- Codex runs in read-only sandbox with high reasoning effort for deep analysis
+- Capture output and include findings in the final report under a CODEX REVIEW section
+- If Codex is not installed or fails, log a warning and continue with manual review
+- Do NOT duplicate Codex findings in later manual checks - if Codex already flagged it, skip it
+
 ### 2. Detect public repo (automatic - no user action needed)
 
 ```bash
