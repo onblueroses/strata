@@ -126,9 +126,8 @@ If the user wants reference documentation available to the agent:
 
 ```bash
 mkdir -p references/
-cp path/to/strata/reference/code-quality.md references/
-cp path/to/strata/reference/skill-design.md references/
-cp path/to/strata/reference/getting-started.md references/
+cp path/to/strata/examples/code-quality.md references/
+cp path/to/strata/examples/skill-design.md references/
 ```
 
 These are optional but useful for teams onboarding to strata.
