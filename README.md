@@ -1,10 +1,10 @@
 # strata
 
-**Agent harness for AI coding tools.** 52 skills, 13 hooks, one bootstrap prompt.
+Markdown files and shell scripts that configure AI coding agents. 52 skills, 13 hooks.
 
-Not a framework. Not a CLI. A curated set of markdown files and shell scripts - refined over hundreds of hours of real AI-assisted development - that make your coding agent work the way an experienced practitioner would.
+I use Claude Code for everything. Over time, my setup accumulated skills (procedural workflows the agent follows), hooks (shell scripts that fire at lifecycle events), and patterns for structuring projects so agents don't get lost. strata is that setup, extracted and genericized.
 
-> Frontier models are smart enough that the bottleneck is not code generation. It is the quality of instructions they receive.
+There's no code to install. You clone the repo, paste SETUP.md into your agent, and it configures itself for your project.
 
 ## Quick Nav
 
@@ -22,23 +22,23 @@ Not a framework. Not a CLI. A curated set of markdown files and shell scripts - 
 git clone https://github.com/onblueroses/strata.git
 ```
 
-Open your AI agent. Paste the contents of [`SETUP.md`](SETUP.md). Done.
+Open your AI agent. Paste the contents of [`SETUP.md`](SETUP.md).
 
-The agent detects your project, selects skills, wires hooks, and generates a CLAUDE.md. No install, no build, no dependencies.
+The agent figures out your project type, picks relevant skills, wires up hooks, and writes a CLAUDE.md. No build step.
 
 ## What's Inside
 
 ```
-skills/       52 procedural workflows in plain markdown
-hooks/        13 shell scripts for quality gates and context management
+skills/       52 workflows in plain markdown
+hooks/        13 shell scripts (quality gates, context management, session lifecycle)
 examples/     CLAUDE.md pattern, settings.json template, reference docs
-SETUP.md      Bootstrap prompt - the single entry point
-cli/          Optional Rust CLI for structural validation and generation
+SETUP.md      Bootstrap prompt - paste this into your agent
+cli/          Rust CLI for structural validation (optional, you don't need it)
 ```
 
 ## Skills
 
-Plain markdown files the agent reads and follows. Each skill: steps, quality checks, anti-patterns, trigger conditions.
+Each skill is a markdown file the agent reads and executes. Steps, quality checks, anti-patterns, trigger conditions.
 
 | Tier | Count | Examples |
 |------|-------|---------|
@@ -46,19 +46,19 @@ Plain markdown files the agent reads and follows. Each skill: steps, quality che
 | **Domain** | 21 | frontend-design, react, n8n (7), obsidian (4), security-review |
 | **Meta** | 7 | skill-creator, autooptimize, visualize, context-resume |
 
-The bootstrap prompt auto-selects domain skills based on your project type. Full list: [`skills/INDEX.md`](skills/INDEX.md)
+The bootstrap prompt picks domain skills based on what it detects in your project. Full list: [`skills/INDEX.md`](skills/INDEX.md)
 
 ## Hooks
 
-Shell scripts that fire at agent lifecycle events. Wire them via [`examples/settings.json`](examples/settings.json).
+Shell scripts that fire at agent lifecycle events. See [`examples/settings.json`](examples/settings.json) for wiring.
 
 | Hook | Event | What it does |
 |------|-------|-------------|
 | `quality-lint-on-write` | PostToolUse | Runs ruff/eslint after every edit |
-| `gate-verify` | Stop | Enforces verification before session end |
-| `gate-codex-pre-push` | PreToolUse | Code review before git push |
-| `context-pre-compaction-save` | PreCompact | Auto-saves state before compaction |
-| `observe-track-edits` | PostToolUse | Tracks edited files per session |
+| `gate-verify` | Stop | Blocks session end until verification passes |
+| `gate-codex-pre-push` | PreToolUse | Runs code review before git push |
+| `context-pre-compaction-save` | PreCompact | Saves state before context compaction |
+| `observe-track-edits` | PostToolUse | Logs which files were edited |
 
 <details>
 <summary>All 13 hooks</summary>
@@ -79,29 +79,29 @@ Shell scripts that fire at agent lifecycle events. Wire them via [`examples/sett
 
 ## Five-Layer Navigation
 
-The structural model behind strata. Projects that implement these five layers give AI agents reliable orientation:
+This is the structural model I use. When a project has these five things, agents stop wasting tokens on orientation:
 
-1. **Constitution** (`PROJECT.md`) - purpose, constraints, non-negotiables
-2. **Global Index** (`INDEX.md`) - flat map of every file
-3. **Domain Boundaries** (`RULES.md` per directory) - what belongs where
-4. **Crosslink Mesh** (See Also sections) - lateral navigation
-5. **Per-File Descriptions** (frontmatter/headings) - retrieval without loading
+1. **Constitution** (`PROJECT.md`) - what the project is, what it can't do
+2. **Global Index** (`INDEX.md`) - flat list of every file with one-line descriptions
+3. **Domain Boundaries** (`RULES.md` per directory) - what goes where
+4. **Crosslink Mesh** (See Also sections) - links between related files
+5. **Per-File Descriptions** (frontmatter/headings) - lets agents find files without opening them
 
 <details>
-<summary>Why five layers</summary>
+<summary>Why this matters</summary>
 
-AI agents waste tokens navigating unfamiliar codebases. They re-read the same files each session, lose state at context boundaries, and drift toward inconsistent conventions.
+Agents re-read the same files every session, lose state when context compacts, and drift toward inconsistent patterns when multiple instances touch the same project. These five layers give them something stable to orient against.
 
-Research backs this up:
-- **ETH Zurich (2026)**: Naive context files can reduce agent performance and increase cost 20%+.
-- **"Codified Context" paper (2026)**: Single-file manifests don't scale. Tiered memory needed for large projects.
-- **AGENTS.md (Linux Foundation)**: 28.6% faster agents in one study, but structure matters more than presence.
+Some research backing:
+- ETH Zurich (2026) found that bad context files actually hurt agent performance and increase cost by 20%+. Quality matters more than having something.
+- The "Codified Context" paper (2026) showed single-file manifests don't scale past ~100k lines. You need tiered structure.
+- Linux Foundation's AGENTS.md study got 28.6% faster agents, but results were mixed overall because structure matters more than just having a file.
 
 </details>
 
 ## Optional: Rust CLI
 
-`cli/` contains a Rust CLI for structural validation, context generation, and skill evaluation. Entirely optional - the text layer works without it.
+There's also a Rust CLI in `cli/` if you want programmatic validation, context generation, or skill evaluation. I built it before the text-first pivot and it still works. You don't need it.
 
 <details>
 <summary>CLI commands</summary>
@@ -127,7 +127,7 @@ strata skill optimize # iterative skill improvement
 
 ## Works With
 
-**Claude Code** (primary) / **OpenCode** / **Pi** / any agent that reads markdown
+Claude Code (primary), OpenCode, Pi, or anything that reads markdown.
 
 ## License
 
