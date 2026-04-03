@@ -1,9 +1,9 @@
 # Skill Index
 
-51 skills organized by tier. The bootstrap prompt (SETUP.md) selects relevant
+52 skills organized by tier. The bootstrap prompt (SETUP.md) selects relevant
 skills based on your project type.
 
-## Core Skills (23)
+## Core Skills (24)
 
 Universal development workflows. Install these for any project.
 
@@ -35,6 +35,8 @@ Universal development workflows. Install these for any project.
 | [trace](trace.md) | Entity history across sessions |
 | [verify](verify.md) | Post-implementation integrity check |
 | [xbow](xbow.md) | Stack-aware security scanner |
+
+| [overnight](overnight.md) | Multi-hour unattended maintenance with checkpointing |
 
 ## Meta Skills (7)
 

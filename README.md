@@ -1,6 +1,6 @@
 # strata
 
-**Agent harness for AI coding tools.** 51 skills, 13 hooks, one bootstrap prompt.
+**Agent harness for AI coding tools.** 52 skills, 13 hooks, one bootstrap prompt.
 
 Not a framework. Not a CLI. A curated set of markdown files and shell scripts - refined over hundreds of hours of real AI-assisted development - that make your coding agent work the way an experienced practitioner would.
 
@@ -29,7 +29,7 @@ The agent detects your project, selects skills, wires hooks, and generates a CLA
 ## What's Inside
 
 ```
-skills/       51 procedural workflows in plain markdown
+skills/       52 procedural workflows in plain markdown
 hooks/        13 shell scripts for quality gates and context management
 examples/     CLAUDE.md pattern, settings.json template, reference docs
 SETUP.md      Bootstrap prompt - the single entry point
@@ -42,7 +42,7 @@ Plain markdown files the agent reads and follows. Each skill: steps, quality che
 
 | Tier | Count | Examples |
 |------|-------|---------|
-| **Core** | 23 | review, verify, commit, debug, test, plan, spec, deploy, research |
+| **Core** | 24 | review, verify, commit, debug, test, plan, spec, deploy, research |
 | **Domain** | 21 | frontend-design, react, n8n (7), obsidian (4), security-review |
 | **Meta** | 7 | skill-creator, autooptimize, visualize, context-resume |
 
