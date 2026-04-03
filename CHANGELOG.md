@@ -5,77 +5,34 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **3 new skill templates**: `evaluate` (repo/content pattern extraction), `mycelium` (git-notes-based agent notes), `xbow` (stack-aware security scanner) - registered as meta/domain skills
-- **19 updated skill templates**: `commit`, `deep-understand`, `deploy`, `end`, `get-to-work`, `learn`, `pickup`, `reconcile`, `research`, `review`, `ship`, `spec`, `status`, `tidy`, `trace`, `verify` backported from live use with 6+ months of refinement
-- **`.gitattributes`** with `* text=auto eol=lf` to prevent CRLF/LF mismatch in templates
+- `miette` diagnostics with diagnostic codes, source spans, and actionable help text
+- SARIF v2.1.0 output (`strata lint --format sarif`) for GitHub Code Scanning and VS Code
+- Snapshot tests with `insta` for JSON and SARIF output
+- Parallel file scanning with `rayon`
+- Source span tracking for lint diagnostics (`file:line:col`)
+- Project type detection (Rust, JS/TS, Python, Go, Next.js, SvelteKit, etc.)
+- `minijinja` template engine replacing `{{KEY}}` string replacement
+- `strata diff` - show what would change on regeneration
+- `strata update` - selectively regenerate stale context files
+- `strata watch` - file watching with configurable debounce
+- `strata completions` - shell completions via `clap_complete` (bash, zsh, fish, powershell)
+- Custom lint rules via `[[custom_rules]]` in strata.toml (4 check types)
+- Monorepo workspace support with per-member config and aggregated results
+- Temporal lint rules: `stale-dates` and `waiting-markers` with configurable thresholds
+- Skill eval system (`strata skill eval|optimize|eval-set init`) with parallel runner, train/test split, HTML reports
+- 48 skill templates across three tiers: 23 core (Standard+), 7 meta (Full), 18 domain (Full, project-type-matched)
+- Enforcement hooks on by default (`[hooks] enforce = true`)
+- Getting-started reference doc in Full preset
+- 3 new skill templates: `evaluate`, `mycelium`, `xbow`
+- 19 updated skill templates from live use
+- `.gitattributes` for consistent line endings
 
 ### Changed
-- Repositioned as "agent harness layer" (README, Cargo.toml description)
-
-### Fixed
-- **miette rich error diagnostics** - `StrataError` now derives `miette::Diagnostic` with diagnostic codes and actionable help text
-- **SARIF v2.1.0 output** - `strata lint --format sarif` for CI integration (GitHub Code Scanning, VS Code)
-- **Snapshot tests** with `insta` for JSON and SARIF lint output
-- **Parallel file scanning** with `rayon` in `scan_project()`
-- Diagnostic struct extended with optional `line`, `column`, `end_line`, `end_column` fields for source spans
-- `LinkInfo` struct in scanner with line/column tracking for crosslinks
-- Lint text output now shows `file:line:col` when span info is available
-- `dead-links` lint rule now reports the line/column of the broken link
-- **20 starter skills** in standard/full presets (was 2: review, commit)
-  - debug, test, plan, pr, explore, release, security, optimize, verify
-  - end, pickup, tidy, research, deploy, status, get-to-work, trace, learn
-  - Each follows skill-design-principles: pushy descriptions, anti-examples with reasoning, concrete mechanical tests, quality self-checks
-- Skill validation enhancements in `skill-structure` lint rule:
-  - Name must be kebab-case and <= 64 characters
-  - Description warns if > 1024 characters (Claude Code truncation limit)
-  - Body > 500 lines without `references/` subdirectory warns
-- `SkillMeta` now tracks `line_count` and `has_references_dir`
-- Improved starter skill templates (review, commit) with anti-example tables and concrete tests
-- Enhanced `skills/README.md` template with progressive disclosure tiers and size budget guidance
-- **Project type detection** - auto-detects Rust, JS/TS, Python, Go, and frameworks (Next.js, SvelteKit, etc.)
-- **minijinja template engine** - conditional sections, loops, project-type-aware rendering (replaces `{{KEY}}` replacement)
-- **`strata diff`** - show what would change if you regenerated now
-- **Freshness tracking** with `.strata/state.json` (file modification times, git-aware staleness)
-- **`strata update`** - selectively regenerate only out-of-date context files
-- **`strata watch`** - file watching with configurable debounce, auto-regeneration on changes
-- **Git-aware context freshness** - tracks last generation against git log
-- **`strata completions`** - shell completion scripts via `clap_complete` (bash, zsh, fish, powershell)
-- **Custom lint rules** - TOML-driven `[[custom_rules]]` with 4 check types: `file_exists`, `file_missing`, `content_contains`, `frontmatter_key`
-- **Monorepo workspace support** - `[workspace]` config with `members` list, per-member strata.toml, aggregated results
-- **Temporal lint rules** (2 new rules, total now 20 built-in):
-  - `stale-dates` - warns when `last_verified:` or `_Last updated:_` dates exceed configurable thresholds
-  - `waiting-markers` - warns when `WAITING (YYYY-MM-DD)` markers are past threshold
-- New `[lint]` config fields: `stale_verified_days`, `stale_updated_days`, `stale_waiting_days`
-- **Opinionated templates** for standard/full presets:
-  - `references/code-quality.md` - code quality principles and anti-patterns
-  - `references/skill-design.md` - skill design and description optimization guide
-  - `verify` starter skill for post-implementation integrity checks
-  - Enhanced PROJECT.md, hook scripts, MEMORY.md, spec, and skills README templates
-- **Skill eval system** (`strata skill eval|optimize|eval-set init`):
-  - `EvalBackend` trait with Claude Code backend (spawns CLI, parses NDJSON stream)
-  - Parallel eval runner with configurable workers and timeout
-  - Iterative optimizer with train/test split (deterministic LCG shuffle), early exit on 100%
-  - HTML report generation
-  - `[skills]` config section for eval defaults
-- **Batteries-included skill system** - 48 skill templates across three tiers:
-  - 23 core skills (Standard+): review, commit, debug, test, plan, pr, explore, release, security, optimize, verify, end, pickup, tidy, research, deploy, status, get-to-work, trace, learn, deep-understand, reconcile, ship
-  - 7 meta skills (Full): skill-creator, ask-better, autooptimize, context-resume, context-save, browser-automation, visualize
-  - 18 domain skills (Full, project-type-matched): frontend (4), n8n (7), security (1), obsidian (4), academic (1)
-  - Tier-based dispatch via `core_skills()`, `domain_skills()`, `meta_skills()`
-  - Project-type-aware domain matching (frontend frameworks -> frontend skills, known languages -> security)
-- **Agent targets narrowed** to Claude Code, OpenCode, Pi (removed Generic, Cursor, Copilot)
-  - `TargetCapabilities` struct with instruction_file, skill_dir, config_dir, hook_mechanism per target
-  - `.claude/settings.json` scaffolded for ClaudeCode targets in Standard/Full presets
-- **Enforcement hooks on by default** - `[hooks] enforce = true` blocks session-stop until verification passes
-  - `--no-enforce` flag for warning-only mode
-- **Getting-started reference doc** - scaffolded in Full preset at `references/getting-started.md`
-
-### Changed
-- Lint engine expanded from 6 to 20 built-in rules (14 new) plus user-defined custom rules
-- `strata generate` now accepts `--target` and `--skills` flags
+- Repositioned as "agent harness layer"
+- Lint engine: 6 to 20 built-in rules plus user-defined custom rules
+- Agent targets narrowed to Claude Code, OpenCode, Pi (removed Generic, Cursor, Copilot)
 - CLI expanded from 9 to 13 subcommands
-- Agent targets reduced from 5 (generic, claude, cursor, copilot + generic) to 3 (claude-code, opencode, pi)
-- Standard preset: 20 -> 23 core skills; Full preset: adds 7 meta + 18 domain skills (48 total)
+- Standard preset: 23 core skills; Full preset: 48 total (was 2)
 
 ## [0.2.0] - 2026-03-04
 

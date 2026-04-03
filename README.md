@@ -2,9 +2,7 @@
 
 Agent harness layer for AI-native codebases. Drop it in, get structure.
 
-strata gives AI agents a navigable workspace: five-layer navigation architecture, lifecycle hooks, specs, sessions, multi-agent target generation (Claude Code, OpenCode, Pi), skill evaluation, and monorepo support. It scaffolds the structure, validates integrity, detects drift, and auto-repairs issues.
-
-AI agents working on large codebases have no reliable way to stay oriented. They re-read the same files each session, lose state at context boundaries, and when multiple agents touch the same project they drift toward inconsistent conventions. strata gives the codebase a stable vocabulary the agent can rely on: a live index of what exists, lifecycle hooks that preserve context across resets, and structural rules that hold regardless of which agent is working or when.
+AI agents working on large codebases have no reliable way to stay oriented. They re-read the same files each session, lose state at context boundaries, and drift toward inconsistent conventions. strata gives the codebase a stable vocabulary: a live index of what exists, lifecycle hooks that preserve context across resets, and structural rules that hold regardless of which agent is working or when. It scaffolds a five-layer navigation architecture, validates integrity, detects drift, and auto-repairs issues.
 
 ## Quick Start
 
@@ -378,11 +376,10 @@ members = []  # monorepo member directories
 
 ## Design Principles
 
-- **Agent-aware**: First-class support for Claude Code, OpenCode, and Pi with target-specific generation
-- **Tiered presets**: Start minimal, grow into full workspace management
-- **No external dependencies for core**: Session IDs use timestamp hashing, dates use manual epoch math
-- **Canonical representation**: `.strata/` is the source of truth; `--target` translates to agent-specific formats
-- **Opinionated defaults**: Standard preset includes code quality principles, skill design guidelines, and reference docs
+- `.strata/` is the source of truth; `--target` translates to agent-specific formats
+- Start minimal, grow into full workspace management
+- Standard preset ships opinionated defaults: code quality principles, skill design guidelines, reference docs
+- No external dependencies for core primitives (session IDs, date formatting)
 
 ## License
 
