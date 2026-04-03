@@ -1,0 +1,151 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": {
+          "tool_name": "Write|Edit"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/allow-claude-dir-edits.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool_name": "Glob|Grep"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/quality-search-path-guard.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool_name": "Bash"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/gate-codex-pre-push.sh",
+            "timeout": 60000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": {
+          "tool_name": "Edit|Write"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/quality-lint-on-write.sh",
+            "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "hooks/quality-crlf-check.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "hooks/observe-track-edits.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool_name": "Edit|Write|Bash"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/observe-track-session-events.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool_name": "Edit|Write|Bash|Agent|Skill"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/context-suggest-compact.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": {
+          "tool_name": "Skill"
+        },
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/observe-track-skill-runs.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": {},
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/context-nudge.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": {},
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/context-pre-compaction-save.sh",
+            "timeout": 15000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": {},
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/session-check-dev-servers.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": {},
+        "hooks": [
+          {
+            "type": "command",
+            "command": "hooks/gate-verify.sh",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "Notification": []
+  }
+}

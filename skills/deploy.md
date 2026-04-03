@@ -1,0 +1,174 @@
+# Deploy
+
+Infrastructure-aware deployment to your VPS.
+
+Execute steps 0-7 in order. Skip steps where noted. For hotfix deploys, see **Priority Mode** at the end.
+
+```
+/deploy my-project     # Deploy a named project
+/deploy my-site        # Deploy a static site
+/deploy [name]         # Deploy a named PM2 app
+/deploy my-project --fast  # Hotfix: skip VPS health check and build
+```
+
+Arguments via `$ARGUMENTS`. Always ask for confirmation before executing.
+
+**SSH/SCP**: Use `ssh root@<your-vps-ip> 'COMMAND'` for remote commands. Use `scp -r ...` for file copies.
+
+---
+
+### Step 0: Read reference
+
+Read `.claude/reference/vps-operations.md` for current service table and safety rules.
+
+### Step 1: Identify target
+
+| Argument | Local path | Remote path | PM2 name |
+|----------|-----------|-------------|----------|
+| `my-project` | `projects/my-project/` | `/var/www/my-project/` | `my-project` |
+| `my-site` | `projects/my-site/` | Determine from nginx config | Static (no PM2) |
+| Other | Ask user | Ask user | Ask user |
+
+If argument is empty or ambiguous, ask the user what to deploy.
+
+### Step 2: Idempotency guard
+
+Check if the current build matches what's already running:
+
+```bash
+# Local git hash
+git -C [local-path] rev-parse --short HEAD
+# Remote deployed hash
+ssh root@<your-vps-ip> 'cat [remote-path]/.deploy-hash 2>/dev/null'
+```
+
+**If hashes match**: report "Already deployed (hash: abc1234). Skipping." and stop.
+**If no remote hash exists**: continue (first tracked deploy).
+**Save the local hash** - you'll write it to the remote in step 5.
+
+### Step 3: Pre-flight checks
+
+**Skip VPS health check if** Priority Mode is active.
+
+```bash
+# Local: build output exists? (Glob for dist/, out/, .next/)
+# Local: no uncommitted changes
+git -C [local-path] status --short
+# Remote: VPS health (skip in Priority Mode)
+ssh root@<your-vps-ip> 'uptime; free -m | grep Mem; df -h / | tail -1'
+# Remote: current app state
+ssh root@<your-vps-ip> 'pm2 describe [pm2-name] 2>/dev/null | head -15'
+```
+
+**Block deployment if:** no build output found, VPS load > 4 or RAM < 1GB or disk > 80%, or user hasn't confirmed.
+
+### Step 4: Build (if needed)
+
+**Skip if** Priority Mode is active and build output already exists.
+
+No recent build output? Offer to build: `npm run build` for Next.js (check static export vs server), or check `package.json` for other build commands.
+
+### Step 4.5: CRLF strip
+
+**Never skip this step.** CRLF in shell scripts causes `\r: command not found` errors on the VPS.
+
+Check build output for CRLF line endings before SCP:
+
+```bash
+# Find files with CRLF
+grep -rlP '\r\n' [local-build-path] --include='*.sh' --include='*.py' --include='*.conf' --include='*.yml' --include='*.yaml' --include='*.toml' --include='*.service' --include='*.env'
+```
+
+If any files found, strip CRLF:
+
+```bash
+# Strip CR from all Linux-destined files
+find [local-build-path] -type f \( -name '*.sh' -o -name '*.py' -o -name '*.conf' -o -name '*.yml' -o -name '*.yaml' -o -name '*.toml' -o -name '*.service' -o -name '*.env' \) -exec dos2unix {} + 2>/dev/null || sed -i 's/\r$//' {}
+```
+
+### Step 5: Deploy and fix permissions
+
+```bash
+# Copy build output
+scp -r [local-build-path]/* root@<your-vps-ip>:[remote-path]/
+# Write deploy hash for idempotency tracking
+ssh root@<your-vps-ip> 'echo [git-hash] > [remote-path]/.deploy-hash'
+# Fix permissions - always do this, forgetting has caused issues before
+ssh root@<your-vps-ip> 'chown -R www-data:www-data [remote-path] && chmod -R 755 [remote-path]'
+# Restart if PM2-managed (skip for static sites)
+ssh root@<your-vps-ip> 'pm2 restart [pm2-name] 2>/dev/null; pm2 save'
+```
+
+### Step 6: Quality self-check
+
+Run all checks. If a check fails, report it in step 7 but don't roll back automatically.
+
+```bash
+# 1. HTTP health check - public URL must return 200
+curl -s -o /dev/null -w "%{http_code}" https://[domain]/
+# 2. PM2 restart loop check (skip for static sites)
+#    Get restart count via `pm2 jlist`, sleep 30, re-check - should be 0 new restarts
+ssh root@<your-vps-ip> 'pm2 jlist'
+# 3. Sentry check - if project has Sentry DSN, check for new errors in last 5 min
+# 4. Security scan - run /xbow on the deployed domain
+# 5. Visual check (optional) - screenshot via /browser-use if available
+```
+
+**Pass criteria:** HTTP 200 on public URL, 0 new PM2 restarts over 30s, no new Sentry errors within 2 minutes post-deploy, no critical xbow findings.
+
+### Step 7: Report
+
+```
+DEPLOY COMPLETE
+===============
+Site:        [name]
+Hash:        [git-hash]
+From:        [local path] -> [remote path]
+PM2:         [restarted/static site/N/A]
+Permissions: chown www-data + chmod 755 applied
+Health:      HTTP [status code] | PM2 restarts: [count] | Sentry: [clean/N/A]
+URL:         [public URL]
+```
+
+---
+
+## Good vs bad deploy reports
+
+| Aspect | Bad | Good |
+|--------|-----|------|
+| Report | "Deployed successfully." | "DEPLOY COMPLETE - my-project (fdf39c9) to /var/www/my-project/. HTTP 200, 0 restarts in 30s, Sentry clean." |
+| Failure | "Deploy failed." | "Deploy blocked: VPS RAM at 512MB (threshold 1GB). Run `pm2 list` to check for memory leaks before retrying." |
+| Skipped | "Nothing to deploy." | "Already deployed (hash: fdf39c9 matches remote). Skipping." |
+
+---
+
+## Safety
+
+- **Never deploy without user confirmation**
+- **Never deploy processes without memory limits** (see vps-operations.md)
+- **Never deploy Playwright/Puppeteer running continuously**
+- If anything in pre-flight fails, stop and report - don't force through
+
+**DO NOT:**
+- Skip the permissions step (chmod/chown) - this is a recurring pain point
+- Report "success" if any quality check failed - report the specific failure
+- Deploy over a PM2 process that's already in a restart loop
+
+---
+
+## Priority Mode
+
+**When to use:** User says "hotfix", "emergency", or passes `--fast` flag.
+
+Essential steps only:
+1. **Step 1** - Identify target (always)
+2. **Step 2** - Idempotency guard (always)
+3. **Step 5** - Deploy + permissions (skip build if output exists)
+4. **Step 6** - Quality self-check (always - catches breakage)
+5. **Step 7** - Report (always)
+
+Steps 3 (VPS health) and 4 (build) are skipped. If quality self-check fails, immediately flag it - hotfix deploys have the highest risk of breakage.
+
+---
+
+*Reference: `.claude/reference/vps-operations.md`*

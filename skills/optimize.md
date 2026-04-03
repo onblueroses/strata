@@ -1,0 +1,42 @@
+# Optimize
+
+Measure first. Intuition about performance is wrong more often than right.
+
+## Steps
+
+1. **Define the target** - What metric needs to improve? By how much? "Faster"
+   is not a target. "P95 response time under 200ms" is.
+2. **Measure baseline** - Profile the current state with actual tools, not
+   guesswork. Record the numbers.
+3. **Identify bottleneck** - The profile shows where time is spent. Optimize ONLY
+   the bottleneck. Everything else is noise.
+4. **Fix** - Apply the minimum change to address the bottleneck.
+5. **Measure again** - Same test, same conditions. Compare to baseline.
+   If improvement is less than 10%, reconsider whether it's worth the complexity.
+6. **Document** - Record what you measured, what you changed, and the
+   before/after numbers.
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| "This looks slow, let me add caching" | May not be the bottleneck; caching adds complexity and staleness bugs | Profile first, cache only what the profile identifies |
+| Optimizing a function that runs once at startup | Zero user impact | Focus on hot paths: request handlers, loops, frequent operations |
+| Micro-optimizing before the algorithm is right | O(n) with a slow constant beats O(n^2) with a fast one | Fix algorithmic complexity first |
+| Adding an index for every slow query | Indexes slow writes and use memory | Add indexes only for measured slow queries with evidence |
+| Rewriting in another language for speed | Rewrite cost, maintenance burden, new bugs | Targeted fix at the bottleneck, not wholesale replacement |
+
+## When NOT to Optimize
+
+- Performance is already within requirements
+- The code runs infrequently (batch jobs, one-time scripts, startup)
+- You don't have a measurable target
+- The optimization adds significant complexity for marginal gains
+
+## Quality Self-Check
+
+Before considering a performance task done:
+1. Baseline measurement recorded with specific numbers?
+2. Bottleneck identified through profiling (not guessing)?
+3. After-measurement shows meaningful improvement against the target?
+4. Optimization doesn't sacrifice readability for marginal gains?

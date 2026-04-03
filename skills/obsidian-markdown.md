@@ -1,0 +1,127 @@
+# Obsidian Markdown
+
+Obsidian-specific markdown syntax beyond standard CommonMark.
+
+## Wikilinks
+
+```markdown
+[[Note Name]]                    # Link to note
+[[Note Name|Display Text]]      # Link with alias
+[[Note Name#Heading]]           # Link to heading
+[[Note Name#^block-id]]         # Link to block
+[[Note Name#Heading|alias]]     # Heading link with alias
+```
+
+**Resolution:** Obsidian finds the shortest unambiguous path. `[[MyNote]]` matches
+`folder/subfolder/MyNote.md` if there's only one.
+
+## Embeds
+
+```markdown
+![[Note Name]]                   # Embed full note
+![[Note Name#Heading]]          # Embed specific section
+![[image.png]]                  # Embed image
+![[image.png|400]]              # Embed image with width
+![[audio.mp3]]                  # Embed audio
+![[video.mp4]]                  # Embed video
+![[document.pdf]]               # Embed PDF
+```
+
+## Properties (Frontmatter)
+
+```yaml
+---
+title: My Note
+date: 2026-03-25
+tags:
+  - project
+  - active
+status: in-progress
+aliases:
+  - My Other Name
+cssclasses:
+  - wide-page
+---
+```
+
+**Types:** text, number, date (`YYYY-MM-DD`), checkbox (true/false), list (array).
+Properties are searchable and usable in Dataview/Bases.
+
+## Callouts
+
+```markdown
+> [!note] Optional Title
+> Callout content here.
+
+> [!warning]
+> Warning without custom title.
+
+> [!tip]+ Collapsible (open by default)
+> Content here.
+
+> [!danger]- Collapsible (closed by default)
+> Content here.
+```
+
+**Types:** note, abstract, info, tip, success, question, warning, failure, danger, bug, example, quote.
+
+## Tags
+
+```markdown
+#tag                             # Inline tag
+#nested/tag                      # Nested tag (creates hierarchy)
+```
+
+Tags in frontmatter `tags:` array and inline `#tags` are both searchable.
+
+## Block References
+
+```markdown
+This is a paragraph. ^block-id
+
+<!-- In another note: -->
+[[Note Name#^block-id]]          # Link to block
+![[Note Name#^block-id]]        # Embed block
+```
+
+Block IDs are added at the end of any block (paragraph, list item, etc.).
+
+## Comments
+
+```markdown
+%%This is a comment - hidden in reading view%%
+
+%%
+Multi-line
+comment
+%%
+```
+
+## Task Syntax
+
+```markdown
+- [ ] Incomplete task
+- [x] Complete task
+- [/] In progress (with Tasks plugin)
+- [-] Cancelled (with Tasks plugin)
+```
+
+## Math
+
+```markdown
+Inline: $e^{i\pi} + 1 = 0$
+
+Display:
+$$
+\int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}
+$$
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| `[text](note.md)` for internal links | Standard markdown links don't get Obsidian features | `[[note\|text]]` |
+| Putting tags only in body text | Harder to query, not in properties | Use frontmatter `tags:` array |
+| Using HTML for callouts | Not rendered correctly in Obsidian | Use `> [!type]` syntax |
+| Spaces in block IDs | Invalid syntax | Use hyphens: `^my-block-id` |

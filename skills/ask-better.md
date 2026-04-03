@@ -1,0 +1,71 @@
+# Ask Better
+
+Ask fewer, better questions. Minimize round-trips between agent and user.
+
+## Before asking ANY question, check:
+
+1. **Is the answer already in context?** Search CLAUDE.md, MEMORY.md, project docs, git history.
+   If it's there, don't ask. Most questions agents ask are already answered somewhere.
+
+2. **Does each question resolve exactly one decision?** Multi-part questions get partial answers.
+   Split compound questions into atomic ones.
+
+3. **Do the options surface tradeoffs, not just definitions?** Don't ask "SQLite or PostgreSQL?"
+   Ask "SQLite (simpler, no server, single-writer) or PostgreSQL (concurrent writes, complex queries)?"
+
+## Question Formats
+
+### Binary choice (fastest for user)
+```
+Option A: [concrete description] - [tradeoff]
+Option B: [concrete description] - [tradeoff]
+```
+Use when there are exactly 2 reasonable paths.
+
+### Multiple choice (bounded cognitive load)
+```
+A. [option] - [one-line tradeoff]
+B. [option] - [one-line tradeoff]
+C. [option] - [one-line tradeoff]
+```
+Maximum 4 options. More than 4 = you haven't narrowed enough.
+
+### Open-ended (last resort)
+Only when you genuinely can't predict the answer space. Example: "What's the project name?"
+Never for technical decisions - there's always a finite set of reasonable options.
+
+## Rules
+
+1. **Front-load your recommendation.** Don't just list options - say which one you'd pick and why.
+   The user can override, but they shouldn't have to think from scratch.
+
+2. **Include the cost of each option.** Not just "A or B?" but "A (30 min, simpler) or B (2 hours,
+   more flexible)?" Users optimize differently depending on constraints.
+
+3. **One question per message.** Multiple questions in one message get partial answers and create
+   confusion about which answer maps to which question.
+
+4. **Batch related decisions.** If decisions are independent, ask them in parallel. If they're
+   dependent, ask the upstream decision first.
+
+5. **State what you'll do if they don't answer.** "I'll go with A unless you say otherwise."
+   Reduces blocking time if the user is busy.
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| "How should I handle errors?" | Open-ended, infinite answer space | "Errors: Result type (idiomatic, explicit) or exceptions (familiar, less boilerplate)?" |
+| "Should I use TypeScript?" | Answer is usually in the project already | Check tsconfig.json, existing code, CLAUDE.md first |
+| "What do you think about X, Y, and Z?" | Three questions disguised as one | Ask the most important one first |
+| "What database should I use?" | No context, no tradeoffs | "For this single-user CLI tool: SQLite (embedded, zero setup) or PostgreSQL (if you need multi-user later)? I'd go SQLite." |
+| Asking without a recommendation | Makes the user do all the thinking | Lead with your recommendation, let them override |
+
+## Quality Self-Check
+
+Before sending a question:
+1. Answer isn't already in project context?
+2. Each question resolves exactly one decision?
+3. Options include concrete tradeoffs (not just names)?
+4. You've stated your recommendation?
+5. You've said what you'll default to if they don't respond?

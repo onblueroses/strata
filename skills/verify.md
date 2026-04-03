@@ -1,0 +1,279 @@
+# Verify
+
+Post-implementation integrity gate. Classifies your edits by risk and runs proportional checks - from zero-cost auto-pass for safe files to full Opus subagent review for complex changes.
+
+## Usage
+
+```
+/verify           # Run verification (tier auto-detected from edit list)
+/verify --deep    # Force Deep tier (thorough review, spec-driven work)
+```
+
+No other arguments. Reads the edit list from `.claude/.session-edits-{sessionId}` automatically.
+
+## Skip Conditions
+
+- **Skip if** no files were edited this session (no `.session-edits-{sessionId}` file or it's empty)
+- **Skip if** the only edits were to verify infrastructure files (`.session-edits-*`, `.verify-passed-*`, this skill file) during a meta-session
+
+## Risk Classifier
+
+Read `.claude/.session-edits-{sessionId}` and classify every path using the **Verify Risk** system in `.claude/reference/tier-classification.md`. The **highest risk file** determines the tier for the whole session.
+
+### Tier: Skip
+
+ALL edited files match these patterns (every file must match, one mismatch escalates):
+
+- `life/**/*.md` - knowledge base markdown
+- `life/**/*.json` - knowledge base data (daily notes, items.json)
+- `.claude/specs/**` - spec files
+- `.claude/commands/**/*.md` - skill definitions (not hooks or scripts)
+- `.claude/memory/**` - memory files
+- `**/CLAUDE.md` - project instructions
+- `.claude/reference/**/*.md` - reference docs
+
+**Excludes** (these are NOT skip-safe even if they match .claude/):
+- `.claude/settings.json` - affects runtime behavior
+- `.claude/hooks/**` - executable scripts
+- Any `.ps1`, `.sh`, `.js`, `.ts`, `.py`, `.rs` file regardless of location
+
+**Action:** Output `VERIFY: [N files] SKIP - safe file types only. Auto-passed.` and write the marker file. Done.
+
+### Tier: Light
+
+ALL of these are true:
+- 1-3 edited files
+- All files in the same project directory (common path prefix up to the first project boundary)
+- No two edited files import/require/reference each other (check this by grepping edited files for paths of other edited files)
+- No files in the Skip-excludes list above (settings.json, hooks, etc.)
+
+**Action:** Run inline checks (no subagent). See Light Tier Checks below.
+
+### Tier: Full
+
+ANY of these are true:
+- 4+ edited files
+- Files span multiple project directories
+- Edited files have cross-references (imports between them)
+- `.claude/settings.json` or `.claude/hooks/*` was edited
+- File is in a `src/`, `lib/`, `app/`, or `pages/` directory AND other files in the same directory were also edited
+
+**Action:** Spawn Opus subagent. See Full Tier Checks below. After subagent completes, log to `.claude/agent-log.jsonl`:
+`{"timestamp":"[ISO]","command":"/verify","agent_type":"code-reviewer","model":"opus","purpose":"Full tier review: [N] files across [projects]","duration_estimate":"medium","outcome":"[success|error]","session_id":"[id]"}`
+
+### Tier: Deep
+
+- `--deep` flag was passed explicitly
+
+**Action:** Spawn Opus subagent with extended checklist. See Deep Tier Checks below. After subagent completes, log to `.claude/agent-log.jsonl`:
+`{"timestamp":"[ISO]","command":"/verify","agent_type":"code-reviewer","model":"opus","purpose":"Deep tier review: [N] files, spec-driven","duration_estimate":"slow","outcome":"[success|error]","session_id":"[id]"}`
+
+---
+
+<details>
+<summary>Light Tier Checks (inline, no subagent)</summary>
+
+Run these yourself. No subagent needed for 1-3 files in a single project.
+
+**L1. Fresh re-read.** Read every edited file using the Read tool. Read from disk, not from memory.
+
+**L2. Debris scan.** Grep all edited files for:
+- `TODO` or `FIXME` without a description after it
+- `console.log(` or `console.debug(` in non-test files (test files: `*.test.*`, `*.spec.*`, `__tests__/`)
+- `debugger` statement
+- Placeholder values: `CHANGEME`, `INSERT_HERE`, `your-`, `example.com` in non-example files
+
+**L3. Run tests.** If the project containing the edited files has a test runner:
+- `package.json` with `test` script: `npm test` or `npx vitest run`
+- `Cargo.toml`: `cargo test`
+- `pyproject.toml` with pytest: `pytest`
+- If no test runner: note "No tests found" - not a failure.
+
+**L4. Verdict.** Produce verdict inline:
+
+```
+VERIFY: [N files] LIGHT
+========================================
+
+[PASS] Re-read N files, debris clean, tests pass
+--- or ---
+[FAIL] N issues found
+
+  [L2] file.ts:42 - console.log left in production code
+  [L3] Tests failed: [output snippet]
+```
+
+If PASS: write marker file. If FAIL: fix issues, re-run.
+
+</details>
+
+<details>
+<summary>Full Tier Checks (Opus subagent)</summary>
+
+Spawn a general-purpose subagent with `model: "opus"`. **Permission profile: Reviewer** (Read, Grep, Glob, Bash - no Edit/Write/Agent). Pass it the checklist below.
+
+**Subagent prompt template:**
+
+```
+You are a verification agent. Re-read files that were just edited and check for correctness and consistency. Assume mistakes until proven otherwise.
+
+EDITED FILES:
+{list of file paths}
+
+PROJECT CLAUDE.MD: {path, if exists}
+
+CHECKLIST:
+
+F1. FRESH RE-READ. Read every edited file with the Read tool. From disk, not memory.
+
+F2. CROSS-FILE CONSISTENCY. For files that reference each other:
+- Imports/requires: does each imported path resolve to a real file? Does the exported symbol exist?
+- Type signatures: if file A calls a function from file B, do argument types match?
+- Config references: if a config references a path/module/class, does it exist?
+- Mechanical check: grep all edited files for import/require/from statements, verify each target exists using Glob.
+
+F3. DEBRIS SCAN. Grep all edited files for:
+- TODO/FIXME without description
+- console.log/console.debug in non-test files
+- debugger statement
+- Placeholder values: CHANGEME, INSERT_HERE, your-, example.com
+- `as any` casts in TypeScript (warning only, not failure)
+
+F4. RUN TESTS. Check for test runner in the project:
+- package.json with test/vitest script -> npm test / npx vitest run
+- Cargo.toml -> cargo test
+- pyproject.toml with pytest -> pytest
+- No test runner -> note it, don't fail.
+
+F5. DOC REFERENCES. For each edited file:
+- Grep *.md files in the same project for the edited filename
+- If docs reference the file: do descriptions still match?
+- Check README.md and CLAUDE.md in the project root.
+
+F6. ACTIVE SPEC. Check .claude/specs/ for in-progress spec matching this session:
+- Is >> Current Step up to date?
+- Are completed steps checked off?
+- Stale spec is a warning, not failure.
+
+F7. HARNESS CHECK. If an active spec exists and has `Harness: yes`:
+- Check if `.claude/harness-runs/` contains any directory dated within the last 7 days.
+- If no harness run exists: add a note to the verdict: "Spec recommends /harness but it wasn't run. Consider `/harness --from-spec` before committing."
+- This is a nudge only - it does not cause FAIL.
+
+VERDICT FORMAT:
+VERIFY: [N files checked] FULL
+========================================
+
+[PASS] All checks passed
+  - F1: Re-read N files
+  - F2: Cross-refs valid
+  - F3: No debris
+  - F4: Tests pass / No tests
+  - F5: Docs current
+  - F6: Spec current / No spec
+  - F7: Harness run exists / Not recommended / Nudge: [if applicable]
+--- or ---
+[FAIL] N issues found
+
+  [F2] file.ts:42 - Import "./utils" resolves to non-existent file
+  [F3] api.ts:15 - console.log left in production code
+
+If FAIL: list every issue with file, line, description. Do not summarize or skip.
+If PASS: confirm what was checked.
+```
+
+If PASS: write marker file. If FAIL: fix issues yourself, re-run /verify.
+
+</details>
+
+<details>
+<summary>Deep Tier Checks (Opus subagent, extended)</summary>
+
+Same as Full tier, plus these additional checks in the subagent prompt:
+
+```
+DEEP TIER ADDITIONAL CHECKS (only when --deep flag was used):
+
+D1. CROSS-PROJECT CONSISTENCY. If edits touched files in 2+ projects:
+- Check shared facts (ports, versions, domains, auth config) agree between projects
+- Verify no conflicting assumptions
+
+D2. CONFIG-AFFECTS-RUNTIME. If settings.json, hook scripts, or config files were edited:
+- Trace the config change to its runtime effect
+- Verify the change is intentional and consistent with code that reads the config
+
+D3. THOROUGH DOC CURRENCY. For all .md files in affected project directories:
+- Read each one
+- Check that descriptions, file paths, and architecture claims match reality
+- Special attention to deploy procedures and gotchas sections
+
+D4. IMPORT GRAPH. Build a dependency graph of all edited files' imports:
+- Verify no circular dependencies were introduced
+- Check that dependency direction matches architecture (e.g., utils don't import from pages)
+```
+
+Verdict format same as Full but with `DEEP` label and D1-D4 items in the report.
+
+</details>
+
+---
+
+## Marker File
+
+**Path:** `.claude/.verify-passed-{sessionId}`
+**Content:** ISO timestamp on a single line (e.g., `2026-03-25T14:30:00`)
+**Purpose:** Stop hook checks this file. Missing or stale = blocked.
+
+The Stop hook (`verify-gate.sh`) auto-writes this marker for Skip-tier sessions, so /verify never needs to run for knowledge-base-only work.
+
+---
+
+## DO NOT
+
+- **DO NOT skip Light tier for code files.** Even a single `.ts` file gets at minimum Light. Skip is only for non-code files.
+- **DO NOT spawn a subagent for Light tier.** The whole point is avoiding that overhead for simple changes. Do the checks inline.
+- **DO NOT check entity summaries in any tier.** That's /end and /reconcile's job. Removed to eliminate duplicate work.
+- **DO NOT write the marker file on FAIL.** The Stop hook checks for this. Writing on FAIL defeats the system.
+- **DO NOT treat warnings as failures.** `as any` casts and missing tests are warnings. PASS if no actual errors.
+- **DO NOT verify files outside the session edit list.** Scope is strictly what was edited.
+- **DO NOT loop more than 3 times.** If /verify fails 3 times on the same issue, stop and ask the user.
+- **DO NOT run /verify on verify infrastructure changes.** If editing verify-gate.sh or this skill file, write the marker manually.
+- **DO NOT invent findings.** Clean code is clean. PASS is expected for good work.
+
+---
+
+<details>
+<summary>Integration with Other Skills</summary>
+
+- **/review**: Checks that /verify passed before proceeding (marker file exists). Run /verify first.
+- **/end**: /verify should run before /end. /end records session state that should be verified first.
+- **/reconcile**: Deep entity verification against ground truth. /verify doesn't touch entities.
+- **/spec**: Full/Deep tiers check that active specs are up to date.
+
+</details>
+
+<details>
+<summary>Session Lifecycle</summary>
+
+```
+Implement -> /verify (MANDATORY) -> /review -> git commit -> /end -> stop
+                ^                                                    |
+                |_______ Stop hook blocks if /verify not passed _____|
+```
+
+For Skip-tier sessions (only .md/.json in life/, .claude/ config), the Stop hook auto-writes the marker - /verify never needs to run explicitly.
+
+</details>
+
+<details>
+<summary>Quality Self-Check</summary>
+
+Before reporting the verdict:
+
+1. **Every edited file was re-read from disk** - not summarized from memory. (Light: you did this. Full/Deep: subagent did this.)
+2. **Cross-file references were mechanically checked** - imports Globbed, not just eyeballed. (Full/Deep only.)
+3. **Tests were actually run** if they exist - not assumed to pass. (All code tiers.)
+4. **Findings are specific** - file path, line number, concrete description. Not vague.
+5. **Tier was correctly classified** - re-check the edit list against classifier rules.
+
+</details>

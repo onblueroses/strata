@@ -1,0 +1,45 @@
+# Pull Request
+
+A PR is a communication tool, not just a merge mechanism. Respect reviewers' time.
+
+## Structure
+
+**Title**: `<type>(<scope>): <what changed>` - under 72 characters.
+Same types as commits: feat, fix, refactor, docs, test, chore.
+
+**Description**:
+```
+## Summary
+1-3 bullet points explaining what and why (not how - the diff shows how).
+
+## Test plan
+How you verified this works. Steps to reproduce, commands to run.
+```
+
+## Rules
+
+- One logical change per PR. If the title needs "and", split it.
+- Self-review before requesting review. Read your own diff as if someone else
+  wrote it. Fix the obvious things before asking others to find them.
+- Small PRs get fast reviews. Under 400 lines changed is ideal.
+  Over 800 lines means you should almost certainly split.
+- Draft PRs for work-in-progress. Don't request review on incomplete work.
+- Link the issue. If this PR addresses an issue, reference it.
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Title: "Updates" | Zero information for reviewer | `fix(auth): handle expired refresh tokens` |
+| 2000-line PR touching 30 files | Nobody reviews this carefully | Split into stacked PRs by logical boundary |
+| "Tested locally" as test plan | Reviewer can't verify or reproduce | List exact commands and expected output |
+| Unrelated formatting changes mixed in | Obscures the real change, inflates diff | Separate formatting-only PR |
+| No description, just a diff | Forces reviewer to reverse-engineer intent | Explain the problem being solved and approach taken |
+
+## Self-Review Checklist
+
+Before requesting review:
+1. Read the full diff - would you approve this if someone else wrote it?
+2. No debug statements, commented-out code, or TODO placeholders?
+3. Tests cover the new behavior?
+4. Breaking changes documented?

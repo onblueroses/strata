@@ -1,147 +1,89 @@
-# strata - Vision & Roadmap
+# strata - Vision
 
-> The full AI navigation layer for software projects.
+> Battle-tested agent harness. Text over tooling.
 
 ## Problem
 
-AI coding agents waste tokens navigating unfamiliar codebases. Context files (CLAUDE.md, AGENTS.md) exist but are freeform, unvalidated, tool-specific, and rot silently. No tool validates project structure for AI navigation, generates cross-tool context files from a single source of truth, or detects documentation drift.
+AI coding agents waste tokens navigating unfamiliar codebases. They re-read
+the same files each session, lose state at context boundaries, and drift toward
+inconsistent conventions when multiple agents touch the same project.
+
+Context files (CLAUDE.md, AGENTS.md) help, but they are freeform, unvalidated,
+and rot silently. Most setups are either too minimal (a few paragraphs of
+instructions) or too rigid (compiled tooling that breaks when the model
+gets smarter).
 
 ## Research Findings
 
-- **ETH Zurich (Feb 2026)**: Naive context files can *reduce* agent performance and increase cost 20%+. Quality and relevance matter more than quantity.
-- **"Codified Context" paper (Feb 2026)**: Single-file manifests don't scale. Three-tier memory (hot/warm/cold) needed for 100k+ line projects.
-- **AGENTS.md (Linux Foundation)**: 28.6% faster agents in one study, but mixed results overall.
-- **Gap**: No existing tool does validation + generation + freshness tracking. Wide open.
+- **ETH Zurich (Feb 2026)**: Naive context files can reduce agent performance
+  and increase cost 20%+. Quality and relevance matter more than quantity.
+- **"Codified Context" paper (Feb 2026)**: Single-file manifests don't scale.
+  Three-tier memory (hot/warm/cold) needed for 100k+ line projects.
+- **AGENTS.md (Linux Foundation)**: 28.6% faster agents in one study, but
+  mixed results overall - structure matters more than presence.
 
-## What strata Does
+## Thesis
 
-strata is an AI workspace manager. It encodes a five-layer navigation architecture and manages the full agent lifecycle:
+Frontier models are smart enough that the bottleneck is not code generation -
+it is the quality of instructions they receive. A well-written markdown file
+beats a compiled tool because:
 
-1. **Constitution** (`PROJECT.md`) - Purpose, constraints, non-negotiables
-2. **Global Index** (`INDEX.md`) - Flat map of every file with one-line descriptions
-3. **Domain Boundaries** (`RULES.md` per folder) - What belongs here, what doesn't
-4. **Crosslink Mesh** (See Also sections) - Lateral navigation between related files
-5. **Per-File Descriptions** (frontmatter/headings) - Retrieval without loading full content
+1. **Text is universal.** Any agent can read markdown. Compiled tools lock you
+   into one ecosystem.
+2. **Text is auditable.** You can read every instruction the agent follows.
+   Compiled tools are black boxes.
+3. **Text evolves with models.** When models get smarter, you update a sentence.
+   Compiled tools need code changes, releases, and version management.
+4. **Text compounds.** Battle-tested instructions from hundreds of hours of
+   real agent sessions are more valuable than any scaffolding tool.
 
-Additionally, strata manages the AI workspace:
+## What strata Is
 
-6. **Lifecycle Hooks** (`.strata/hooks/`) - Shell scripts for session start/stop/compact events
-7. **Specs** (`.strata/specs/`) - Implementation specs with phases, steps, decisions, session ownership
-8. **Sessions** (`.strata/sessions/`) - Daily notes and context saves with session ID tracking
-9. **Agent Targets** - Generate agent-specific files (CLAUDE.md, AGENTS.md) for Claude Code, OpenCode, Pi
-10. **Preset Tiers** - minimal (structure), standard (+hooks, 23 core skills, memory, references), full (+specs, sessions, meta skills, domain skills)
+strata is a curated collection of:
 
-## Vision
+- **51 skills** - procedural knowledge for development workflows (review,
+  verify, commit, debug, deploy, security, and more)
+- **13 hooks** - shell scripts that enforce quality gates and preserve context
+  automatically
+- **Reference docs** - code quality principles, skill design guidelines
+- **Examples** - annotated CLAUDE.md pattern, settings.json hook wiring
+- **Architecture** - the five-layer navigation model as documentation
+- **A bootstrap prompt** - single entry point that configures everything
 
-strata becomes the full AI navigation layer: scaffold structure, generate project-level context files, validate integrity, watch for drift, and recursively improve as you work.
+The optional Rust CLI in `cli/` adds structural validation and context
+generation for power users. It is not required.
 
-- **Audience**: Personal-first, then community (battle-tested before shared)
-- **Identity**: Full AI navigation layer (scaffold + validate + generate + watch + smart-load)
-- **CLAUDE.md**: Global CLAUDE.md untouched; strata owns project-level context generation
-- **Projects**: Code-first, vault-aware (Obsidian as secondary mode)
-- **Runtime**: CLI + files now; MCP server as separate feature
-- **Distribution**: `cargo install` / clone repo
+## What strata Is Not
 
----
+- Not a framework with runtime dependencies
+- Not a code generator
+- Not specific to one AI agent (works with Claude Code, OpenCode, Pi, or any
+  agent that reads markdown)
+- Not a replacement for your project's documentation - it is the layer that
+  makes your documentation navigable to agents
 
-## Phased Roadmap
+## Distribution
 
-<details>
-<summary>Phased Roadmap</summary>
-
-### Phase 0: Foundation (partially complete)
-
-Fix false positives, modernize internals, make strata pleasant to use on real projects.
-
-| Step | Summary | Status |
-|------|---------|--------|
-| 0.1 | Replace `walkdir`+`globset` with `ignore` crate (gitignore-aware, parallel-ready) | Done |
-| 0.2 | Fix link resolution (wiki-name mode, implicit .md, URL path filtering, code block skipping) | Done |
-| 0.3 | Configurable `scan_extensions` in strata.toml | Done |
-| 0.4 | Switch to `miette` for rich error diagnostics with source spans | Done |
-| 0.5 | Add SARIF v2.1.0 output (`strata lint --format sarif`) | Done |
-| 0.6 | Snapshot tests with `insta` + `insta-cmd` | Done |
-| 0.7 | Parallel scanning with `rayon` | Done |
-
-### Phase 0.5: Memory System + Workspace Expansion (complete)
-
-Added between Phase 0 and Phase 1. Context generation, budget enforcement, and full workspace management.
-
-| Step | Summary | Status |
-|------|---------|--------|
-| 0.5.1 | `strata generate` - tiered context generation with char budget truncation | Done |
-| 0.5.2 | `[context]` + `[memory]` config sections with budget defaults | Done |
-| 0.5.3 | 5 lint rules: context-budget, skill-structure, context-freshness, memory-budget, memory-structure | Done |
-| 0.5.4 | `strata fix --index` - full INDEX.md regeneration | Done |
-| 0.5.5 | skills/ directory scaffolding and SKILL.md validation | Done |
-| 0.5.6 | `strata init --preset minimal\|standard\|full` - tiered scaffolding | Done |
-| 0.5.7 | Lifecycle hooks: `[hooks]` config, `.strata/hooks/`, hook-structure + hook-budget lint | Done |
-| 0.5.8 | Specs: `strata spec new\|list\|status\|complete`, spec-structure + spec-stale + spec-ownership lint | Done |
-| 0.5.9 | Sessions: `strata session start\|list\|save`, session-structure lint | Done |
-| 0.5.10 | Agent targets: `strata generate --target claude-code\|opencode\|pi`, starter-skills lint | Done |
-
-### Phase 1: Smart Scaffold (complete)
-
-Improve generation quality with project awareness, better templates, and drift detection.
-
-| Step | Summary | Status |
-|------|---------|--------|
-| 1.1 | Project type detection (Rust, JS/TS, Python, Go, frameworks) | Done |
-| 1.2 | Template engine upgrade (`minijinja` - conditional sections, loops) | Done |
-| 1.3 | `strata diff` command (show changes since last generation) | Done |
-| 1.4 | Freshness tracking (`.strata/state.json`, git-aware staleness) | Done |
-
-### Phase 2: Recursive Improvement (mostly complete)
-
-strata gets smarter over time by watching project evolution and suggesting structural updates.
-
-| Step | Summary | Status |
-|------|---------|--------|
-| 2.1 | `strata watch` (file watching with `notify`, streaming diagnostics) | Done |
-| 2.2 | `strata update` (re-analyze + update generated files, preserve human edits) | Done |
-| 2.3 | Git-aware freshness (track last-verified by mtime/git log) | Done |
-| 2.4 | Incremental scanning (cache by path+mtime+content_hash, `blake3`) | Next |
-
-### Phase 3: Advanced Features (mostly complete)
-
-| Step | Summary | Status |
-|------|---------|--------|
-| 3.1 | Custom lint rules (TOML-driven pattern/condition/message) | Done |
-| 3.2 | Workspace support (monorepo, per-member config, aggregated results) | Done |
-| 3.3 | MCP server mode (`strata serve`, task-aware context loading, tiered hot/warm/cold) | Planned |
-| 3.4 | Shell completions (`clap_complete`) | Done |
-
-### Phase 4: Content Quality
-
-| Step | Summary |
-|------|---------|
-| 4.1 | Temporal lint rules: stale-dates (last_verified, Last updated) and waiting-markers | Done |
-| 4.2 | Opinionated templates: code quality principles, skill design reference docs, verify skill | Done |
-| 4.4 | Batteries-included: 48 skill templates (23 core, 7 meta, 18 domain), tier-based dispatch, project-type-aware domain matching, enforcement hooks, getting-started reference | Done |
-| 4.3 | Skill eval system: trigger testing, iterative optimization, HTML reports | Done |
-
-</details>
+Clone the repo, read SETUP.md, and let the bootstrap prompt configure your
+project. Remove skills you don't need. Add your own. The repo is the product.
 
 ## Architecture Decisions
 
-| Decision | Choice | Rationale | Status |
-|----------|--------|-----------|--------|
-| File walker | `ignore` crate | gitignore-aware, parallel-ready, BurntSushi quality | Implemented |
-| Error display | `thiserror` + `miette` | Rich diagnostics with source spans, diagnostic codes, actionable help text | Implemented |
-| Template engine | `minijinja` | Conditional sections, loops, project-type-aware rendering | Implemented |
-| Config format | TOML | Rust ecosystem standard, already in use | Implemented |
-| Link mode | Config-driven (`path` vs `name`) | Code projects use paths, vaults use filename matching | Implemented |
-| Generation markers | `<!-- strata:generated -->` | Single marker: above = human-owned, below = regenerated | Implemented |
-| Budget unit | Characters (not tokens) | Deterministic, zero-dependency, ~4 chars/token | Implemented |
-| MCP | Separate feature flag | Keep core CLI simple, MCP is additive | Planned |
-| Structured output | SARIF v2.1.0 (`serde-sarif`) | Industry standard, VS Code + GitHub Actions | Implemented |
-| Parallel scanning | `rayon` | Standard for data parallelism in file content scanning | Implemented |
-| Snapshot testing | `insta` + `insta-cmd` | De facto standard, interactive review | Implemented |
-| Content hashing | `blake3` | SIMD-accelerated, 3x faster than SHA-256 | Planned |
-| File watching | `notify` v8 | Cross-platform, proven, debounced | Implemented |
-| Custom lint rules | TOML-driven (`[[custom_rules]]`) | file_exists, file_missing, content_contains, frontmatter_key checks | Implemented |
-| Monorepo | `[workspace]` config with `members` list | Per-member strata.toml, aggregated lint/check | Implemented |
-| Skill eval | `EvalBackend` trait + Claude Code backend | Trigger testing, train/test split, iterative optimization | Implemented |
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Format | Plain markdown + shell | Universal, auditable, no runtime dependencies |
+| Entry point | Single bootstrap prompt (SETUP.md) | One file to read, agent does the rest |
+| CLI | Optional, in subdirectory | Power users get validation; text users lose nothing |
+| Skills | Plain .md, no frontmatter | Zero preprocessing, any agent can read them |
+| Hooks | Shell scripts with env vars | Portable across Linux/macOS, configurable per project |
+| Distribution | Clone and prune | Users see everything, remove what they don't need |
+
+## Future
+
+- MCP server mode for the CLI (task-aware context loading)
+- Community skill contributions with quality bar
+- Multi-agent coordination patterns
+- Project-type-specific starter kits (detected from SETUP.md bootstrap)
 
 ---
 

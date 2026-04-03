@@ -1,0 +1,46 @@
+# Plan
+
+Think before typing. A 10-minute plan prevents hours of rework.
+
+## Steps
+
+1. **Scope** - What exactly needs to change? What does NOT change? Write both down.
+   The "does not change" list prevents scope creep.
+2. **Inventory** - List every file that needs modification. Read each one.
+   Understand existing patterns before introducing new ones.
+3. **Design** - Sketch the approach. For each file: what changes, what's added,
+   what's removed. Identify the riskiest part and address it first.
+4. **Edge cases** - List inputs, states, and conditions that could break the design.
+   Empty collections, concurrent access, missing config, partial failures.
+5. **Order** - Sequence the work so each step is independently testable.
+   If step 3 breaks, steps 1-2 should still be valid.
+6. **Define done** - What must be true when complete? Tests pass, docs updated,
+   no regressions, specific acceptance criteria met.
+
+**For 3+ files:** Create a persistent spec via `/spec [feature-name]` so the plan
+survives context compaction.
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| "Step 1: implement the feature" | Restating the goal | Break into specific file changes with criteria |
+| Planning 2 hours for a 30-min task | Over-planning | If <3 files with clear requirements, just do it |
+| "We might need X later" | Speculative complexity | Build for current requirements |
+| Skipping file inventory | Conflicts discovered mid-implementation | Always read before write |
+| Starting with easy parts | Risky parts found late | Address riskiest unknown first |
+
+## Concrete Tests
+
+- Can you explain the plan in under 2 minutes?
+- Does every step have a clear "done" signal?
+- Is the riskiest part in the first 1-2 steps?
+- Could another developer follow this plan?
+
+## Quality Self-Check
+
+Before starting implementation:
+1. Scope explicitly states what's in AND out?
+2. Every affected file listed and read?
+3. Edge cases identified for each design decision?
+4. Steps ordered so each is independently verifiable?

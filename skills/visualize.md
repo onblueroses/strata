@@ -1,0 +1,103 @@
+# Visualize
+
+Generate clean visualizations. SVG for static, HTML for interactive.
+
+## Format Selection
+
+| Need | Format | Why |
+|------|--------|-----|
+| Architecture diagram | SVG | Scalable, embeddable, version-controllable |
+| Data chart (bar, line, pie) | SVG or Chart.js (HTML) | SVG for static, Chart.js for interactive |
+| Flowchart / process diagram | SVG | Clean lines, text labels |
+| Interactive dashboard | HTML + Chart.js | Hover, zoom, filter |
+| Quick sketch | Mermaid (in markdown) | Fastest, rendered by most tools |
+
+## SVG Design Principles
+
+### Color palette
+Use a limited, consistent palette:
+
+```
+Primary:    #2D3436 (near-black, text and lines)
+Secondary:  #636E72 (gray, secondary elements)
+Accent:     #0984E3 (blue, highlights and CTAs)
+Success:    #00B894 (green, positive states)
+Warning:    #FDCB6E (yellow, caution)
+Error:      #D63031 (red, negative states)
+Background: #FAFAFA (off-white)
+```
+
+### Typography in SVG
+- Font: system sans-serif (`font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`)
+- Title: 18-20px, bold
+- Labels: 12-14px, regular
+- Annotations: 10-12px, light gray
+
+### Layout
+- Minimum 20px padding from edges
+- Consistent spacing between elements (use multiples of 8px)
+- Left-to-right for processes, top-to-bottom for hierarchies
+- Align elements to a grid
+
+## Chart Patterns
+
+### Bar chart (SVG)
+```svg
+<svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .bar { fill: #0984E3; }
+    .label { font-size: 12px; fill: #636E72; text-anchor: middle; }
+    .value { font-size: 11px; fill: #2D3436; text-anchor: middle; }
+    .axis { stroke: #DFE6E9; stroke-width: 1; }
+  </style>
+  <!-- Y axis -->
+  <line class="axis" x1="50" y1="20" x2="50" y2="260"/>
+  <!-- X axis -->
+  <line class="axis" x1="50" y1="260" x2="380" y2="260"/>
+  <!-- Bars -->
+  <rect class="bar" x="80" y="100" width="40" height="160" rx="2"/>
+  <text class="value" x="100" y="95">160</text>
+  <text class="label" x="100" y="280">A</text>
+  <!-- ... more bars -->
+</svg>
+```
+
+### Architecture diagram
+- Rounded rectangles for services/components
+- Arrows for data flow (include direction labels)
+- Dashed borders for external systems
+- Group related components with light background rectangles
+
+## Mermaid (quick diagrams)
+
+```mermaid
+graph LR
+    A[Input] --> B{Validate}
+    B -->|valid| C[Process]
+    B -->|invalid| D[Error]
+    C --> E[Output]
+```
+
+Use Mermaid when:
+- Speed matters more than aesthetics
+- The diagram will be in a markdown file
+- The rendering tool supports Mermaid (GitHub, Obsidian, etc.)
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Rainbow color palettes | Distracting, not accessible | 2-3 colors from the palette above |
+| Tiny text in diagrams | Unreadable when embedded | Minimum 12px for labels |
+| 3D charts | Distort data perception | 2D always |
+| Pie charts for > 5 categories | Unreadable | Use bar chart instead |
+| No axis labels on charts | Data without context is noise | Always label axes with units |
+| Decorative elements (drop shadows, gradients on data) | Obscure the data | Clean, flat design |
+
+## Quality Self-Check
+
+1. Visualization answers a specific question (not just "looks cool")?
+2. Color palette limited to 2-4 colors?
+3. All text readable at intended display size?
+4. Axes labeled with units?
+5. Data accurately represented (no truncated axes, no misleading scales)?

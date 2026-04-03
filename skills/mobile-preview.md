@@ -1,0 +1,73 @@
+# Mobile Preview
+
+Fast mobile viewport testing. Screenshot, review, report.
+
+## Step 1: Set viewport
+
+Common viewports to test:
+
+| Device | Width | Height | Scale |
+|--------|-------|--------|-------|
+| iPhone SE | 375 | 667 | 2x |
+| iPhone 14 | 390 | 844 | 3x |
+| iPhone 14 Pro Max | 430 | 932 | 3x |
+| Samsung Galaxy S21 | 360 | 800 | 3x |
+| iPad Mini | 768 | 1024 | 2x |
+| iPad Pro | 1024 | 1366 | 2x |
+
+**Minimum check**: 375px width (smallest common phone). If it works at 375px,
+it usually works at larger mobile sizes.
+
+## Step 2: Screenshot key pages
+
+For each critical page/flow:
+
+1. Set viewport to target dimensions
+2. Screenshot the initial viewport (above the fold)
+3. Scroll down and screenshot additional sections
+4. If there are interactive elements (menus, modals, forms), trigger them and screenshot
+
+## Step 3: Check for issues
+
+| Issue | What to look for |
+|-------|-----------------|
+| **Overflow** | Horizontal scrollbar, content extending past viewport edge |
+| **Text** | Too small (< 16px body), too long lines, overlapping |
+| **Touch targets** | Buttons/links smaller than 44x44px, targets too close together |
+| **Images** | Overflowing containers, wrong aspect ratio, not loading |
+| **Navigation** | Menu accessible, hamburger works, back button reachable |
+| **Forms** | Inputs full-width, labels visible, keyboard doesn't cover fields |
+| **Fixed elements** | Sticky headers/footers taking too much vertical space |
+
+## Step 4: Report
+
+```
+MOBILE PREVIEW: [URL]
+Viewport: [width]x[height]
+========================================
+
+[PASS] / [N issues found]
+
+Issues:
+  - [page/section]: [description]
+  - [page/section]: [description]
+
+Screenshots taken: [count]
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Only checking at one width | Different phones = different widths | Check 375px minimum, ideally 390px and 430px too |
+| Resizing browser window | Doesn't test touch targets, mobile rendering | Use proper viewport emulation |
+| Checking only the homepage | Internal pages often break worse | Check the full critical flow |
+| Ignoring landscape | Some users rotate, some tablets default landscape | Check landscape for critical pages |
+
+## Quality Self-Check
+
+1. Tested at smallest common viewport (375px)?
+2. All critical pages checked (not just homepage)?
+3. Interactive elements tested (menus, forms, modals)?
+4. Touch targets are large enough (44x44px minimum)?
+5. No horizontal overflow at any viewport?

@@ -1,0 +1,90 @@
+# n8n Expression Syntax
+
+Correct expression syntax for n8n node parameters.
+
+## Basics
+
+Expressions use `{{ }}` delimiters in node parameter fields:
+
+```
+{{ $json.name }}                    // Current item's field
+{{ $json["field with spaces"] }}    // Bracket notation for special characters
+{{ $('Node Name').item.json.key }}  // Data from a specific previous node
+```
+
+## Variable Reference
+
+| Variable | Returns | Context |
+|----------|---------|---------|
+| `$json` | Current item's JSON data | Any expression |
+| `$binary` | Current item's binary data | Binary operations |
+| `$input.item.json` | Same as `$json` | More explicit form |
+| `$input.all()` | All input items | Code node only |
+| `$('Node')` | Reference to a previous node | Any expression |
+| `$execution.id` | Current execution ID | Any expression |
+| `$workflow.id` | Current workflow ID | Any expression |
+| `$workflow.name` | Current workflow name | Any expression |
+| `$now` | Current timestamp (Luxon DateTime) | Any expression |
+| `$today` | Today at midnight (Luxon DateTime) | Any expression |
+| `$env.VARIABLE` | Environment variable | If enabled in settings |
+| `$runIndex` | Current run index (0-based) | Loop contexts |
+| `$itemIndex` | Current item index | Item-level expressions |
+
+## String Operations
+
+```
+{{ $json.name.toUpperCase() }}
+{{ $json.name.toLowerCase() }}
+{{ $json.name.trim() }}
+{{ $json.email.includes('@') }}
+{{ $json.text.replace('old', 'new') }}
+{{ $json.csv.split(',') }}
+{{ `Hello ${$json.name}, welcome!` }}    // Template literals
+```
+
+## Number Operations
+
+```
+{{ Math.round($json.price * 100) / 100 }}
+{{ Math.max($json.a, $json.b) }}
+{{ parseInt($json.stringNumber) }}
+{{ parseFloat($json.decimal) }}
+{{ ($json.price * 1.19).toFixed(2) }}      // Tax calculation
+```
+
+## Date/Time (Luxon)
+
+```
+{{ $now.toFormat('yyyy-MM-dd') }}
+{{ $now.minus({days: 7}).toISO() }}
+{{ DateTime.fromISO($json.date).toFormat('dd.MM.yyyy') }}
+{{ $now.diff(DateTime.fromISO($json.created), 'days').days }}
+```
+
+## Conditional Logic
+
+```
+{{ $json.status === 'active' ? 'Yes' : 'No' }}
+{{ $json.score >= 80 ? 'Pass' : 'Fail' }}
+{{ $json.name || 'Unknown' }}                      // Fallback for falsy
+{{ $json.name ?? 'Unknown' }}                      // Fallback for null/undefined only
+```
+
+## Common Errors
+
+| Expression | Error | Fix |
+|------------|-------|-----|
+| `{{ $json.my-field }}` | Interpreted as subtraction | `{{ $json["my-field"] }}` |
+| `{{ $json.items.0.name }}` | Dot notation with numbers | `{{ $json.items[0].name }}` |
+| `{{ $node.Webhook.json.body }}` | Old syntax (pre-v1) | `{{ $('Webhook').item.json.body }}` |
+| `{{ $json.date.toFormat() }}` | String, not DateTime | `{{ DateTime.fromISO($json.date).toFormat('yyyy-MM-dd') }}` |
+| `{{ $json.nested?.field }}` | Optional chaining may not work | `{{ $json.nested ? $json.nested.field : '' }}` |
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| `{{ $node["Webhook"].json.body }}` | Deprecated syntax | `{{ $('Webhook').item.json.body }}` |
+| Hard-coded values in expressions | Defeats the purpose of expressions | Reference input data |
+| Complex logic in expressions | Hard to debug, no error handling | Use a Code node instead |
+| `{{ new Date() }}` | Inconsistent, not Luxon | `{{ $now }}` or `{{ DateTime.now() }}` |

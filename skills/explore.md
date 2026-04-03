@@ -1,0 +1,40 @@
+# Explore
+
+Understand a codebase systematically instead of reading files at random.
+
+## Steps
+
+1. **Entry points** - Find where execution starts. main(), index.ts, app.py,
+   route handlers, CLI commands. Read these first.
+2. **Dependency direction** - Map which modules depend on which. Follow imports
+   from entry points inward. Draw the dependency graph mentally or on paper.
+3. **Data flow** - Pick one user-visible feature and trace the data from input
+   to output. Where is it validated, transformed, stored, retrieved, rendered?
+4. **Conventions** - How does this codebase do things? Naming patterns, file
+   organization, error handling strategy, test structure. Match these.
+5. **Boundaries** - Where are the system boundaries? External APIs, databases,
+   file system, user input. These are where bugs cluster and validation matters.
+
+## Signals to Look For
+
+- `README.md`, `CONTRIBUTING.md`, `ARCHITECTURE.md` - read first if they exist
+- Config files (package.json, Cargo.toml, pyproject.toml) - reveal deps and scripts
+- Test files - show intended behavior better than comments
+- Git log - recent commits show active areas and current priorities
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| Reading every file top to bottom | Wastes time on irrelevant code | Start from entry points, follow the call graph |
+| Jumping straight to the file you need to change | Miss architectural context, introduce inconsistencies | Understand the surrounding module first |
+| Assuming based on file names | Names lie, especially in legacy codebases | Read the actual code and verify |
+| Ignoring test files | Tests document behavior and edge cases better than comments | Read tests alongside implementation |
+
+## Quality Self-Check
+
+Before starting to modify code in an unfamiliar codebase:
+1. Can you describe the high-level architecture in 2-3 sentences?
+2. Do you know the project's conventions (naming, error handling, test style)?
+3. Have you traced at least one feature end-to-end?
+4. Do you know where the system boundaries are?

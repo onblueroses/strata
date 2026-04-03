@@ -1,0 +1,53 @@
+# Test
+
+Write tests that catch real bugs and survive refactors. Every test should
+answer: "what behavior would break if this test didn't exist?"
+
+## What to Test
+
+- **Behavior, not implementation** - Test what the function does, not how. If you
+  refactor internals, tests should still pass.
+- **Edge cases** - Empty input, zero, negative, boundary values, unicode, concurrent access.
+- **Error paths** - Invalid input produces the right error, not a crash or silent corruption.
+- **Regression bugs** - Every bug fix gets a test that would have caught it.
+
+## What NOT to Test
+
+- Getters, setters, and trivial delegation with no logic
+- Framework behavior (your ORM saves to the database correctly)
+- Private implementation details (internal helper called correctly)
+- Type system guarantees (a string field contains a string)
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| `expect(mock.save).toHaveBeenCalled()` | Tests mock, not behavior | Test observable outcome: data in store |
+| `test_function_works` | No info about behavior | `test_expired_token_returns_401` |
+| 50 lines of setup for one assertion | Fragile, hard to read | Extract builder, or test at higher level |
+| `assert result != nil` | Proves something returned | Assert the specific expected value |
+| Copying production code as expected | Tautology | Derive expected values independently |
+
+## Structure
+
+```
+// Arrange - set up inputs and expected outputs
+// Act - call the thing being tested
+// Assert - verify the result
+```
+
+One behavior per test. If a test name has "and" in it, split it.
+
+## Concrete Tests
+
+- Cover the test name and read only the assertion - does it make sense?
+- Remove the implementation: does exactly this test fail?
+- Would a wrong implementation pass this test? If yes, assertion is too weak.
+
+## Quality Self-Check
+
+Before marking test work complete:
+1. Each test has a descriptive name stating scenario and expected outcome?
+2. Tests are independent (no ordering dependencies, no shared mutable state)?
+3. No test duplicates another test's coverage?
+4. Failure messages clear enough to diagnose without reading test code?

@@ -1,0 +1,221 @@
+# Reconcile
+
+Deep verification of entity documentation against ground truth. Finds and fixes drift.
+
+Supports flags:
+- `--local` - skip VPS SSH checks (useful when VPS is unreachable or only local entities need checking)
+- `--entity <name>` or `--quick` - single-entity mode (see **Priority Mode** at the end)
+
+---
+
+## DO NOT
+
+- **DO NOT auto-fix ambiguous cases** - ask the user via AskUserQuestion. If ground truth doesn't clearly resolve a mismatch, it's ambiguous.
+- **DO NOT overwrite intentional documentation of planned (future) state** - "Service X planned" is not a mismatch just because Service X doesn't exist yet. When in doubt, ask.
+- **DO NOT update items.json unless a specific fact value changed** - a reconcile that only confirms existing facts should not touch items.json at all.
+- **DO NOT skip cross-entity checks when 2+ entities are reconciled** - step 5 is mandatory whenever multiple entities are in scope.
+- **DO NOT rewrite surrounding prose when fixing a claim** - edit only the specific incorrect value.
+
+---
+
+## Instructions
+
+### 0. Navigation integrity
+
+Check structural integrity of the navigation layer before verifying entity content. This step is fast (local filesystem only, no SSH). Run it always, even in `--entity` priority mode.
+
+**INDEX.md vs reference files:**
+- Glob `.claude/reference/*.md` (excluding INDEX.md itself)
+- Read INDEX.md, extract all doc names from the table
+- FLAG: files in directory but not in INDEX.md (missing entry)
+- FLAG: files listed in INDEX.md but not on disk (stale entry)
+
+**MEMORY.md entity table vs actual entities:**
+- Glob `life/projects/*/summary.md` and `life/areas/*/summary.md`
+- Read MEMORY.md, extract all entity names from the Entities table
+- FLAG: entities on disk but not in MEMORY.md table (missing entry)
+- FLAG: entities in MEMORY.md table but not on disk (stale entry)
+- FLAG: empty entity directories (exist in life/{projects,areas}/ but have no summary.md) - suggest cleanup via `~/to-delete/`
+
+**MEMORY.md reference doc table vs INDEX.md:**
+- MEMORY.md has an inline copy of the reference doc table. Compare it against INDEX.md.
+- FLAG: docs in INDEX.md but not in MEMORY.md table (MEMORY.md out of sync)
+- FLAG: docs in MEMORY.md table but not in INDEX.md (stale MEMORY.md entry)
+- Auto-fix: update MEMORY.md table to match INDEX.md (INDEX.md is authoritative)
+
+**Entity Local path verification:**
+- For each entity in MEMORY.md that has a Local path in the table, verify the directory exists
+- FLAG: claimed Local path that doesn't exist on disk (wrong path or repo moved/deleted)
+
+**Project CLAUDE.md existence:**
+- For each entity in MEMORY.md that has a CLAUDE.md path in the table, verify the file exists
+- FLAG: claimed CLAUDE.md that doesn't exist
+
+**Decision library:**
+- Verify `life/resources/decision-library.md` exists
+- Count entries - warn if approaching 50-entry cap
+
+**Auto-fix:** Add missing entries to INDEX.md (with placeholder "Read when" value to fill in). Add missing entities to MEMORY.md table. Flag removals for user confirmation via AskUserQuestion.
+
+---
+
+### 1. Discover entities
+
+Glob `life/{projects,areas}/*/summary.md` to find every entity. Build a list of entity paths.
+
+**Priority mode:** If `--entity <name>` is set, match only the named entity. Skip all others.
+
+### 2. Gather VPS ground truth
+
+**Skip if** `--local` flag is set or the target entity (in priority mode) has no VPS components.
+
+SSH to the VPS in a single batched session. Capture all output for comparison in step 4.
+
+```bash
+# Process and port state
+pm2 jlist
+docker ps --format '{{.Names}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || echo "no docker"
+ss -tlnp | grep -E ':(80|443|3000|3001|3002|5678|8080|8443)\b'
+
+# Nginx and auth
+nginx -T 2>/dev/null | grep -E 'server_name|listen|proxy_pass|root |auth_basic|location'
+grep -r 'auth_basic' /etc/nginx/sites-enabled/ 2>/dev/null
+
+# System services
+systemctl list-units --type=service --state=running --no-pager | grep -E 'nginx|pm2|docker|n8n|fail2ban'
+
+# Crons
+crontab -l 2>/dev/null
+
+# Key directories
+ls -la /var/www/ 2>/dev/null
+
+# Versions
+node --version 2>/dev/null
+pm2 --version 2>/dev/null
+nginx -v 2>/dev/null 2>&1
+```
+
+Use SSH directly: `ssh root@<your-vps-ip> 'commands'`. For long lists, write to a temp script, SCP over, execute remotely.
+
+### 3. Gather local ground truth
+
+Check local state for entities with local components:
+
+- **Project directories**: Do documented paths exist? (`ls` each one)
+- **Git state**: Repos clean? What branch? Unpushed commits?
+- **Claude commands/skills**: Do documented commands exist? (`ls .claude/commands/`, `.claude/skills/`)
+- **Hook scripts**: Do documented hooks still exist and match described behavior?
+
+### 4. Per-entity verification
+
+For each entity, read its `summary.md` and `items.json`. Read all entity summaries in a single parallel tool call. Compare documented claims against ground truth from steps 2-3.
+
+Focus on verifiable, falsifiable claims:
+
+| Claim type | How to verify |
+|---|---|
+| "Service X is running" | pm2 jlist / systemctl output |
+| "Port NNNN" | ss -tlnp output |
+| "Domain X routes to Y" | nginx -T output |
+| "Auth enabled/disabled" | auth_basic grep output |
+| "Version X.Y.Z" | Version command output |
+| "Cron runs at ..." | crontab -l output |
+| "Directory at /path/" | ls output |
+| "Project is at ~/projects/foo" | Local ls |
+| "Using tool X" | Local file/command check |
+
+Skip subjective claims ("~75% done") and claims requiring human judgment.
+
+### 5. Cross-entity consistency
+
+**Skip if** only 1 entity is in scope.
+
+After verifying individually, check for contradictions between entities:
+
+| Shared fact | Entities that may conflict |
+|---|---|
+| Auth status (password protection) | Site entity vs `infrastructure` |
+| PM2 process names and ports | Site entity vs `infrastructure` |
+| Service versions | Multiple entities may cite different versions |
+| Domain routing | Site entity vs `infrastructure` |
+| Deploy paths | Site entity vs `infrastructure` |
+| Cron schedules | Any entity vs `infrastructure` |
+
+For each pair referencing the same fact, compare claims. Flag disagreements.
+
+### 6. Build the report
+
+Present a single table to the user. **Save commit hashes from step 7** - include them in the report.
+
+Status values: `OK`, `MISMATCH`, `STALE` (can't verify but old), `CROSS-ENTITY` (two entities disagree).
+
+**Good vs bad report entries:**
+
+| Quality | Entry |
+|---|---|
+| Bad | `my-project / auth / wrong / MISMATCH / fixed` |
+| Good | `life/projects/my-project / "auth_basic off" (summary.md line 14) / nginx: auth_basic "Restricted" in sites-enabled/my-project / MISMATCH / Fixed in summary.md, committed abc1234` |
+| Bad | `infrastructure / port / ok / OK / -` |
+| Good | `life/areas/infrastructure / "my-project on port 3003" / pm2: port 3003 confirmed / OK / -` |
+
+### 7. Apply fixes
+
+**Auto-fix** (no user confirmation needed):
+- Clear-cut mismatches where ground truth is unambiguous (auth_basic present or absent)
+- Outdated version numbers where command output gives current version
+- Stale port numbers where ss/pm2 output is definitive
+- Cross-entity contradictions where ground truth resolves the disagreement
+
+**Flag for user** (use AskUserQuestion):
+- Ambiguous cases where ground truth doesn't clearly indicate the correct value
+- Documented "planned" state for something that doesn't exist yet
+- Any fix that would change meaning or intent of documentation
+
+When fixing, edit only the specific incorrect claim. **Save the commit hashes** - you need them for step 6's report and step 9's summary.
+
+### 8. Update last_verified
+
+For every entity checked (regardless of fixes needed), update `last_verified: YYYY-MM-DD` in summary.md.
+
+If previous date was 7+ days ago, warn: "Entity [name] last verified [date] - may have drifted."
+
+### 9. Sync and summarize
+
+Commit and push the life repo:
+
+```bash
+cd ~/life && git add -A && git diff --cached --quiet || git commit -m "Reconcile: entity verification (YYYY-MM-DD)" && git push
+```
+
+Tell the user:
+- How many entities checked
+- How many mismatches found and fixed (with commit hashes)
+- Items flagged for manual review
+- Which entities had `last_verified` updated
+
+Skip lines where nothing happened. Keep it brief.
+
+## Quality Self-Check
+
+After building the report but before presenting it, verify:
+
+1. **Navigation integrity ran** - did Step 0 execute? Are INDEX.md and MEMORY.md entity table in sync with disk?
+2. **last_verified completeness** - did every reconciled entity get `last_verified` updated to today?
+3. **Cross-entity check ran** - if 2+ entities were in scope, did step 5 execute?
+4. **MISMATCH resolution** - is every MISMATCH finding either fixed or explicitly flagged for user review? None left unaddressed.
+5. **Commit hashes** - does the report include git commit hashes for all fixes applied?
+
+---
+
+## Priority Mode
+
+**When to use:** `--entity <name>` or `--quick` flag. Single-entity quick reconciliation.
+
+Execute steps with reduced scope:
+1. **Step 1** - discover only the target entity
+2. **Steps 2-4** - gather ground truth and verify only the target entity
+3. **Step 5** - skip (single entity, no cross-checks needed)
+4. **Steps 6-9** - report, fix, update last_verified, sync as normal
+
+**Catch mechanism:** Deferred cross-entity checks run on the next full reconcile. The entity's `last_verified` still updates, so staleness checks won't re-trigger for it.

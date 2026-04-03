@@ -1,0 +1,124 @@
+# Security Review
+
+Systematic security review. Think like an attacker, document like an auditor.
+
+## Step 1: Threat model
+
+Identify what we're protecting and from whom:
+
+- **Assets**: What data/functionality is valuable? (user data, API keys, payment info, admin access)
+- **Threat actors**: Who might attack? (unauthenticated users, authenticated users, insiders, automated bots)
+- **Attack surface**: Where can they interact? (API endpoints, form inputs, file uploads, WebSocket connections)
+
+## Step 2: Review against checklist
+
+### Authentication
+- [ ] Passwords hashed with bcrypt/argon2/scrypt (NOT MD5/SHA-1/SHA-256 alone)
+- [ ] Session tokens cryptographically random, sufficient length (32+ bytes)
+- [ ] Session expiry and rotation after login
+- [ ] Rate limiting on login/register endpoints
+- [ ] No credentials in code, logs, or error messages
+
+### Authorization
+- [ ] Every endpoint checks permissions (not just authentication)
+- [ ] No IDOR - can user A access user B's resources by changing IDs?
+- [ ] Admin endpoints have separate auth checks (not just UI hiding)
+- [ ] API keys scoped to minimum required permissions
+- [ ] Default deny - new endpoints require explicit permission grants
+
+### Input validation
+- [ ] All user input validated at the boundary (type, length, format)
+- [ ] SQL queries parameterized (no string concatenation)
+- [ ] HTML output encoded to prevent XSS
+- [ ] File uploads: type validation, size limits, no execution permissions
+- [ ] Path traversal: user input never directly used in file paths
+- [ ] Command injection: user input never passed to shell commands
+
+### Data exposure
+- [ ] Sensitive data not in URLs (tokens, passwords, PII in query strings)
+- [ ] API responses don't leak internal IDs, stack traces, or debug info
+- [ ] Error messages don't reveal system internals
+- [ ] Logs don't contain passwords, tokens, or PII
+- [ ] Database backups encrypted
+
+### Cryptography
+- [ ] TLS everywhere (no HTTP for anything sensitive)
+- [ ] Secrets in environment variables or secret manager (not config files in repo)
+- [ ] No custom cryptography (use established libraries)
+- [ ] API keys and tokens rotatable without downtime
+
+### Infrastructure
+- [ ] Least-privilege principle for service accounts
+- [ ] Dependencies up to date (check for known CVEs)
+- [ ] CORS configured restrictively (not `*`)
+- [ ] Security headers set (CSP, X-Frame-Options, X-Content-Type-Options)
+- [ ] Rate limiting on all public endpoints
+
+## Step 3: Emulate attack paths
+
+For each finding from Step 2, construct a concrete attack scenario:
+
+```
+Attack: SQL injection via search parameter
+Path: GET /api/search?q=' OR 1=1 --
+Impact: Full database read access
+Likelihood: High (unauthenticated, no input validation)
+Severity: Critical
+```
+
+Prioritize by: Impact x Likelihood. Critical = blocks ship. High = fix before production.
+Medium = fix within sprint. Low = backlog.
+
+## Step 4: Mitigate
+
+For each finding rated Medium or above:
+
+1. Write the specific fix (not "add input validation" but "add parameterized query in `search.ts:45`")
+2. Implement the fix
+3. Verify the fix (Step 5)
+
+## Step 5: Verify mitigations
+
+For each mitigation:
+- **Retest**: try the original attack path - does it still work?
+- **Regression**: does the fix break any existing functionality?
+- **Bypass**: can the fix be circumvented with a slightly different attack?
+
+## Step 6: Report
+
+```
+SECURITY REVIEW: [project/feature name]
+========================================
+
+Threat model: [brief summary]
+Review scope: [files/endpoints reviewed]
+
+Findings:
+  [CRITICAL] SQL injection in /api/search - FIXED (parameterized query)
+  [HIGH] Missing rate limiting on /api/login - FIXED (added express-rate-limit)
+  [MEDIUM] CORS allows *.example.com - FIXED (restricted to app.example.com)
+  [LOW] Missing X-Content-Type-Options header - noted for backlog
+
+Mitigations verified: [count]
+Remaining risk: [summary of accepted risks]
+
+Verdict: [PASS / PASS WITH NOTES / FAIL]
+```
+
+## Anti-Examples
+
+| Bad | Why | Better |
+|-----|-----|--------|
+| "Looks secure to me" | No structured review = missed findings | Use the checklist |
+| Only checking code, not configuration | Misconfigured infrastructure is a top attack vector | Review both code and config |
+| Fixing the finding without verifying the fix | Fix might be incomplete or introduce new issues | Retest after every fix |
+| Ignoring low-severity findings | They accumulate and combine into higher-severity chains | Log everything, prioritize by risk |
+| Custom crypto ("I'll just XOR the password") | Custom crypto is always broken | Use established libraries |
+
+## Quality Self-Check
+
+1. Threat model completed (assets, actors, surface)?
+2. Full checklist reviewed (not just the categories you're comfortable with)?
+3. Attack paths are concrete (not just "XSS possible")?
+4. Every Critical/High finding has a verified fix?
+5. Report includes remaining accepted risks?

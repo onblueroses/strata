@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+defaults:
+  run:
+    working-directory: cli
+
 jobs:
   build:
     strategy:
@@ -31,18 +35,22 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: cli
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
       - name: Package (Unix)
         if: matrix.os != 'windows-latest'
+        working-directory: .
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf ../../../strata-${{ matrix.target }}.tar.gz ${{ matrix.binary }}
+          cd cli/target/${{ matrix.target }}/release
+          tar czf ../../../../strata-${{ matrix.target }}.tar.gz ${{ matrix.binary }}
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
+        working-directory: .
         run: |
-          cd target/${{ matrix.target }}/release
-          7z a ../../../strata-${{ matrix.target }}.zip ${{ matrix.binary }}
+          cd cli/target/${{ matrix.target }}/release
+          7z a ../../../../strata-${{ matrix.target }}.zip ${{ matrix.binary }}
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
