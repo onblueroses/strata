@@ -1,6 +1,6 @@
 # strata
 
-Markdown files and shell scripts that configure AI coding agents. 52 skills, 13 hooks.
+Markdown files and shell scripts that configure AI coding agents. 52 skills, 16 hooks.
 
 I use Claude Code for everything. Over time, my setup accumulated skills (procedural workflows the agent follows), hooks (shell scripts that fire at lifecycle events), and patterns for structuring projects so agents don't get lost. strata is that setup, extracted and genericized.
 
@@ -30,7 +30,7 @@ The agent figures out your project type, picks relevant skills, wires up hooks, 
 
 ```
 skills/       52 workflows in plain markdown
-hooks/        13 shell scripts (quality gates, context management, session lifecycle)
+hooks/        16 shell scripts (quality gates, context system, session lifecycle)
 examples/     CLAUDE.md pattern, settings.json template, reference docs
 SETUP.md      Bootstrap prompt - paste this into your agent
 cli/          Rust CLI for structural validation (optional, you don't need it)
@@ -58,22 +58,25 @@ Shell scripts that fire at agent lifecycle events. See [`examples/settings.json`
 | `gate-verify` | Stop | Blocks session end until verification passes |
 | `gate-codex-pre-push` | PreToolUse | Runs code review before git push |
 | `context-pre-compaction-save` | PreCompact | Saves state before context compaction |
+| `context-doc-router` | UserPromptSubmit | Routes reference docs into context by keyword |
+| `context-memory-hint` | UserPromptSubmit | Surfaces relevant memory files per prompt |
+| `session-post-compaction-restore` | SessionStart | Injects recovery context after compaction |
 | `observe-track-edits` | PostToolUse | Logs which files were edited |
 
 <details>
-<summary>All 13 hooks</summary>
+<summary>All 16 hooks</summary>
 
 **Quality gates** (blocking):
 `quality-lint-on-write`, `quality-crlf-check`, `quality-search-path-guard`, `gate-codex-pre-push`, `gate-verify`
 
-**Context management** (advisory):
-`context-nudge`, `context-suggest-compact`, `context-pre-compaction-save`
+**Context system** (advisory):
+`context-nudge`, `context-suggest-compact`, `context-pre-compaction-save`, `context-doc-router`, `context-memory-hint`
 
 **Observability** (advisory):
 `observe-track-edits`, `observe-track-session-events`, `observe-track-skill-runs`
 
 **Session lifecycle**:
-`session-check-dev-servers`, `allow-claude-dir-edits`
+`session-check-dev-servers`, `session-post-compaction-restore`, `allow-claude-dir-edits`
 
 </details>
 

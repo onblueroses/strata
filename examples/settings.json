@@ -106,6 +106,16 @@
             "type": "command",
             "command": "hooks/context-nudge.sh",
             "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "hooks/context-doc-router.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "hooks/context-memory-hint.sh",
+            "timeout": 5000
           }
         ]
       }
@@ -129,6 +139,11 @@
           {
             "type": "command",
             "command": "hooks/session-check-dev-servers.sh",
+            "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": "hooks/session-post-compaction-restore.sh",
             "timeout": 10000
           }
         ]
