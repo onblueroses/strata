@@ -1,0 +1,154 @@
+{
+  "cleanupPeriodDays": 365000,
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Write",
+      "Edit",
+      "MultiEdit",
+      "Grep",
+      "Glob",
+      "WebSearch",
+      "WebFetch",
+      "mcp__*",
+      "Skill(*)"
+    ],
+    "deny": [
+      "Bash(dd *of=/dev/*)",
+      "Bash(mkfs*)",
+      "Bash(> /dev/sda*)",
+      "Bash(> /dev/nvme*)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -fr /)",
+      "Bash(rm -fr /*)",
+      "EnterPlanMode",
+      "ExitPlanMode"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-ensure-daily-note.sh", "timeout": 5000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-check-dev-servers.sh", "timeout": 5000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-cleanup-verify-markers.sh", "timeout": 2000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-cleanup-codex.sh", "timeout": 3000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-post-compaction-restore.sh", "timeout": 5000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-sibling-awareness.sh", "timeout": 3000 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-verify.sh", "timeout": 3000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/lifecycle-auto-end-fallback.sh", "timeout": 5000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/lifecycle-sync-state.sh", "timeout": 10000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/lifecycle-warn-unpushed.sh", "timeout": 8000 }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-nudge.sh", "timeout": 2000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-doc-router.sh", "timeout": 2000 }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-pre-compaction-save.sh", "timeout": 10000, "async": true }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/allow-claude-dir-edits.sh", "timeout": 2000 }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/warn-file-ownership.sh", "timeout": 2000 }
+        ]
+      },
+      {
+        "matcher": "Bash(git push*)",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-codex-pre-push.sh", "timeout": 1800000 }
+        ]
+      },
+      {
+        "matcher": "Bash(git clone*)",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-nested-clone.sh", "timeout": 2000 }
+        ]
+      },
+      {
+        "matcher": "Bash(gh *)",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-gh-public-actions.sh", "timeout": 3000 }
+        ]
+      },
+      {
+        "matcher": "Bash(rm *)",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-rm-guard.sh", "timeout": 3000 }
+        ]
+      },
+      {
+        "matcher": "Bash(codex *)",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-codex-exec.sh", "timeout": 2000 }
+        ]
+      },
+      {
+        "matcher": "Bash(vastai destroy*)|Bash(runpodctl stop*)|Bash(runpodctl remove*)|Bash(prime pods stop*)|Bash(prime pods remove*)|Bash(gcloud compute instances stop*)|Bash(gcloud compute instances delete*)|Bash(aws ec2 terminate-instances*)|Bash(aws ec2 stop-instances*)",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-paid-compute-destroy.sh", "timeout": 3000 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|Bash|Agent|Skill",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-suggest-compact.sh", "timeout": 2000 }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/observe-track-skill-runs.sh", "timeout": 2000 }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/quality-lint-on-write.sh", "timeout": 15000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/observe-track-edits.sh", "timeout": 2000 }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/observe-track-session-events.sh", "timeout": 2000 }
+        ]
+      },
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-enrich-search.sh", "timeout": 2000 }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {}
+}

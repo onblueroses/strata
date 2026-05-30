@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# strata-init — first-run bootstrap for a strata install.
+#
+# Detects $SHELL and offers to append a guarded env block to the user's rc
+# file. Creates the agent venv and installs provider SDKs. Populates
+# workspace/ with PARA seed templates (areas/projects/resources/daily/inbox/
+# archives). Prints next steps: fill model-map.toml, run the lane smoke
+# check, then open the install in a Claude Code session.
+#
+# Usage: strata-init [INSTALL_DIR]
+#   INSTALL_DIR defaults to the parent of this script (resolves $STRATA_HOME).
+#
+# Idempotent: re-running upgrades the venv and re-seeds missing workspace
+# files without overwriting anything that exists.
+
+set -euo pipefail
+
+# Resolve install root.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STRATA_HOME="${1:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+[[ -d "$STRATA_HOME" ]] || { echo "strata-init: install dir missing: $STRATA_HOME" >&2; exit 1; }
+echo "=== strata-init ==="
+echo "Install:  $STRATA_HOME"
+
+# === Shell rc detection ===
+
+rc_for_shell() {
+  case "$(basename "${SHELL:-bash}")" in
+    zsh)  echo "$HOME/.zshrc" ;;
+    bash) echo "$HOME/.bashrc" ;;
+    fish) echo "$HOME/.config/fish/config.fish" ;;
+    *)    echo "" ;;
+  esac
+}
+
+RC_FILE="$(rc_for_shell)"
+BEGIN_MARK="# >>> strata env >>>"
+END_MARK="# <<< strata env <<<"
+RC_INSTALLED=false
+
+if [[ -n "$RC_FILE" ]]; then
+  if [[ -f "$RC_FILE" ]] && grep -qF "$BEGIN_MARK" "$RC_FILE"; then
+    echo "Shell:    $SHELL → $RC_FILE (strata block already present, skipping)"
+    RC_INSTALLED=true
+  else
+    echo "Shell:    $SHELL → $RC_FILE"
+    printf "Append strata env block to %s? [y/N] " "$RC_FILE"
+    read -r REPLY </dev/tty || REPLY="n"
+    if [[ "$REPLY" == "y" || "$REPLY" == "Y" ]]; then
+      {
+        echo ""
+        echo "$BEGIN_MARK"
+        echo "export STRATA_HOME=\"$STRATA_HOME\""
+        echo "export KB_DIR=\"\${KB_DIR:-\$STRATA_HOME/workspace}\""
+        echo "export STATE_DIR=\"\${STATE_DIR:-\$KB_DIR/state}\""
+        echo "export SPECS_DIR=\"\${SPECS_DIR:-\$STATE_DIR/specs}\""
+        echo "export PATH=\"\$STRATA_HOME/bin:\$PATH\""
+        echo "$END_MARK"
+      } >> "$RC_FILE"
+      echo "  appended."
+      RC_INSTALLED=true
+    else
+      echo "  skipped; source $STRATA_HOME/strata.env manually instead."
+      cat > "$STRATA_HOME/strata.env" <<EOF
+export STRATA_HOME="$STRATA_HOME"
+export KB_DIR="\${KB_DIR:-\$STRATA_HOME/workspace}"
+export STATE_DIR="\${STATE_DIR:-\$KB_DIR/state}"
+export SPECS_DIR="\${SPECS_DIR:-\$STATE_DIR/specs}"
+export PATH="\$STRATA_HOME/bin:\$PATH"
+EOF
+      echo "  wrote $STRATA_HOME/strata.env"
+    fi
+  fi
+else
+  echo "Shell:    unknown (\$SHELL=$SHELL); wrote $STRATA_HOME/strata.env for manual sourcing"
+  cat > "$STRATA_HOME/strata.env" <<EOF
+export STRATA_HOME="$STRATA_HOME"
+export KB_DIR="\${KB_DIR:-\$STRATA_HOME/workspace}"
+export STATE_DIR="\${STATE_DIR:-\$KB_DIR/state}"
+export SPECS_DIR="\${SPECS_DIR:-\$STATE_DIR/specs}"
+export PATH="\$STRATA_HOME/bin:\$PATH"
+EOF
+fi
+
+# === Claude Code settings install ===
+#
+# Strata ships settings.json at the install root, but Claude Code reads from
+# $HOME/.claude/settings.json (global) and <project>/.claude/settings.json
+# (project). Offer to install the strata settings into the global location,
+# backing up any existing file first.
+
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+STRATA_SETTINGS="$STRATA_HOME/settings.json"
+
+echo ""
+echo "=== Claude Code settings ==="
+if [[ -f "$CLAUDE_SETTINGS" ]]; then
+  echo "Existing: $CLAUDE_SETTINGS"
+  printf "Back up existing settings and replace with strata settings? [y/N] "
+  read -r REPLY </dev/tty || REPLY="n"
+  if [[ "$REPLY" == "y" || "$REPLY" == "Y" ]]; then
+    BACKUP="$CLAUDE_SETTINGS.pre-strata.$(date +%Y%m%d%H%M%S)"
+    cp "$CLAUDE_SETTINGS" "$BACKUP"
+    cp "$STRATA_SETTINGS" "$CLAUDE_SETTINGS"
+    echo "  backed up to $BACKUP, installed strata settings"
+  else
+    echo "  left alone; merge $STRATA_SETTINGS into $CLAUDE_SETTINGS manually"
+  fi
+else
+  mkdir -p "$HOME/.claude"
+  cp "$STRATA_SETTINGS" "$CLAUDE_SETTINGS"
+  echo "Installed: $CLAUDE_SETTINGS (copied from strata)"
+fi
+
+# === Claude Code surfaces (CLAUDE.md + skills/commands/agents/hooks/reference) ===
+#
+# Claude Code reads CLAUDE.md and discovers skills/commands/agents from
+# $HOME/.claude/ and the working project's .claude/. Strata installs by
+# symlinking these directories so updates to $STRATA_HOME propagate without
+# re-running this script. Existing entries get backed up first.
+
+echo ""
+echo "=== Claude Code surfaces ==="
+mkdir -p "$HOME/.claude"
+
+link_or_backup() {
+  local target="$1" source="$2"
+  if [[ -L "$target" ]]; then
+    rm "$target"
+  elif [[ -e "$target" ]]; then
+    local backup="$target.pre-strata.$(date +%Y%m%d%H%M%S)"
+    mv "$target" "$backup"
+    echo "  backed up $target -> $backup"
+  fi
+  ln -s "$source" "$target"
+  echo "  linked $target -> $source"
+}
+
+# CLAUDE.md is a file (not a symlink target in some Claude Code versions);
+# copy it so users can extend without editing strata.
+if [[ -f "$HOME/.claude/CLAUDE.md" ]]; then
+  printf "Existing CLAUDE.md found at \$HOME/.claude/CLAUDE.md. Back up and replace with strata's? [y/N] "
+  read -r REPLY </dev/tty || REPLY="n"
+  if [[ "$REPLY" == "y" || "$REPLY" == "Y" ]]; then
+    mv "$HOME/.claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md.pre-strata.$(date +%Y%m%d%H%M%S)"
+    cp "$STRATA_HOME/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+    echo "  installed $HOME/.claude/CLAUDE.md"
+  else
+    echo "  left alone; you can append strata's doctrine from $STRATA_HOME/CLAUDE.md manually"
+  fi
+else
+  cp "$STRATA_HOME/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+  echo "  installed $HOME/.claude/CLAUDE.md"
+fi
+
+# Symlink the discovery directories.
+for dir in skills commands agents hooks reference; do
+  link_or_backup "$HOME/.claude/$dir" "$STRATA_HOME/$dir"
+done
+
+# === Agent venv ===
+
+VENV="$STRATA_HOME/.local/agent-venv"
+REQ="$STRATA_HOME/bin/lib/requirements.txt"
+
+echo ""
+echo "=== Agent venv ==="
+if [[ -x "$VENV/bin/python" ]]; then
+  echo "Venv:     $VENV (existing — upgrading)"
+else
+  echo "Venv:     $VENV (creating)"
+  python3 -m venv "$VENV"
+fi
+"$VENV/bin/pip" install --quiet --upgrade pip
+"$VENV/bin/pip" install --quiet -r "$REQ"
+echo "Deps:     $(grep -v '^#' "$REQ" | grep -v '^$' | wc -l) packages installed"
+
+# === Workspace seed (Decision 21) ===
+
+echo ""
+echo "=== Workspace seed ==="
+WS="$STRATA_HOME/workspace"
+mkdir -p "$WS"/{areas,projects,resources,daily,inbox,archives,state/specs,state/handoffs}
+
+seed_readme() {
+  local path="$1" body="$2"
+  [[ -f "$path" ]] && return 0
+  mkdir -p "$(dirname "$path")"
+  printf '%s\n' "$body" > "$path"
+  echo "  seeded $path"
+}
+
+seed_readme "$WS/areas/README.md" "# areas/
+
+Ongoing responsibilities you maintain over time. One directory per area.
+Each area gets a summary.md describing scope, current state, and gotchas."
+
+seed_readme "$WS/projects/README.md" "# projects/
+
+One directory per project entity. Each entity directory contains:
+
+- summary.md   architecture, recent sessions, gotchas, deploy procedure
+- items.json   structured details that don't fit prose (specific values, rules)
+
+Skills like /pickup, /end, knowledge-lookup, and /reconcile read and write this tree."
+
+seed_readme "$WS/projects/example-entity/summary.md" "# example-entity
+
+\`status\`: active | scoping | shipped | deprecated
+\`last_verified\`: YYYY-MM-DD
+
+## Architecture
+What this entity is and how its pieces fit.
+
+## Deploy
+How to ship changes.
+
+## Gotchas
+Non-obvious things that bit you. Sticky.
+
+## Recent sessions
+Reverse-chronological one-liners. Pruned by /end."
+
+seed_readme "$WS/projects/example-entity/items.json" '{
+  "rules": [],
+  "values": {},
+  "gotchas": []
+}'
+
+seed_readme "$WS/resources/README.md" "# resources/
+
+Reusable references not tied to a single project: design docs, vendor cheatsheets,
+shared playbooks, libraries of patterns."
+
+seed_readme "$WS/daily/README.md" "# daily/
+
+One JSON file per session. Filename: YYYY-MM-DD-<slug>-<session-id>.json.
+The session-id suffix (8 chars) lets parallel sessions coexist without collisions."
+
+seed_readme "$WS/inbox/README.md" "# inbox/
+
+Unsorted captures. Sweep periodically into areas/projects/resources or archive."
+
+seed_readme "$WS/archives/README.md" "# archives/
+
+Deprecated entities. Moved here instead of deleted so history stays searchable."
+
+seed_readme "$WS/state/specs/README.md" "# state/specs/
+
+Active implementation specs. One file per feature. Status field controls
+visibility from /pickup and /context-resume. Specs survive context compaction."
+
+seed_readme "$WS/state/handoffs/README.md" "# state/handoffs/
+
+Session-to-session handoff notes. Written when ending mid-task, read by /pickup."
+
+# === Done ===
+
+echo ""
+echo "=== Next steps ==="
+echo "1. Fill in $STRATA_HOME/config/model-map.toml — replace <PICK_...> placeholders"
+echo "   with the strongest model ids you currently have access to."
+echo "2. Set API keys: write them to $STRATA_HOME/.local/.env (one KEY=VALUE per line)"
+echo "   or export them in your shell. Required vars depend on which providers you"
+echo "   bind: ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY."
+if $RC_INSTALLED; then
+  echo "3. Open a new shell (or run \`source $RC_FILE\`), then verify:"
+else
+  echo "3. Source the strata env (\`source $STRATA_HOME/strata.env\`) or add"
+  echo "   \`source $STRATA_HOME/strata.env\` to your shell rc, then verify:"
+fi
+echo "     strong --help && fast --help && grader --help && breadth --help"
+echo "4. Start a Claude Code session in any project; strata's CLAUDE.md, hooks,"
+echo "   skills, and reference docs auto-load from \$STRATA_HOME."
+echo ""
+echo "=== Done ==="

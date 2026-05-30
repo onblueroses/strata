@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# breadth — non-primary breadth lane / strong-lane fallback.
+#
+# Reads the `breadth` model id from $STRATA_HOME/config/model-map.toml and
+# dispatches via the strata multi-provider agent. Use for second-opinion
+# passes, when the strong lane is throttled, or for a different model voice
+# without burning the strong budget.
+#
+# Usage:
+#   breadth "prompt"
+#   breadth --file prompt.md
+#   echo "prompt" | breadth
+#
+# Flags:
+#   --file PATH    Read prompt from file
+#   --system TEXT  Override default system prompt
+#   --timeout SECS Wall-clock timeout (default 1800)
+#
+# Exit codes inherited from agent.py: 0 ok, 1 usage, 2 api, 3 quota, 4 auth, 5 empty.
+
+set -uo pipefail
+
+STRATA_HOME="${STRATA_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export STRATA_HOME
+LANE="breadth"
+TIMEOUT=1800
+
+ARGS=()
+PROMPT_FILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --file) PROMPT_FILE="$2"; shift 2 ;;
+    --system) ARGS+=(--system "$2"); shift 2 ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --effort|--reasoning|--cache|--max-tokens) shift 2 ;;
+    --raw) shift ;;
+    -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \?//'; exit 0 ;;
+    --) shift; ARGS+=(--prompt "$*"); break ;;
+    -*) echo "$LANE: unknown flag: $1" >&2; exit 1 ;;
+    *) ARGS+=(--prompt "$*"); break ;;
+  esac
+done
+
+VENV_PY="$STRATA_HOME/.local/agent-venv/bin/python"
+[[ -x "$VENV_PY" ]] || { echo "$LANE: agent venv missing at $VENV_PY — run bin/strata-init" >&2; exit 1; }
+
+MODEL_MAP="$STRATA_HOME/config/model-map.toml"
+[[ -f "$MODEL_MAP" ]] || { echo "$LANE: model-map missing: $MODEL_MAP" >&2; exit 1; }
+MODEL=$("$VENV_PY" -c "
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
+with open('$MODEL_MAP', 'rb') as f:
+    data = tomllib.load(f)
+print(data.get('lanes', {}).get('$LANE', ''))
+" 2>/dev/null)
+if [[ -z "$MODEL" || "$MODEL" =~ ^\<PICK_ ]]; then
+  echo "$LANE: lane '$LANE' unset or still placeholder ($MODEL)" >&2
+  echo "  edit $MODEL_MAP and set [lanes].$LANE to a concrete model id" >&2
+  exit 1
+fi
+
+if [[ -n "$PROMPT_FILE" ]]; then
+  [[ -f "$PROMPT_FILE" ]] || { echo "$LANE: file not found: $PROMPT_FILE" >&2; exit 1; }
+  ARGS+=(--prompt-file "$PROMPT_FILE")
+fi
+
+timeout "$TIMEOUT" "$VENV_PY" "$STRATA_HOME/bin/lib/agent.py" --model "$MODEL" "${ARGS[@]}"
+EXIT=$?
+if [[ "$EXIT" == "124" ]]; then echo "$LANE: timeout after ${TIMEOUT}s; remapping to exit 3 (treat as quota fallback)" >&2; exit 3; fi
+exit "$EXIT"

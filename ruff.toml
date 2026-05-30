@@ -1,0 +1,10 @@
+# Vendored skill packs and the install-time venv agent are out of scope
+# for strata's own lint baseline. force-exclude makes this apply even when
+# the pre-commit hook passes explicit file paths.
+force-exclude = true
+extend-exclude = [
+  "bin/lib/agent.py",
+  "skills/skill-creator/scripts",
+  "skills/skill-creator/eval-viewer",
+  "skills/browser-use",
+]
