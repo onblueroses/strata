@@ -1,0 +1,36 @@
+# Private leak inventory + adversarial test fixtures live here. Never committed.
+.local/
+
+# Runtime knowledge-base content populated by strata-init lives inside the
+# install tree by default; never check that into the public repo. Override
+# $KB_DIR to point this elsewhere before running strata-init when you want
+# to bypass these ignore rules.
+workspace/areas/
+workspace/projects/
+workspace/resources/
+workspace/daily/
+workspace/inbox/
+workspace/archives/
+workspace/state/
+workspace/tacit.md
+strata.env
+
+# OS + editor noise
+.DS_Store
+*.swp
+*~
+
+# Python / node noise that may appear if users extend strata
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+
+# Runtime state never belongs in the install tree; workspace/ has its own state dirs
+*.log
+*.pid
+
+# Stop hook markers + session edit lists (created at runtime under workspace/, but globbed for safety)
+.session-edits-*
+.verify-passed-*
+*.out

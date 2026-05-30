@@ -1,0 +1,32 @@
+# private-tokens.example.txt — template for your local leak inventory.
+#
+# Copy this file to .local/private-tokens.txt (gitignored). Add one token per
+# line: any string that, if it appeared in a public commit, would leak something
+# you wanted private. Skills like /codex-review and Phase 7 audit grep against
+# .local/private-tokens.txt before sending artifacts to external models or
+# pushing public commits.
+#
+# Tokens are matched as fixed strings (grep -F), case-insensitive (grep -i).
+# Lines starting with # are comments and ignored.
+
+# === Identity ===
+# Your full name
+# Your email address
+# Your handle on platforms that map to your real name
+
+# === Private business / project names ===
+# Internal project codenames not on public profiles
+# Client business names you do not want associated publicly
+# Domain names for private services
+
+# === Infrastructure ===
+# Public IP addresses of your servers (any VPS or cloud provider)
+# Mesh VPN IPs on your private network
+# Hostnames that resolve to private services
+
+# === Knowledge base hints ===
+# Directory names that reveal personal structure (life/, my-notes/, etc.)
+# Specific summary.md entity names that would dox a project
+
+# === Vendor identifiers ===
+# Team IDs, organization slugs, billing account names

@@ -1,0 +1,53 @@
+# model-map.toml — binds symbolic lanes to concrete model ids.
+#
+# Strata's lane wrappers (bin/strong, bin/fast, bin/grader, bin/breadth) read
+# this file to pick which model the lane dispatches to. Models churn fast;
+# this file is the only place that needs updating when they do.
+#
+# Fill in each placeholder with the strongest model id you currently have
+# access to that satisfies the lane contract. See CONFIG.md for contracts.
+
+[lanes]
+
+# Heaviest reasoning lane. Use for: load-bearing design decisions, architecture
+# planning, hard debugging, final review passes. Cost per call is high; reach
+# for this only when synthesis quality genuinely depends on it.
+strong = "<PICK_STRONGEST_AVAILABLE>"
+
+# Fast, cheap code-and-probe lane. Use for: parallel recon sparks, code
+# extraction, focused factual queries, anything where breadth-of-coverage beats
+# depth-of-reasoning. Default workhorse for Wave 1 dispatch.
+fast = "<PICK_FAST_CODE_MODEL>"
+
+# Cheap parallel grader / sanity-check lane. Use for: 3-5 parallel review
+# panels, pre-flight checks, bulk filtering, "second pair of eyes" passes.
+# Cost is sub-cent per call; bar for invocation is "would this change my next
+# move", not "is this load-bearing".
+grader = "<PICK_CHEAP_PARALLEL>"
+
+# Non-primary breadth lane / strong-lane fallback. Use for: second-opinion
+# passes, when the strong lane is throttled, or when an answer wants a
+# different model voice without burning the strong budget.
+breadth = "<PICK_NON_PRIMARY>"
+
+[runtime]
+
+# Cache directory for the codex CLI wrappers (--cache rw). Strata's wrappers
+# key on sha256(model | prompt); identical prompts hit the cache. Leave empty
+# to disable caching.
+cache_dir = "$STRATA_HOME/.local/delegate-cache"
+
+# Throttle handling: how many seconds to back off on exit code 3 before
+# retrying once. The wrapper exits 3 again after retry if still throttled,
+# at which point the caller decides whether to fall back to a sibling lane.
+throttle_backoff_seconds = 300
+
+[provider_endpoints]
+
+# Optional: override default API endpoints per provider. Leave blank to use
+# the official provider defaults. Useful when routing through a corporate
+# proxy or running a local inference server.
+#
+# anthropic = "https://api.anthropic.com"
+# openai = "https://api.openai.com"
+# deepseek = "https://api.deepseek.com"

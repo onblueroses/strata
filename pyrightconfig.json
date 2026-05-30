@@ -1,0 +1,12 @@
+{
+  "include": [],
+  "exclude": [
+    "bin/lib/agent.py",
+    "skills/skill-creator/scripts",
+    "skills/skill-creator/eval-viewer",
+    "skills/browser-use",
+    "**/__pycache__"
+  ],
+  "reportMissingImports": "none",
+  "reportArgumentType": "none"
+}

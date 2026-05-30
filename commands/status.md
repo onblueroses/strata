@@ -1,0 +1,119 @@
+---
+description: |
+  Cross-project health check. VPS, PM2, git, daily notes, entities.
+  Auto-trigger: when user asks about system health, "what's running", or before deployments.
+---
+
+# Status
+
+Quick health check across all systems. Run at session start or before deploys.
+
+## Usage
+
+```
+/status              # Full check
+/status --local      # Skip VPS (offline/fast mode)
+```
+
+Arguments via `$ARGUMENTS`.
+
+## Priority Mode
+
+**When to use:** Quick check before a deploy, or user just wants VPS health.
+
+**Quick mode** (`/status --quick`): Run only checks 1 (VPS) and 2 (PM2). Skip git, sessions, entities.
+
+**Full mode** (default): All 6 checks.
+
+## Instructions
+
+Run all checks sequentially. Use Bash for commands, Read/Glob for files. No agents needed.
+
+**DO NOT:**
+- Run SSH when `--local` flag is set
+- Report false alarms from transient VPS load spikes (check if load > threshold for the uptime period)
+- Count unnamed session stubs as "sessions" in the report
+- Show VPS passwords or sensitive config in the output
+
+
+### 1. VPS Health (skip if --local)
+
+```bash
+```
+
+Report:
+- Load average vs 4-core threshold
+- Available RAM (flag if < 2GB)
+- Disk usage (flag if > 80%)
+
+If SSH fails, note "VPS unreachable" and continue.
+
+### 2. PM2 Processes (skip if --local)
+
+```bash
+```
+
+Parse JSON output. For each process report: name, status, restarts, memory.
+Flag any process that is errored or has >10 restarts.
+
+### 3. Local Git State
+
+```bash
+git branch --show-current 2>/dev/null
+git status --short 2>/dev/null
+git stash list 2>/dev/null
+```
+
+Report: branch, uncommitted changes count, stash count.
+If not in a git repo, skip silently.
+
+### 4. Today's Sessions
+
+Use Glob to find files matching `$HOME/$KB_DIR/daily/[today]-*.json`.
+Count total, count named vs unnamed. Report a few named session names.
+
+### 5. Recent Entity Activity
+
+Use Glob to find `**/summary.md` under `$KB_DIR/projects/` and `$KB_DIR/areas/`.
+List the entities found. The Glob results are sorted by modification time.
+
+### 6. Entity Staleness
+
+For each entity directory under `$KB_DIR/projects/` and `$KB_DIR/areas/`, read the first 5 lines of `summary.md`. Extract the `last_verified: YYYY-MM-DD` line. Calculate age in days from today.
+
+Flag levels:
+- 7+ days: **STALE**
+- 14+ days: **STALE - URGENT**
+- Missing `last_verified` line: **NO VERIFICATION DATE**
+- 0-6 days: OK (show date, no flag)
+
+### Quality Self-Check
+
+After gathering all data, verify before presenting:
+1. **VPS data is current** - did SSH succeed or did you use stale/cached data?
+2. **Entity staleness is calculated correctly** - did you use today's date minus last_verified?
+3. **No false positives** - is load high because of a spike or sustained?
+4. **Session count excludes stubs** - did you count only named or summary-filled sessions?
+
+### Output
+
+```
+STATUS CHECK
+============
+VPS: [healthy/degraded/unreachable]
+  Load: X.XX (4 cores)  RAM: XGB free  Disk: XX%
+PM2: [N processes, all online / N errored]
+  app-name: online (XXmb, 0 restarts)
+  ...
+Git: [branch] - [N uncommitted changes]
+Sessions today: [count]
+  session-name (ended/open) - summary
+Recent entities:
+  2026-02-12 - $KB_DIR/areas/claude-code-setup
+  ...
+Entity Health:
+  infrastructure: verified 2026-02-13 (0d ago) OK
+  claude-code-setup: verified 2026-02-13 (0d ago) OK
+
+[Any warnings about thresholds or stale entities]
+```
