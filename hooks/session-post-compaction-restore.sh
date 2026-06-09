@@ -168,6 +168,22 @@ if [ ! -f "$hookSaveFile" ]; then
     fi
 fi
 
+# --- Arm the post-compaction read-gate ---
+# Drop a sentinel naming the save file(s) so the PreToolUse hook gate-resume-read.sh
+# blocks consequential tools until one is Read since this compaction. Keyed on the FULL
+# session id ($sid, not the 8-char $sessionId) so sessions sharing a prefix can't collide
+# on one gate (gate-resume-read.sh keys on the same full id). Written atomically (temp + mv)
+# so a tool call can never observe a half-written sentinel and slip through unenforced.
+# Armed only when a save actually exists to read.
+if [ -n "$sid" ] && { [ -f "$skillSaveFile" ] || [ -f "$hookSaveFile" ]; }; then
+    sentinelFile="/tmp/claude-needs-resume-read-$sid"
+    tmpSentinel="${sentinelFile}.$$.tmp"
+    : >"$tmpSentinel" 2>/dev/null || true
+    [ -f "$skillSaveFile" ] && echo "$skillSaveFile" >>"$tmpSentinel" 2>/dev/null
+    [ -f "$hookSaveFile" ] && echo "$hookSaveFile" >>"$tmpSentinel" 2>/dev/null
+    mv -f "$tmpSentinel" "$sentinelFile" 2>/dev/null || rm -f "$tmpSentinel" 2>/dev/null
+fi
+
 saveOutput=""
 # Pull rich semantic blocks from skill file (Goal, Critical Context, Decisions)
 if [ -f "$skillSaveFile" ]; then
@@ -305,6 +321,22 @@ Continue from where you left off. Active specs are authoritative - read them fir
 Decisions in spec tables are settled - do not re-debate.
 If this context seems incomplete, run /context-resume for full manual recovery.
 Save files: skill=${skillSaveFile:-none} hook=${hookSaveFile:-none} (read manually if needed)
+"
+fi
+
+# --- Read-gate enforcement notice (added AFTER truncation so it is never dropped) ---
+# Generalizes the router thesis: injected recovery context lands only if it is BOTH
+# compelling AND enforced. The block above is compelling; this gate makes the first
+# consequential action wait until the save is actually opened.
+if [ -n "$sid" ] && { [ -f "$skillSaveFile" ] || [ -f "$hookSaveFile" ]; }; then
+    output+="
+### >> READ YOUR SESSION SAVE BEFORE ANY NON-READ TOOL (enforced this turn)
+A PreToolUse read-gate blocks Edit / Write / Bash / dispatch tools until you Read the save below since this compaction; read-only tools (Read / Grep / Glob) stay open, reading the save clears the gate, and it self-expires after 30 min. Open it now:"
+    [ -f "$skillSaveFile" ] && output+="
+  Read $skillSaveFile"
+    [ -f "$hookSaveFile" ] && output+="
+  Read $hookSaveFile"
+    output+="
 "
 fi
 

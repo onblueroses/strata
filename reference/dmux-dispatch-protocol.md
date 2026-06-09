@@ -1,8 +1,17 @@
+<!-- keywords: dmux, dispatch, parallel agents, worktree, tmux panes, field agent, task brief, collect, scratchpad, orchestrate parallel work, fan out agents -->
 # dmux Dispatch Protocol - Design Document
 
 **Mode**: Deep
 **Date**: 2026-04-13
 **Status**: Final
+
+## Quick Nav
+| Task | Section |
+|------|---------|
+| Understand the two-tier orchestrator/field-agent model | Problem Statement |
+| Write a field-agent task brief | Brief Format |
+| Dispatch parallel work across worktrees | Roles |
+| Merge results back | Result Format |
 
 ## Problem Statement
 
@@ -354,9 +363,9 @@ Polling: 2s initial delay, then check every 250ms for up to 10s. Runs in a backg
 so it doesn't block the script.
 
 ### Session Matching
-When multiple dmux tmux sessions exist (e.g., `dmux-strata-*` and `dmux-onblueroses-*`), the
+When multiple dmux tmux sessions exist (e.g., `dmux-projectA-*` and `dmux-projectB-*`), the
 dispatch script matches the project name against session names first, falling back to the first
-dmux session. This prevents dispatching strata tasks to the wrong dmux instance.
+dmux session. This prevents dispatching a project's tasks to the wrong dmux instance.
 
 ### Pane Layout
 Each dispatch creates a horizontal tmux split. After 3+ dispatches, panes become too narrow for

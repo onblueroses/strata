@@ -5,6 +5,8 @@
     "skills/skill-creator/scripts",
     "skills/skill-creator/eval-viewer",
     "skills/browser-use",
+    "reference/.router-eval/gauntlet.py",
+    "reference/.router-eval/test-scorer.py",
     "**/__pycache__"
   ],
   "reportMissingImports": "none",

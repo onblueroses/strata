@@ -26,9 +26,25 @@ __pycache__/
 node_modules/
 .venv/
 
+# Rust build artifacts (the cli/ crate) — never belong in the repo
+target/
+cli/target/
+
+# This repo's own dev scratch (build-time specs, verify markers, local settings).
+# Not part of the shipped skeleton; kept out of the public tree.
+.claude/
+
 # Runtime state never belongs in the install tree; workspace/ has its own state dirs
 *.log
 *.pid
+
+# context-doc-router runtime artifacts. The committed cache (.lex-cache.json) +
+# doc-catalog.json ship with the skeleton so the router works on first install;
+# the hit-rate log, cache backups, optional embed cache, and the wordfreq venv do not.
+reference/.router-eval/injection-log.jsonl
+reference/.router-eval/*.bak
+reference/.router-eval/.embed-cache.json
+reference/.router-eval/.local/
 
 # Stop hook markers + session edit lists (created at runtime under workspace/, but globbed for safety)
 .session-edits-*

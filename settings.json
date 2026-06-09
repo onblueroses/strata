@@ -68,6 +68,12 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Edit|MultiEdit|Write|Bash|Task|Agent|Skill|NotebookEdit|WebFetch|WebSearch|SlashCommand|mcp__.*",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-resume-read.sh", "timeout": 4000 }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           { "type": "command", "command": "bash $STRATA_HOME/hooks/allow-claude-dir-edits.sh", "timeout": 2000 }
