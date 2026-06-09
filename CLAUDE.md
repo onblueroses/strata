@@ -62,7 +62,9 @@ Lane wrappers live at `$STRATA_HOME/bin/`. The model bound to each lane is set i
 
 **Commit your work**: before ending a session or reporting a task as complete, check `git status` in every repo you touched. If there are uncommitted changes from your work, commit them with a descriptive message. Don't leave uncommitted changes for the next session.
 
-**Reference docs**: relevant docs are auto-injected by the `context-doc-router` hook at UserPromptSubmit. When a doc is injected, read its Quick Nav and load relevant sections before proceeding. When a relevant doc wasn't injected, check `reference/INDEX.md` manually.
+**Reference docs**: the `context-doc-router` hook routes docs by WORK CONTEXT at UserPromptSubmit — where you are (`cwd` + marker files), what you just edited (transcript tail), and what you mean (pure-Python lexical match) — not by prompt keywords. When a doc is injected, read its Quick Nav and load relevant sections before proceeding. When a relevant doc wasn't injected, check `reference/INDEX.md` manually. To make routing land, keep each doc's line-1 `<!-- keywords: ... -->` rich with natural-prompt vocabulary and run `reference/.router-eval/build-lex-cache.py` after editing keywords or `INDEX.md` (the hook reads the committed cache; it does not self-rebuild).
+
+**Thin core, routed elaboration (cache discipline)**: this file is the always-loaded static core — keep it small and STABLE so it stays in the cached prefix. Push elaboration (the how-to detail) into `reference/` docs and let the router deliver them per-turn into the uncached tail. When demoting a rule out of the core, keep its TRIGGER inline and move only the elaboration, and never demote a safety/irreversibility guardrail. Never inject per-turn-varying content into this file or the system prompt: that busts the prefix cache every turn. The router injection is cache-positive — it lands in the per-turn tail (like the user message) and dedups once per doc per session.
 
 ---
 
@@ -221,7 +223,7 @@ Advisory hooks run silently in the background. Full list: `settings.json` and `h
 
 ## Post-Compaction Recovery
 
-Automatic via `session-post-compaction-restore.sh` at SessionStart. When context seems incomplete, run `/context-resume`. Never modify a spec owned by a different session (`Session:` field). Save files are session-specific.
+Automatic via `session-post-compaction-restore.sh` at SessionStart: it injects a "read these first" recovery map AND arms a read-gate. The gate (`gate-resume-read.sh`, PreToolUse) blocks consequential tools (Edit/Write/Bash/dispatch) until you Read the named session save since the compaction; read-only tools stay open, reading the save clears the gate, and it self-expires after 30 minutes. Read the save first, then act. When context still seems incomplete, run `/context-resume`. Never modify a spec owned by a different session (`Session:` field). Save files are session-specific.
 
 ---
 
