@@ -25,6 +25,18 @@ export STRATA_HOME
 LANE="breadth"
 TIMEOUT=1800
 
+# Opt-in delegation telemetry (STRATA_TELEMETRY=1). Fail-open: never changes this wrapper's exit.
+__t_start=$(date +%s 2>/dev/null || echo 0)
+__tel_emit() {
+  [ "${STRATA_TELEMETRY:-0}" = "1" ] || return 0
+  local emit="$STRATA_HOME/telemetry/telemetry-emit.sh"
+  [ -x "$emit" ] || return 0
+  local dur=$(( $(date +%s 2>/dev/null || echo 0) - __t_start ))
+  "$emit" delegation "${CLAUDE_SESSION_ID:-unknown}" \
+    "$(printf '{"lane":"%s","exit":%s,"dur_s":%s}' "$LANE" "${1:-0}" "$dur")" >/dev/null 2>&1 || true
+}
+trap '__tel_emit $?' EXIT
+
 ARGS=()
 PROMPT_FILE=""
 while [[ $# -gt 0 ]]; do

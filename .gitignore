@@ -54,3 +54,13 @@ reference/.router-eval/.local/
 .session-edits-*
 .verify-passed-*
 *.out
+
+# Telemetry runtime artifacts. The telemetry/ SCRIPTS + model_rates.json template ship; live
+# event/metric data does NOT. Default runtime sink is $STATE_DIR/telemetry (under workspace/state/,
+# already ignored above); these patterns are belt-and-suspenders if telemetry writes elsewhere.
+telemetry/events.jsonl
+telemetry/session-metrics.jsonl
+telemetry/*-health.jsonl
+telemetry/archive/
+telemetry/*.lock
+.rotate.lock
