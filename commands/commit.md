@@ -106,7 +106,7 @@ If the draft message fails this gate, rewrite it to describe WHAT changed techni
 git commit -m "$(cat <<'EOF'
 Subject line here
 
-Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+Co-Authored-By: <your-coding-agent> <noreply@example.com>
 EOF
 )"
 ```

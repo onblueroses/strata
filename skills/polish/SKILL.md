@@ -102,7 +102,7 @@ Research repos accumulate operational tooling: monitor scripts, deploy scripts, 
 GPU instance launchers, setup scripts with hardcoded SSH details. These are not part of the
 project's public interface. Identify and remove them:
 
-- Monitor scripts (Vast.ai, cloud GPU watchers, cron jobs)
+- Monitor scripts (cloud GPU watchers, cron jobs)
 - Deploy/setup scripts with hardcoded instance IDs, SSH ports, or local paths
 - Session artifacts (.claude/ session files, handoff docs, specs with personal notes)
 - Binary artifacts (tarballs, model weights, notebooks not meant for distribution)

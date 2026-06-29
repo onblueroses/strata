@@ -2,9 +2,9 @@
 #
 # Copy this file to .local/private-tokens.txt (gitignored). Add one token per
 # line: any string that, if it appeared in a public commit, would leak something
-# you wanted private. Skills like /codex-review and Phase 7 audit grep against
-# .local/private-tokens.txt before sending artifacts to external models or
-# pushing public commits.
+# you wanted private. Skills like /codex-review and the pre-push privacy audit
+# grep against .local/private-tokens.txt before sending artifacts to external
+# models or pushing public commits.
 #
 # Tokens are matched as fixed strings (grep -F), case-insensitive (grep -i).
 # Lines starting with # are comments and ignored.

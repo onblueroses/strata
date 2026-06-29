@@ -24,7 +24,7 @@ Gating legend: **external-OK** = works in stock binary; **gated** = external-rea
 
 | Capability | Native trigger | Gating | Notes |
 |---|---|---|---|
-| Custom subagents as files | `$STRATA_HOME/agents/<name>.md` frontmatter: `description`(→whenToUse), `prompt`, `tools`, `disallowedTools`, `model`, `permissionMode`, `isolation`, `maxTurns` | external-OK | This install ships a handful under `$STRATA_HOME/agents/` (e.g. code-reviewer, knowledge-lookup, quick-research, planner, pattern-extractor); the schema supports much more |
+| Custom subagents as files | `$STRATA_HOME/agents/<name>.md` frontmatter: `description`(→whenToUse), `prompt`, `tools`, `disallowedTools`, `model`, `permissionMode`, `isolation`, `maxTurns` | external-OK | This install ships a handful under `$STRATA_HOME/agents/` (e.g. orchestrator, code-reviewer, knowledge-lookup, quick-research, planner); the schema supports much more |
 | Run MAIN session as an agent | `claude --agent <name>` (or `--agents '<json>'`) | external-OK | Replaces the system prompt with that agent's. The real way to express an "orchestrator" identity |
 | Agent teams + peer message bus | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` or `--agent-teams`; then `TeamCreate` + `SendMessage` | gated (GrowthBook default) | Teammates **share the leader's cwd** (do NOT auto-isolate); plain output is invisible to peers |
 | Worktree-isolated agent | Agent param `isolation:'worktree'` (or agent-file `isolation: worktree`) | external-OK | Auto-creates + GCs a temp git worktree, returns the changed branch. Separate mechanism from teams |

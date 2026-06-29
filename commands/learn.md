@@ -23,7 +23,7 @@ Capture a pattern, gotcha, or insight right now before it's forgotten.
    - "Key Decisions" - Choices with reasoning
    - "Projects" - Project-specific knowledge
 
-3. Read `$HOME/.claude/projects/-home-onblueroses/memory/MEMORY.md`
+3. Read `$HOME/.claude/projects/<your-project>/memory/MEMORY.md`
 
 4. Check for duplicates - search for key terms from the user's input. If a similar entry exists, update it instead of adding a new one.
 

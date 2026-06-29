@@ -29,10 +29,10 @@ This skill dispatches every reconnaissance wave through codex tiers exclusively.
 
 | Wave | Wrapper | Underlying | Role | Why this tier |
 |------|---------|------------|------|---------------|
-| 1 — Wide fan | `fast` | gpt-5.3-codex-spark | Breadth scouting, one domain per spark | Spark is free on the ChatGPT subscription; quality matches strong on focused factual queries; parallelism is the design |
-| 2 — Probes | `fast` | gpt-5.3-codex-spark | Verify load-bearing claims, test seams | Targeted, citation-bound; depth comes from the seam logic, not the model |
-| 2 — Probes (escalated) | `strong` | gpt-5.5 xhigh | Risky-seam probes only | Escalate one specific probe to xhigh when the seam touches auth, concurrency, data integrity, schema migration, or cross-language boundaries |
-| 3 — Synthesis | `strong` | gpt-5.5 xhigh | Read merged corpus, name what's missing and what's wrong | Judgment work over a large context; xhigh self-terminates on the stopping condition |
+| 1 — Wide fan | `fast` | fast-lane model | Breadth scouting, one domain per spark | the fast lane is cheap and parallel; quality matches strong on focused factual queries; parallelism is the design |
+| 2 — Probes | `fast` | fast-lane model | Verify load-bearing claims, test seams | Targeted, citation-bound; depth comes from the seam logic, not the model |
+| 2 — Probes (escalated) | `strong` | strong-lane model (high reasoning) | Risky-seam probes only | Escalate one specific probe to the strong lane when the seam touches auth, concurrency, data integrity, schema migration, or cross-language boundaries |
+| 3 — Synthesis | `strong` | strong-lane model (high reasoning) | Read merged corpus, name what's missing and what's wrong | Judgment work over a large context; the strong lane self-terminates on the stopping condition |
 
 **Scope of the codex-only rule.** The rule covers wave dispatches — the reconnaissance signal must come from codex so the synthesis sees a coherent voice. Use Claude's native tools (Read, Glob, Grep, Bash, Write) freely for orchestration: composing the corpus, writing prompt files, validating citations, merging the brief. The next planner downstream consumes the brief under its own model policy (Opus, codex, whatever `/spec` or `/hammock` chooses) — recon's job ends at the brief.
 

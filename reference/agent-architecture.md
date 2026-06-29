@@ -180,7 +180,7 @@ Direct generation hallucinates. Search-only without reasoning can't synthesize.
 The reasoning step (a thinking model like R1/QwQ) bridges raw facts to structured
 analysis that the generation model can execute on.
 
-**Source**: Reddit agent drafting pipeline (Tavily -> DeepSeek R1 -> DeepSeek V3/GLM).
+**Source**: a drafting pipeline (web-search tool -> reasoning model -> generation model).
 
 ### 8. Model Specialization in Pipelines
 

@@ -73,3 +73,13 @@ The `summary.md` + `items.json` per entity is the pattern. Skills like `/pickup`
 ## 7. Read the doctrine
 
 `CLAUDE.md` at the install root is the operating doctrine the agent reads first every session. Skim it once. The patterns it encodes (orchestrator delegation, gated completion, harness-as-composition, privacy as the immovable rail) are the working OS.
+
+## 8. (Optional) Enable telemetry
+
+Telemetry is **off by default** and wired nowhere in `settings.json`. To opt in, export one env var (e.g. in your rc block):
+
+```
+export STRATA_TELEMETRY=1
+```
+
+When enabled, lane dispatches (`bin/strong` and siblings) append one enveloped JSONL event per call, and the runtime sink lives under `$STATE_DIR/telemetry` — never the tracked tree. `telemetry/` ships only the scripts: `telemetry-emit.sh` (emitter), `unify.py` (read-time merger, refuses to export raw event text to a tracked path), `rotate_telemetry.sh` (size rotation), `cost_rollup.py` (cost ledger over `model_rates.json`). Fill `telemetry/model_rates.json` with your own per-model rates to get cost rollups. Full event spec: `telemetry/README.md`.

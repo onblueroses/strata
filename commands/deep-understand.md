@@ -222,7 +222,7 @@ Wait for each batch to fully complete before launching the next.
 | 3 | Metadata System | Frontmatter schema, tags, properties, dataview queries |
 | 4 | Link Graph + Hubs | Internal links, orphans, hub notes, clusters, MOCs |
 | 5 | Workflows | Creation, review, publishing flow, status tracking |
-| 6 | Automation + Integration | Scripts, plugins, external tools, n8n, publishing targets |
+| 6 | Automation + Integration | Scripts, plugins, external tools, automation/workflow tools, publishing targets |
 | 7 | Personas + Style | Content voices, style guides, constraints, forbidden patterns |
 | 8 | Quality + Gaps | TODOs, drafts, incomplete items, stale content, consistency |
 
@@ -360,7 +360,7 @@ After writing the scratchpad and before presenting to the user:
 - Always check for BAYIKO constraint
 - Note the 5 personas
 - Highlight the vault -> PROJECT-A-leadgen publishing flow
-- Check n8n workflow status
+- Check automation/workflow tool status
 
 **For code projects:**
 - Include `git status` output from pre-scan in context

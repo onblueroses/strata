@@ -1,6 +1,6 @@
 ---
 name: codex-review
-description: "One-shot adversarial review by Codex (gpt-5.5 xhigh) for non-diff artifacts: plans, debugging hypotheses, architecture decisions. Cross-model asymmetry breaks Claude's same-model bias by construction — Codex catches blindspots a same-model self-review normalizes. Returns categorized findings (BLOCKING / IMPORTANT / ADVISORY) plus AGREE notes for anti-bias balance. One-shot, no loop — use /harness when iterative correction is needed. For diff/code review, /verify (Full/Deep) and /review already invoke Codex via `codex review --uncommitted`, so do not duplicate. MANDATORY after /spec writes a plan touching 3+ files or 3+ phases, before the user starts implementation (operationalizes the CLAUDE.md 'Codex plan review' rule). Triggers on: 'have Codex review this', 'run this past Codex', 'second opinion', 'adversarial check', 'cross-model review', 'sanity check this plan', 'what would Codex say', 'review the hypothesis', 'check this architecture decision', 'is this plan sound'. Also triggers when: the user proposes a non-trivial debugging hypothesis that gates real implementation work; an architecture decision is being locked in; a research/scientific plan with empirical claims is about to be executed; a proposal-shaped artifact (deliverables, timeline, budget framing) is up for review; a plan whose outputs touch users, subjects, or third parties asymmetrically is being finalized. Pairs with /spec (upstream — codex-review fires after spec writes), /harness (downstream — when iterative gen-eval is needed), /cross-model-critique (kin — same triage discipline applied to pasted external AI feedback). Manual: /codex-review --plan path/to/spec.md, /codex-review --hypothesis 'the bug is X' --evidence path/to/log, /codex-review --arch 'decision text or path/to/decision.md'."
+description: "One-shot adversarial review by Codex (high-reasoning) for non-diff artifacts: plans, debugging hypotheses, architecture decisions. Cross-model asymmetry breaks Claude's same-model bias by construction — Codex catches blindspots a same-model self-review normalizes. Returns categorized findings (BLOCKING / IMPORTANT / ADVISORY) plus AGREE notes for anti-bias balance. One-shot, no loop — use /harness when iterative correction is needed. For diff/code review, /verify (Full/Deep) and /review already invoke Codex via `codex review --uncommitted`, so do not duplicate. MANDATORY after /spec writes a plan touching 3+ files or 3+ phases, before the user starts implementation (operationalizes the CLAUDE.md 'Codex plan review' rule). Triggers on: 'have Codex review this', 'run this past Codex', 'second opinion', 'adversarial check', 'cross-model review', 'sanity check this plan', 'what would Codex say', 'review the hypothesis', 'check this architecture decision', 'is this plan sound'. Also triggers when: the user proposes a non-trivial debugging hypothesis that gates real implementation work; an architecture decision is being locked in; a research/scientific plan with empirical claims is about to be executed; a proposal-shaped artifact (deliverables, timeline, budget framing) is up for review; a plan whose outputs touch users, subjects, or third parties asymmetrically is being finalized. Pairs with /spec (upstream — codex-review fires after spec writes), /harness (downstream — when iterative gen-eval is needed), /cross-model-critique (kin — same triage discipline applied to pasted external AI feedback). Manual: /codex-review --plan path/to/spec.md, /codex-review --hypothesis 'the bug is X' --evidence path/to/log, /codex-review --arch 'decision text or path/to/decision.md'."
 tier: core
 cost_hint: high
 parallelizable: false
@@ -188,7 +188,7 @@ Before writing the prompt file, scrub these patterns from artifact text and any 
 
 - Real name from the user's CLAUDE.md privacy section → `[USER]`
 - Private project codenames from CLAUDE.md → `[PRIVATE-PROJECT-N]` (number them so Codex can refer back)
-- Private IPs (VPS, internal hosts, Tailscale) from CLAUDE.md → `[PRIVATE-IP-N]`
+- Private IPs (VPS, internal hosts, mesh VPN) from CLAUDE.md → `[PRIVATE-IP-N]`
 
 Code logic remains intact; only identifiers change.
 
@@ -203,7 +203,7 @@ codex exec \
   -c tools.web_search=true \
   -c model_reasoning_effort=xhigh \
   -c service_tier=fast \
-  --model gpt-5.5 \
+  --model <PICK_REVIEW_MODEL> \
   "$(cat /tmp/codex-review-{session-id}-{epoch}.md)" \
   > /tmp/codex-review-{session-id}-{epoch}.log 2>&1
 ```
