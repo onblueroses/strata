@@ -86,37 +86,37 @@
         ]
       },
       {
-        "matcher": "Bash(git push*)",
+        "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-codex-pre-push.sh", "timeout": 1800000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-codex-pre-push.sh", "if": "Bash(git push*)", "timeout": 1800000 }
         ]
       },
       {
-        "matcher": "Bash(git clone*)",
+        "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-nested-clone.sh", "timeout": 2000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-nested-clone.sh", "if": "Bash(git clone*)", "timeout": 2000 }
         ]
       },
       {
-        "matcher": "Bash(gh *)",
+        "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-gh-public-actions.sh", "timeout": 3000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-gh-public-actions.sh", "if": "Bash(gh *)", "timeout": 3000 }
         ]
       },
       {
-        "matcher": "Bash(rm *)",
+        "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-rm-guard.sh", "timeout": 3000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-rm-guard.sh", "if": "Bash(rm *)", "timeout": 3000 }
         ]
       },
       {
-        "matcher": "Bash(codex *)",
+        "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-codex-exec.sh", "timeout": 2000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-codex-exec.sh", "if": "Bash(codex *)", "timeout": 2000 }
         ]
       },
       {
-        "matcher": "Bash(vastai destroy*)|Bash(runpodctl stop*)|Bash(runpodctl remove*)|Bash(prime pods stop*)|Bash(prime pods remove*)|Bash(gcloud compute instances stop*)|Bash(gcloud compute instances delete*)|Bash(aws ec2 terminate-instances*)|Bash(aws ec2 stop-instances*)",
+        "matcher": "Bash",
         "hooks": [
           { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-paid-compute-destroy.sh", "timeout": 3000 }
         ]

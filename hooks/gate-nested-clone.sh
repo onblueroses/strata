@@ -1,28 +1,32 @@
 #!/usr/bin/env bash
-# gate-nested-clone.sh - PreToolUse(Bash(git clone*)) advisory hook
-# Warns when `git clone` would create a clone inside an existing git repo.
-# Catches the "clone-inside-clone" footgun: running `git clone <url>` while
-# already inside a working tree silently nests the new repo as a subdirectory,
-# which is almost never intended.
+# gate-nested-clone.sh - PreToolUse(Bash) deny gate
+# Denies `git clone` that would create a clone inside an existing git repo.
+# The clone-inside-clone footgun: running `git clone <url>` while already inside
+# a working tree silently nests the new repo as a subdirectory, almost never intended.
+# Config: matcher "Bash" + if "Bash(git clone*)". Input: stdin JSON. Deny: exit 2 + stderr.
+set -uo pipefail
 
-TOOL_INPUT="${CLAUDE_TOOL_INPUT:-}"
-
-# Only trigger on git clone
-if ! echo "$TOOL_INPUT" | grep -qE '"command"[[:space:]]*:[[:space:]]*"[^"]*git[[:space:]]+clone'; then
+# Fail OPEN on infra problems: without jq we cannot parse the input, so warn and allow.
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[nested-clone] jq not found; skipping nested-clone check." >&2
     exit 0
 fi
 
-# Extract the target dir from the command if specified; otherwise the cwd matters
-COMMAND=$(echo "$TOOL_INPUT" | grep -oE '"command"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"command"[[:space:]]*:[[:space:]]*"\(.*\)"/\1/')
+INPUT="$(cat)"
+COMMAND="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
 
-# Are we currently inside a git repo? (If yes, clone target lands inside it.)
+# Only act on git clone; any other command is allowed.
+echo "$COMMAND" | grep -qE 'git[[:space:]]+clone' || exit 0
+
+# Are we inside a git repo? If yes, a relative-target clone lands inside it.
+# Fail OPEN when git is unavailable or we are not inside a repo (nothing to nest into).
 PARENT_REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
-# We're inside a git repo. Is the clone going elsewhere via absolute path? Skip the warning then.
-if echo "$COMMAND" | grep -qE 'git clone [^ ]+ +/'; then
+# Clone targeting an absolute path goes elsewhere; allow.
+if echo "$COMMAND" | grep -qE 'git[[:space:]]+clone[[:space:]]+[^ ]+[[:space:]]+/'; then
     exit 0
 fi
 
-# Inside a repo + clone with relative target = footgun.
-echo "{\"result\": \"block\", \"reason\": \"git clone inside existing repo at ${PARENT_REPO}. This creates a nested clone-inside-clone, which is almost never intended. If you really want a nested clone, pass an absolute path target or cd to a parent dir first. If you meant to clone a fresh repo, run 'cd ~ && git clone ...' instead.\"}"
+# Inside a repo + relative (or default) target = nested clone-inside-clone. Deny.
+echo "git clone inside existing repo at ${PARENT_REPO}. This creates a nested clone-inside-clone, which is almost never intended. Pass an absolute-path target, or cd to a parent directory first (e.g. 'cd ~ && git clone ...')." >&2
 exit 2

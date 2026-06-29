@@ -1,6 +1,10 @@
 # Private leak inventory + adversarial test fixtures live here. Never committed.
 .local/
 
+# Local private-token denylist read by gate-gh-public-actions.sh. Never committed;
+# only config/private-tokens.example.txt ships as a template.
+config/private-tokens.txt
+
 # Runtime knowledge-base content populated by strata-init lives inside the
 # install tree by default; never check that into the public repo. Override
 # $KB_DIR to point this elsewhere before running strata-init when you want
