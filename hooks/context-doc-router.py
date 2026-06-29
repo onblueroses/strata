@@ -400,6 +400,7 @@ def main():
         # doc already reached the model, NOT a fallback candidate); conflating them would
         # inflate the rate the decision rests on. Skip blank/whitespace prompts.
         if prompt.strip():
+            zero_signal = "deduped" if any(valid_doc(n) for n in merged) else "none"
             log_rows(
                 [
                     {
@@ -411,9 +412,8 @@ def main():
                         # was non-fresh); else "none" (nothing valid matched -> a true
                         # zero-route / fallback candidate). Keyed on valid_doc, NOT raw
                         # merged: an invalid/drift match must not masquerade as deduped.
-                        "signal": "deduped"
-                        if any(valid_doc(n) for n in merged)
-                        else "none",
+                        "signal": zero_signal,
+                        "work_context": zero_signal,
                         "plen": len(prompt),
                     }
                 ]
@@ -448,6 +448,7 @@ def main():
                 "session": session[:8],
                 "doc": name,
                 "signal": sig,
+                "work_context": sig,
                 "score": score,
                 "plen": len(prompt),
             }

@@ -16,6 +16,10 @@ KB_DIR="${KB_DIR:-$HOME/strata-workspace}"
 MEMORY_DIR="${MEMORY_DIR:-$STATE_DIR/memory}"
 DAILY_DIR="${DAILY_DIR:-$KB_DIR/daily}"
 STALE_DAYS="${STALE_DAYS:-30}"
+# Pick your model: set CONSOLIDATE_MODEL to a cheap, fast model alias for this nightly
+# batch extraction (it runs unattended over the whole memory store, so favor cost over peak
+# quality). Leave it unset to let `claude` use its own configured default model.
+CONSOLIDATE_MODEL="${CONSOLIDATE_MODEL:-}"
 TODAY=$(date +%Y-%m-%d)
 DRY_RUN=0
 
@@ -81,29 +85,38 @@ RULES:
 
 If nothing worth persisting, say NOTHING_TO_EXTRACT."
 
+    model_args=()
+    [[ -n "$CONSOLIDATE_MODEL" ]] && model_args=(--model "$CONSOLIDATE_MODEL")
+
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        log "[dry-run] Would send ${#notes_to_process[@]} notes to claude -p"
+        log "[dry-run] Would send ${#notes_to_process[@]} notes to claude -p${CONSOLIDATE_MODEL:+ (model: $CONSOLIDATE_MODEL)}"
         log "[dry-run] Prompt length: ${#prompt} chars"
     else
-        log "Running consolidation via claude -p..."
-        result=$(echo "$prompt" | claude -p --model haiku 2>/dev/null) || {
-            log "claude -p failed (exit $?), skipping extraction."
+        log "Running consolidation via claude -p${CONSOLIDATE_MODEL:+ (model: $CONSOLIDATE_MODEL)}..."
+        extraction_ok=1
+        result=$(echo "$prompt" | claude -p "${model_args[@]}" 2>/dev/null) || {
+            log "claude -p failed (exit $?), skipping extraction (dates NOT marked, will retry next run)."
             result=""
+            extraction_ok=0
         }
 
-        if [[ -n "$result" ]] && ! echo "$result" | grep -qF "NOTHING_TO_EXTRACT"; then
-            output_file="$MEMORY_DIR/.consolidation-$(date +%Y%m%d).md"
-            echo "$result" > "$output_file"
-            log "Consolidation output saved to $output_file for review."
-            log "Review and apply changes manually (memories are not auto-written)."
-        else
-            log "Nothing to extract from recent notes."
-        fi
+        if [[ "$extraction_ok" -eq 1 ]]; then
+            if [[ -n "$result" ]] && ! echo "$result" | grep -qF "NOTHING_TO_EXTRACT"; then
+                output_file="$MEMORY_DIR/.consolidation-$(date +%Y%m%d).md"
+                echo "$result" > "$output_file"
+                log "Consolidation output saved to $output_file for review."
+                log "Review and apply changes manually (memories are not auto-written)."
+            else
+                log "Nothing to extract from recent notes."
+            fi
 
-        for note in "${notes_to_process[@]}"; do
-            date_str=$(basename "$note" | grep -oP '\d{4}-\d{2}-\d{2}')
-            [[ -n "$date_str" ]] && echo "$date_str" >> "$CONSOLIDATED_LOG"
-        done
+            # Mark dates consolidated ONLY on a successful extraction run, so a failed
+            # claude -p leaves the dates unmarked and they retry on the next run.
+            for note in "${notes_to_process[@]}"; do
+                date_str=$(basename "$note" | grep -oP '\d{4}-\d{2}-\d{2}')
+                [[ -n "$date_str" ]] && echo "$date_str" >> "$CONSOLIDATED_LOG"
+            done
+        fi
     fi
 fi
 
