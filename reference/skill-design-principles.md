@@ -1,4 +1,4 @@
-<!-- keywords: skill, slash command, skill design, instruction quality, skill.md, auto-trigger, skill description -->
+<!-- keywords: skill, slash command, skill design, instruction quality, skill.md, auto-trigger, skill description, leading word, progressive disclosure, completion criteria, skill failure modes, split a skill, routing, prune the skill, write a skill -->
 # Skill Design Principles
 
 Distilled from perfecting /end across 3 iterations, 135-note quality analysis, 3 research tracks, and Anthropic's official skill-creator patterns. Apply when creating or improving any skill.
@@ -39,6 +39,24 @@ Side-by-side field-level comparison is the highest-impact few-shot format. 2-3 g
 
 ### Controlled vocabularies prevent drift
 When a field has a finite set of good values (tags, status codes, entity types), enumerate them. Open-ended fields drift - 69% of /end's tags were unique before adding a vocabulary, making them useless for search.
+
+### Leading words and the two loads
+
+The root virtue a skill chases is **predictability**: the agent taking the same *process* every run, not producing the same output; every lever below serves that. Adapted from the open-source `writing-great-skills` skill (mattpocock/skills).
+
+Two costs trade off when placing a skill:
+- **Context load**: a model-invoked skill's `description` sits in the window every turn. Pay it only when the agent, or another skill, must reach the skill autonomously.
+- **Cognitive load**: a user-invoked skill (`disable-model-invocation: true`) costs zero context but makes *you* the index that must remember it exists. Cure piled-up cognitive load with a router skill that names the others.
+
+A **leading word** is a compact concept already in the model's pretraining that the agent thinks with while running the skill (e.g. *tight*, *red*, *fog of war*, *tracer bullet*); it anchors execution in the body and invocation in the description. Collapse restatements into one pretrained word: "fast, deterministic, low-overhead" becomes a *tight* loop; "a loop you believe in" becomes the loop going *red*.
+
+Five failure modes to diagnose against: **premature completion** (ending a step before it is genuinely done; sharpen the completion criterion before splitting), **duplication** (one meaning in more than one place), **sediment** (stale layers that accrete because adding feels safe and removing feels risky), **sprawl** (too long even when every line is live; cure with progressive disclosure), **no-op** (a line the model already obeys by default, so you pay load to say nothing).
+
+**Completion criteria - checkable and, where it matters, exhaustive.** Each step ends on the condition that tells the agent it is done. The checkable test: can the agent tell done from not-done? "Every modified file accounted for" beats "produce a change list", because a vague criterion invites *premature completion*. A demanding criterion also drives thorough legwork whether the skill is steps or flat reference: "every rule applied" binds reference the way "every step done" binds a sequence.
+
+### Routing reality
+
+A skill's `Triggers on:` / `Auto-trigger when` phrasing is advisory authoring metadata, not a routing guarantee. The skill router auto-surfaces only the skills listed in its curated catalog, and it keys on the catalog's embeddings, not the literal trigger tag. For any skill outside the catalog, the description still earns its keep through the model's own skill-scan, but the router will not fire it; promote a skill into the catalog when it should auto-trigger reliably.
 
 ## Structure
 
@@ -81,6 +99,21 @@ The test: "If someone follows these instructions incorrectly, how bad is the
 outcome?" Catastrophic (data loss, security hole, broken deploy) = low freedom.
 Suboptimal but recoverable (less polished output) = high freedom.
 
+### The information-hierarchy ladder
+
+A skill is built from **steps** (ordered actions in SKILL.md) and **reference** (definitions, rules, facts). Rank every piece by how immediately the agent needs it:
+1. **In-skill step** - the primary tier: what the agent does, in order, each ending on a completion criterion.
+2. **In-skill reference** - consulted on demand; often a legitimately flat peer-set (every rule of a review on one rung), not a smell.
+3. **External reference** - pushed into a linked file behind a *context pointer*, loaded only when the pointer fires. The pointer's *wording*, not its target, decides when and how reliably the agent reaches it.
+
+Push too little down and the top bloats; push too much and you hide material the agent needs; that tension is the whole decision. Progressive disclosure is the move down the ladder. A **branch** (a distinct way the skill gets used) is the cleanest disclosure test: inline what every branch needs, push behind a pointer what only some branches reach. Once a piece has its rung, **co-location** decides what sits beside it: keep a concept's definition, rules, and caveats under one heading so reading one part brings its neighbours.
+
+### Granularity: when to split a skill
+
+Each cut spends one of the two loads, so split only when the cut earns it:
+- **By invocation** - split off a model-invoked skill when it has a distinct leading word that should trigger on its own, or another skill must reach it. You pay context load for the always-loaded description, so that independent reach has to be worth it.
+- **By sequence** - split a run of steps when the steps still ahead tempt the agent to rush the one in front of it (*premature completion*). Keeping later steps out of view pushes more legwork onto the current one.
+
 </details>
 
 ## Quality Assurance
@@ -115,6 +148,10 @@ Only the description (~100 words) is always in context. The SKILL.md body loads 
 - 200-500 lines: moderate, every section should earn its place
 - 500+ lines: push detail into `references/` files with clear pointers about when to read them
 For large reference files (>300 lines), include a table of contents so the model can skip to the relevant section.
+
+### Prune sentence by sentence
+
+Keep each meaning in a **single source of truth**: one authoritative place, so a behaviour change is a one-place edit. Then run the no-op test on each *sentence* in isolation, not just each line: does it change behaviour versus the model's default? When a sentence fails, delete the whole sentence rather than trim words from it; most failing prose should go, not be rewritten. This is "compress, don't accumulate" at the sentence level.
 
 ## Naming & Mapping
 

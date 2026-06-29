@@ -3,7 +3,7 @@
 
 How to build evaluators, eval fixtures, and benchmarks across projects. Defines the eval type taxonomy, assertion primitives, fixture formats, and common failure modes.
 
-See `tier-classification.md` for risk tiers, `code-quality-principles.md` for test philosophy.
+Companion to strata's `src/eval/` module. See `tier-classification.md` for risk tiers, `code-quality-principles.md` for test philosophy.
 
 ---
 
@@ -376,6 +376,15 @@ Never store runtime outputs (actual LLM responses) in fixture files. Fixtures ar
 <details>
 <summary>Strata Integration</summary>
 
+### Current state (v0.2.0)
+
+Strata's eval system (`src/eval/`) currently implements trigger testing only:
+
+```
+strata skill eval <skill-name> --eval-set path/to/eval-set.json
+strata skill optimize <skill-name> --eval-set path/to/eval-set.json
+```
+
 ### Planned extensions (eval-methodology spec)
 
 **Phase 2** adds typed assertion schema to `EvalQuery`:
@@ -414,7 +423,7 @@ The `[skills]` section of `strata.toml` has a `model` field used for both optimi
 ```toml
 [skills]
 eval_backend = "claude-code"
-model = "claude-haiku-4-5-20251001"   # cheap model for judging
+model = "<PICK_CHEAP_PARALLEL>"   # cheap model for judging (the grader lane)
 ```
 
 ### Fixture location convention
