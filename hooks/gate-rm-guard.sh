@@ -1,48 +1,38 @@
 #!/usr/bin/env bash
 # gate-rm-guard.sh - PreToolUse(Bash) blocking hook
-# Blocks rm on project/home files. Redirects to ~/to-delete/ workflow.
+# Blocks rm on project/home files. Redirects to the ~/to-delete/ workflow.
 # Allows rm on safe targets: /tmp/, *.pyc, __pycache__, node_modules, build/dist artifacts.
+# Config: matcher "Bash" + if "Bash(rm *)". Input: hook JSON on stdin. Deny: exit 2 + stderr.
+set -uo pipefail
 
-TOOL_INPUT="${CLAUDE_TOOL_INPUT:-}"
+INPUT="$(cat)"
 
-# Only trigger on rm commands
-if ! echo "$TOOL_INPUT" | python3 -c "
-import sys, json, re
-try:
-    data = json.load(sys.stdin)
-    cmd = data.get('command', '')
-except:
-    cmd = sys.stdin.read()
-if re.search(r'\brm\s', cmd):
-    sys.exit(0)
-sys.exit(1)
-" 2>/dev/null; then
+# Fail open on infra problems: without jq we cannot parse, so allow rather than hard-block.
+if ! command -v jq >/dev/null 2>&1; then
+    echo "gate-rm-guard: jq unavailable, allowing command" >&2
     exit 0
 fi
 
-# Extract the command
-COMMAND=$(echo "$TOOL_INPUT" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    print(data.get('command', ''))
-except:
-    pass
-" 2>/dev/null)
+COMMAND="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null)"
 
-# Allow safe targets: /tmp/, obvious build artifacts
-SAFE_PATTERN='/tmp/|\.pyc$|__pycache__|/node_modules/|/\.cache/|/build/|/dist/|/target/|\.o$|\.class$'
+# Only act on rm commands; anything else is allowed.
+echo "$COMMAND" | grep -qE '\brm\b' || exit 0
+
+# Allow safe targets: /tmp/, caches, and obvious build artifacts.
+SAFE_PATTERN='/tmp/|\.pyc($|[^a-z])|__pycache__|/node_modules/|/\.cache/|/build/|/dist/|/target/|\.o($|[^a-z])|\.class($|[^a-z])'
 if echo "$COMMAND" | grep -qE "$SAFE_PATTERN"; then
     exit 0
 fi
 
-# Allow rm of files explicitly just created this command (e.g. rm tempfile after use in same command chain)
-# Heuristic: if the rm target is a shell variable or /dev/null, allow it
-if echo "$COMMAND" | grep -qE 'rm\s+/dev/null|rm\s+\$[A-Z_]+\b'; then
+# Allow rm of /dev/null or shell-variable targets.
+if echo "$COMMAND" | grep -qE 'rm[[:space:]]+/dev/null|rm[[:space:]]+\$[A-Z_]+\b'; then
     exit 0
 fi
 
-cat <<'EOF'
-{"result": "block", "reason": "Direct deletion blocked. Use the to-delete workflow instead:\n  mv <file> ~/to-delete/<name>\n  echo '<name> | <original-path> | $(date +%Y-%m-%d) | <reason>' >> ~/to-delete/manifest.txt\nIf the file is a true temp/artifact (in /tmp, __pycache__, node_modules, build/dist), rm is fine."}
+cat >&2 <<'EOF'
+Direct deletion blocked. Use the to-delete workflow instead:
+  mv <file> ~/to-delete/<name>
+  echo '<name> | <original-path> | <YYYY-MM-DD> | <reason>' >> ~/to-delete/manifest.txt
+If the file is a true temp/artifact (/tmp, __pycache__, node_modules, build/dist), rm is fine.
 EOF
 exit 2

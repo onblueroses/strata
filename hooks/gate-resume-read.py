@@ -52,7 +52,7 @@ def block(saves) -> NoReturn:
         "save; read-only tools (Read/Grep/Glob) stay open, and it self-expires "
         "after 30 minutes regardless."
     )
-    print(json.dumps({"result": "block", "reason": reason}))
+    print(reason, file=sys.stderr)
     sys.exit(2)
 
 

@@ -1,60 +1,64 @@
 #!/usr/bin/env bash
-# PreToolUse hook: blocks paid-compute teardown commands until the user has
-# confirmed data sync. Matches a family of provider commands wired in
-# settings.json under the same PreToolUse matcher:
+# gate-paid-compute-destroy.sh - PreToolUse(Bash) deny gate
+# Blocks paid-compute teardown commands until results are confirmed synced.
+# Speed-bump pattern: a teardown verb is denied with a sync reminder so the
+# operator pulls every artifact locally, verifies it, then re-runs the command.
+# The pause is the point.
 #
-#   vastai destroy *
-#   runpodctl stop|remove *
-#   prime pods stop|remove *
-#   gcloud compute instances stop|delete *
-#   aws ec2 stop-instances|terminate-instances *
-#
-# Speed bump pattern: first invocation prints a sync reminder and blocks. The
-# user re-runs after verifying sync, at which point the hook fires again — and
-# blocks again. The pause is the point. Add provider-specific sync command
-# hints below as you bind new providers.
+# Config: settings.json matcher "Bash" with NO "if" filter — the script is the
+# single source of truth for which commands are teardowns, so it must see every
+# Bash command (this is what lets EXTRA_TEARDOWN_PATTERNS additions actually
+# fire). Input: the tool call JSON on stdin. Deny: human-readable reason to
+# stderr + exit 2 (the PreToolUse deny signal). Infra failure (missing jq) WARNS
+# to stderr and allows (exit 0); an infra problem never hard-blocks a command.
 
-set -euo pipefail
+set -uo pipefail
 
-COMMAND="${TOOL_INPUT:-}"
+# Teardown command patterns to guard (extended-regex fragments matched against
+# the Bash command). Built-ins cover the common paid-compute CLIs. Add any other
+# provider CLI you use by extending EXTRA_TEARDOWN_PATTERNS, e.g.:
+#   EXTRA_TEARDOWN_PATTERNS+=('prime[[:space:]]+pods[[:space:]]+(stop|remove|delete)')
+#   EXTRA_TEARDOWN_PATTERNS+=('mycloud[[:space:]]+(destroy|stop)')
+TEARDOWN_PATTERNS=(
+  'aws[[:space:]]+ec2[[:space:]]+(stop|terminate)-instances'
+  'gcloud[[:space:]]+compute[[:space:]]+instances[[:space:]]+(stop|delete)'
+  'runpodctl[[:space:]]+(stop|remove)[[:space:]]+pod'
+  'vastai[[:space:]]+(destroy|stop)[[:space:]]+instance'
+)
+EXTRA_TEARDOWN_PATTERNS=()
+if [ "${#EXTRA_TEARDOWN_PATTERNS[@]}" -gt 0 ]; then
+  TEARDOWN_PATTERNS+=("${EXTRA_TEARDOWN_PATTERNS[@]}")
+fi
 
-reminder() {
-  local kind="$1" ident="$2" sync_hint="$3"
-  echo "BLOCKED: $kind teardown on $ident"
-  echo ""
-  echo "Have you synced all results, logs, and artifacts from this instance?"
-  if [ -n "$sync_hint" ]; then
-    echo "Sync command (or similar): $sync_hint"
-  fi
-  echo ""
-  echo "Only destroy AFTER verifying results are saved locally."
-  echo "If you have synced, re-run the destroy command (this hook fires once per call)."
-  exit 1
+deny() {
+  local cmd="$1"
+  {
+    echo "BLOCKED: paid-compute teardown command detected."
+    echo ""
+    echo "Command: $cmd"
+    echo ""
+    echo "Confirm every result, log, and artifact is pulled to local storage first."
+    echo "Pull the data, verify it locally, then re-run the teardown command."
+  } >&2
+  exit 2
 }
 
-if echo "$COMMAND" | grep -qE 'vastai[[:space:]]+destroy'; then
-  ID=$(echo "$COMMAND" | grep -oE '[0-9]{6,}' | head -1)
-  reminder "vastai instance" "${ID:-?}" "vastai copy C.${ID:-INSTANCE_ID}:/workspace/results/ ./findings/"
+INPUT="$(cat)"
+
+# Fail open on infra problems: without jq the command cannot be parsed, so warn
+# and allow rather than block on a tooling gap.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "[paid-compute-destroy] jq not found; teardown gate skipped (fail-open)." >&2
+  exit 0
 fi
 
-if echo "$COMMAND" | grep -qE 'runpodctl[[:space:]]+(stop|remove)[[:space:]]+pod'; then
-  ID=$(echo "$COMMAND" | grep -oE '[a-z0-9]{10,}' | head -1)
-  reminder "runpod pod" "${ID:-?}" "runpodctl cp <pod>:/workspace/results ./findings/"
-fi
+COMMAND="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
+[ -n "$COMMAND" ] || exit 0
 
-if echo "$COMMAND" | grep -qE 'prime[[:space:]]+pods[[:space:]]+(stop|remove|delete)'; then
-  ID=$(echo "$COMMAND" | grep -oE '[a-z0-9-]{8,}' | head -1)
-  reminder "prime intellect pod" "${ID:-?}" "prime --plain pods download <pod> ./findings/"
-fi
-
-if echo "$COMMAND" | grep -qE 'gcloud[[:space:]]+compute[[:space:]]+instances[[:space:]]+(stop|delete)'; then
-  ID=$(echo "$COMMAND" | grep -oE '[a-z][a-z0-9-]{3,}' | tail -1)
-  reminder "gcloud instance" "${ID:-?}" "gcloud compute scp --recurse ${ID:-INSTANCE}:/workspace/results ./findings/"
-fi
-
-if echo "$COMMAND" | grep -qE 'aws[[:space:]]+ec2[[:space:]]+(stop|terminate)-instances'; then
-  ID=$(echo "$COMMAND" | grep -oE 'i-[0-9a-f]{8,}' | head -1)
-  reminder "ec2 instance" "${ID:-?}" "aws s3 sync s3://<bucket>/results ./findings/ # or scp from ${ID:-INSTANCE}"
-fi
+for pat in "${TEARDOWN_PATTERNS[@]}"; do
+  if printf '%s' "$COMMAND" | grep -qE "$pat"; then
+    deny "$COMMAND"
+  fi
+done
 
 exit 0
