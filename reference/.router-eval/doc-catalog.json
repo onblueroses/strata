@@ -6,13 +6,18 @@
  },
  {
   "doc": "agent-taxonomy.md",
-  "keywords": "subagent, spawn agent, agent type, model selection, observability schema, agent logging, ad-hoc agent, cross-skill state",
+  "keywords": "subagent, spawn agent, which agent type, agent for the job, model selection, model tier, observability schema, agent logging, agent-log jsonl, ad-hoc agent pattern, cross-skill state, skill cache, delegate, dispatch, parallel subagents",
   "description": "Central agent type reference. Formal defs + ad-hoc patterns + dmux panes + cross-skill state + observability schema."
  },
  {
   "doc": "autooptimize-methodology.md",
   "keywords": "autooptimize, optimization loop, benchmark, hypothesis, a/b test, autooptimize session, dual-channel logging, llm cache",
   "description": "Autonomous optimization loop methodology. Core loop, dual-channel logging, A/B benchmarking, hypothesis strategy, LLM cache, profiling, Rust patterns."
+ },
+ {
+  "doc": "claude-code-native-levers.md",
+  "keywords": "native triggers, claude code env vars, agent files, agents directory, agent-teams, SendMessage, worktree isolation, run_in_background, autoDream, asyncRewake, coordinator mode, subagent model, hooks, hook events, hook if filter, matcher, settings.json permissions, PreToolUse deny, Stop hook loop, fail open, output style, append-system-prompt, GrowthBook gating, what can claude code do natively, native levers",
+  "description": "What the stock Claude Code binary already does natively that a config layer often reimplements by convention: agent files, agent teams + peer message bus, worktree-isolated agents, the full hook-event surface, native memory self-maintenance, prompt/permission/turn knobs. Gating caveats (GrowthBook defaults, DCE'd literals)."
  },
  {
   "doc": "claude-code-patterns.md",
@@ -31,8 +36,8 @@
  },
  {
   "doc": "codex-invocation.md",
-  "keywords": "codex exec, codex review, fast, strong, codex invocation, codex cli, codex flag, codex-review, gate-codex, dangerously-bypass-approvals, skip-git-repo-check, codex config",
-  "description": "Bare `codex` CLI standard. Different flag sets for `codex exec` vs `codex review` (verified against CLI v0.124.0). Config defaults, which skill uses which form."
+  "keywords": "codex exec, codex review, codex cli, codex invocation, codex flags, fast lane, strong lane, codex-review skill, verify, review, gate-codex-exec, gate-codex hooks, dangerously-bypass-approvals-and-sandbox, skip-git-repo-check, service_tier fast, model_reasoning_effort, config.toml defaults, web_search, background stdin hang, dev/null, uncommitted diff review",
+  "description": "Bare `codex` CLI standard. Different flag sets for `codex exec` vs `codex review` (verified against CLI v0.138.0). Config defaults, which skill uses which form."
  },
  {
   "doc": "colab-gdrive.md",
@@ -70,13 +75,18 @@
   "description": "Three-layer knowledge system at `$KB_DIR/`."
  },
  {
+  "doc": "load-bearing-iteration.md",
+  "keywords": "load-bearing, iterate to flawless, cross-model review, codex review, four passes, spec-lawyer, ship gate, net findings to zero, adversarial review, regression test, fix-up commit, cross-check claims, verify claims, primary sources, current versions, dependency version, adversarial lenses, parallel review, frozen version, stopping rule, pre-check gate",
+  "description": "Driving a load-bearing artifact to flawless: the four-pass cross-model review loop, the cross-check-before-propagate gate, the version-currency rule, the parallel-lens discipline, the net-findings-to-zero ship gate, and when extra rounds stop paying."
+ },
+ {
   "doc": "mcp-development.md",
   "keywords": "mcp, model context protocol, mcp server, tool registration, resource registration, mcp tool, mcp transport, mcp app",
   "description": "MCP protocol, TypeScript server patterns, Apps, transports, security."
  },
  {
   "doc": "model-delegation.md",
-  "keywords": "delegate, delegation, model, sub-agent, sub-model, codex, deepseek, grader, breadth, fast, strong, gpt-5.5, gpt-5.3-codex-spark, deepseek-v4-flash, deepseek-v4-pro, orchestrator, orchestrate, fallback, quota, cache, multi-model, routing",
+  "keywords": "delegate, delegation, dispatch, sub-model, sub-agent, lane, strong, fast, grader, breadth, orchestrator, orchestrate, hand off, handoff, offload, farm out, which model, another model, second opinion, parallel review, review panel, agentic, tool-use loop, working tree, cwd, oneshot, read-only, edit files, run commands, fallback, quota, rate limit, cache, prompt cache, exit code, wrapper, model-map, routing, background job, long-running",
   "description": "Sub-model delegation toolkit: grader, breadth, fast, strong wrappers. Tier sketch, exit codes, fallback, caching, prompt template, bench data."
  },
  {
@@ -90,13 +100,18 @@
   "description": "Metaheuristic optimization principles: adaptive SA, chaos pulses, diverse archives, boundary targeting, coordinate descent."
  },
  {
+  "doc": "resource-sizing.md",
+  "keywords": "num_workers, worker count, single worker, batch size, batch_size, concurrency, parallelism, max_tokens, learning rate, prefetch, dataloader, conservative defaults, conservative configuration, silent defaults, floor value, throughput, serial loop, too slow, ineffective config, right-size, pessimal, hyperparameter, try/except, defensive, swallowed exception, PYTHONUNBUFFERED, unbuffered monitor, saturate",
+  "description": "Right-sizing performance scalars instead of defaulting them: why a floor value (workers=1, batch=1, a serial loop) is the fingerprint of an unmade decision, reading the substrate before picking a number, leaning by cost-of-failure, making the choice legible. Cross-refs non-defensive coding + fixed-vs-adaptive tuning."
+ },
+ {
   "doc": "rust-ai-project-setup.md",
   "keywords": "rust, cargo, clippy, tokio, workspace, crate, pre-commit, rustfmt, actix, axum, rust project, cargo.toml, lints",
   "description": "**MANDATORY** for Rust. 1487 lines - use Quick Nav."
  },
  {
   "doc": "skill-design-principles.md",
-  "keywords": "skill, slash command, skill design, instruction quality, skill.md, auto-trigger, skill description",
+  "keywords": "skill, slash command, skill design, instruction quality, skill.md, auto-trigger, skill description, leading word, progressive disclosure, completion criteria, skill failure modes, split a skill, routing, prune the skill, write a skill",
   "description": "Skill design: instructions, structure, quality, token budgets."
  },
  {
