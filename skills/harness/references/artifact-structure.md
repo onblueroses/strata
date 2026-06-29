@@ -143,13 +143,13 @@ Only target files (files the generator was told to create/edit) are snapshotted,
 |----------|-----------|------|
 | `run-meta.json` | Orchestrator | Phase 0, once per run |
 | `round-{N}/` directory | Orchestrator | Before generator starts |
-| `generator-approach.md` | Generator subagent (Opus) | End of generation step |
+| `generator-approach.md` | Generator subagent (inherited model) | End of generation step |
 | `files-changed.json` | Orchestrator | After generator completes |
 | `snapshots/` | Orchestrator | After generator completes |
 | `stage-a-prompt.md` | Orchestrator | Before Stage A Codex invocation |
 | `stage-b-prompt.md` | Orchestrator | Before Stage B Codex invocation (only if Stage A passed) |
 | `evaluator-verdict.md` | Orchestrator | After evaluation completes (captures Codex output) |
-| `fixer-output/` | Fixer subagent (Sonnet) | After Step 1.7 (only when Stage A had failures) |
+| `fixer-output/` | Fixer subagent (lighter tier) | After Step 1.7 (only when Stage A had failures) |
 | `arbitration-verdict.md` | Orchestrator | After Step 1.8 arbitration (only when fixer ran) |
 
 ## Cleanup Policy
