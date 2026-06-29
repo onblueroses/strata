@@ -42,7 +42,7 @@ nvidia-smi            # VRAM + current load    -> batch size, model parallelism
 # the dataset / work size                       -> whether parallelism is even worth it
 ```
 
-Then match knob to bottleneck: batch size to VRAM, worker count to cores, prefetch depth to IO latency, data/model sharding to topology. Profile to know whether the work is GPU/VRAM/IO/CPU-bound before you tune; guessing the bottleneck wastes the pass. For GPU or long unattended runs, confirm the hardware is actually saturated rather than merely "the script started" — utilization checks and mid-run recovery live in `reference/gpu-training-workflow.md`.
+Then match knob to bottleneck: batch size to VRAM, worker count to cores, prefetch depth to IO latency, data/model sharding to topology. Profile to know whether the work is GPU/VRAM/IO/CPU-bound before you tune; guessing the bottleneck wastes the pass. For GPU or long unattended runs, confirm the hardware is actually saturated rather than merely "the script started" (check utilization, not just process liveness).
 
 </details>
 
@@ -83,7 +83,7 @@ State every performance-relevant number with its basis, in one breath: `workers=
 The same move shows up across the codebase: converting a loud, recoverable failure into a silent, expensive one. Prefer the loud one.
 
 - **Swallowed exceptions** (`try/except: pass`, bare `except:`, empty `catch {}`) hide the failure the conservative config would otherwise make visible. Let it surface, or name why it is safe to eat. Detail: `reference/code-quality-principles.md` §3 *Non-Defensive Coding*.
-- **Blind monitors** (a watcher behind buffered stdout, `tail` on a dead process, a job whose log never advances) report nothing while looking healthy. Verify the monitor actually advances before trusting it (`python -u` / `PYTHONUNBUFFERED=1`, confirm the process is alive, confirm the log moves). For GPU or long runs, "the script started" is not "the hardware is saturated": confirm utilization, see `reference/gpu-training-workflow.md`.
+- **Blind monitors** (a watcher behind buffered stdout, `tail` on a dead process, a job whose log never advances) report nothing while looking healthy. Verify the monitor actually advances before trusting it (`python -u` / `PYTHONUNBUFFERED=1`, confirm the process is alive, confirm the log moves). For GPU or long runs, "the script started" is not "the hardware is saturated": confirm utilization directly.
 - **Fixed conservative hyperparameters** are a guess frozen in. Adaptive mechanisms (acceptance-rate-targeted step size, reheating, diagnose-before-you-compute) find the operating point automatically: `reference/optimization-philosophy.md` → *Adaptive Beats Fixed*, *Diagnose Before You Compute*.
 
 </details>

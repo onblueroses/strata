@@ -145,8 +145,8 @@ ss -tlnp | grep -v '127.0.0.1'
 
 **Remote detection (if user mentions SSH/remote/VPS):**
 ```bash
-# Discover Tailscale targets
-tailscale status 2>/dev/null
+# Discover remote/SSH targets (read configured hosts)
+grep -E "^Host " ~/.ssh/config 2>/dev/null
 
 # For each confirmed target, run the same local detection commands via SSH
 ssh {target} 'ps aux --sort=-%cpu | head -20; nvidia-smi ... 2>/dev/null; df -h /; free -m'
@@ -247,7 +247,7 @@ See Generate Stage for health_check.sh requirements.
   "type": "local|ssh|http|mixed",
   "target": {
     "host": "localhost|user@host|https://...",
-    "ssh_via": "tailscale hostname (if SSH)"
+    "ssh_via": "remote hostname (if SSH)"
   },
   "checks": [
     {

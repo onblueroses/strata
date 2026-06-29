@@ -223,7 +223,7 @@ width=15.5cm, height=8.5cm
 
     % Direct labels (not legends) - positioned to avoid overlap
     \node[above right, font=\scriptsize, text=black!55]
-      at (axis cs:2023.25, 36) {GPT-4};
+      at (axis cs:2023.25, 36) {Frontier Model 2023};
     \node[above left, font=\scriptsize\bfseries, text=series1]
       at (axis cs:2026.15, 91.3) {91,3\%};
 
@@ -266,7 +266,7 @@ width=15.5cm, height=8.5cm
 
   % Direct labels - position to avoid overlap
   \node[above, font=\scriptsize\bfseries, text=western]
-    at (axis cs:15, 95) {Claude Opus 4.6};
+    at (axis cs:15, 95) {Model A};
 
   % Cluster annotation with rounded dashed box
   \draw[chinese, dashed, rounded corners=6pt, line width=0.8pt]
@@ -323,7 +323,7 @@ width=15.5cm, height=8.5cm
   width=14.5cm, height=7.0cm,
   xbar,
   bar width=0.6cm,
-  symbolic y coords={DeepSeek V3, GPT-4, GPT-5},
+  symbolic y coords={Model A, Model B, Model C},
   ytick=data,
   yticklabel style={font=\normalsize\bfseries},
   xmin=0, xmax=600,
@@ -332,11 +332,11 @@ width=15.5cm, height=8.5cm
   point meta=explicit symbolic,
 ]
   \addplot[fill=chinese!50, draw=chinese!70] coordinates {
-    (5.6, DeepSeek V3) [\$5,6M]
+    (5.6, Model A) [\$5,6M]
   };
   \addplot[fill=western!50, draw=western!70] coordinates {
-    (100, GPT-4) [\$100M+]
-    (500, GPT-5) [\$500M+]
+    (100, Model B) [\$100M+]
+    (500, Model C) [\$500M+]
   };
 \end{axis}
 ```
@@ -466,7 +466,7 @@ For PDF export with notes visible (for printing/review):
 ```latex
 \note{%
   \textbf{Kernaussage:} Die eine Sache, die hängenbleiben soll.\\[4pt]
-  \textbf{Daten:} Vor zwei Jahren lag GPT-4 bei 36\% - auf dem Niveau
+  \textbf{Daten:} Vor zwei Jahren lag ein Frontier-Modell bei 36\% - auf dem Niveau
   eines Nicht-Experten mit Google. Heute: 91,3\%.\\[4pt]
   \textbf{Beispiel:} GPQA-Fragen sind so schwer, dass selbst Doktoranden
   in benachbarten Fächern nur 34\% schaffen.\\[4pt]
@@ -568,7 +568,7 @@ For PDF export with notes visible (for printing/review):
 
 ### Keep English
 - Benchmark, Token, Agent, Sub-Agent, Prompt, API, Coding, Multimodal
-- All model names (GPT-5.3, Claude Opus 4.6, DeepSeek V3)
+- All model names (Model A, Model B, Model C)
 - Open Source, SWE-bench, GPQA, AIME
 
 ### Translate to German

@@ -8,10 +8,11 @@ Strata is a skeleton for coding agents. Skills, hooks, commands, references; one
 bin/        symbolic model lanes (strong | fast | grader | breadth) + dispatch + init
 skills/     procedural knowledge the agent loads on demand (spec, recon, harness, ...)
 commands/   user-invoked slash commands (verify, review, end, best-of-n, commit, pickup)
-agents/     subagent definitions (planner, quick-research, code-reviewer, knowledge-lookup, pattern-extractor)
+agents/     subagent definitions (orchestrator, planner, quick-research, code-reviewer, knowledge-lookup)
 hooks/      event-driven scripts (Stop, PreToolUse, PostToolUse, SessionStart, ...)
 reference/  long-form docs the agent reads on the right prompt (router + INDEX)
 config/     model-map.toml (symbolic-lane bindings) + private-tokens.example.txt
+telemetry/  opt-in delegation/cost telemetry (off by default; STRATA_TELEMETRY=1)
 workspace/  PARA-flavored knowledge-base tree (areas | projects | resources | daily | inbox | archives)
 ```
 
@@ -33,6 +34,7 @@ git clone https://github.com/onblueroses/strata.git ~/.strata
 - **Persist to files.** Specs at `workspace/state/specs/` survive context compaction. Sessions resume by reading `>> Current Step`.
 - **Parallel-safe.** Every state file is session-id-keyed (`$CLAUDE_SESSION_ID`); concurrent sessions never clobber each other.
 - **Harness for hard problems.** `/harness` generates N candidates, grades against a frozen rubric, iterates until aggregate PASS. `/best-of-n` runs the same shape for design-space questions.
+- **Telemetry is opt-in.** Lane dispatches and session metrics emit nothing unless you `export STRATA_TELEMETRY=1`. When enabled, enveloped JSONL lands under `$STATE_DIR/telemetry` (never the tracked tree); `telemetry/` ships only the scripts. See [telemetry/README.md](telemetry/README.md).
 
 ## Skeleton, not config bundle
 

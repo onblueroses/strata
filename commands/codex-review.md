@@ -188,7 +188,7 @@ Before writing the prompt file, scrub these patterns from artifact text and any 
 
 - Real name from the user's CLAUDE.md privacy section → `[USER]`
 - Private project codenames from CLAUDE.md → `[PRIVATE-PROJECT-N]` (number them so Codex can refer back)
-- Private IPs (VPS, internal hosts, Tailscale) from CLAUDE.md → `[PRIVATE-IP-N]`
+- Private IPs (VPS, internal hosts, mesh VPN) from CLAUDE.md → `[PRIVATE-IP-N]`
 
 Code logic remains intact; only identifiers change.
 

@@ -66,20 +66,6 @@ The three-pass structure replaces Phase 0 (Assess Complexity), Phase 1 (Decompos
 
 ## Instructions
 
-### Phase -1: Local KB Lookup (all tiers, before anything else)
-
-Call `mcp__local-kb__kb_search` with the research query before any web search or agent spawning.
-
-**If results present AND `low_confidence` is false:**
-- **Simple tier**: use KB results directly, skip Phase 2 web searches entirely.
-- **Moderate/Complex tier**: include KB results as grounding context in agent prompts. Agents can still run WebSearch to supplement, but should not re-fetch what KB already covers.
-
-**If `low_confidence` is true OR no results:** proceed to Phase 0 as normal; treat this as a cache miss.
-
-**If the `mcp__local-kb__kb_search` tool is unavailable** (service not running): skip silently, proceed to Phase 0.
-
----
-
 ### Phase 0: Assess Complexity (no agents)
 
 Before spawning anything, classify the question using the **Research Complexity** system in `$STRATA_HOME/reference/tier-classification.md`. Read that doc for tier definitions, classification patterns, and override flags (`--quick`, `--deep`).

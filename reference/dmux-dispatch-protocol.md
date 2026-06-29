@@ -23,7 +23,7 @@ Claude Code's parallel work model has three costs: (1) subagent output inflates 
 - dmux manages parallel AI agents in tmux panes with git worktree isolation
 - dmux has NO pane creation API - only TUI-based creation (pressing 'n')
 - dmux DOES have worktree discovery (resumeBranches.ts, worktreeDiscovery.ts)
-- dmux's status detection polls tmux pane content via LLM (Gemini Flash/Grok/GPT-4o-mini racing)
+- dmux's status detection polls tmux pane content via LLM (small fast models racing)
 - dmux supports 11 agent CLIs with per-agent prompt transport and permission flags
 - Claude Code subagents share the parent context window - output compounds
 - your existing system: 52 skills, 16 hooks, entity summaries, MEMORY.md, daily notes

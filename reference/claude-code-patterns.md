@@ -80,7 +80,7 @@ Nothing loads until trust is established. This is the 5th stage of the 7-stage b
 Domain-specific MCP servers should not load globally. Move them to project-level `.claude/settings.json` so they only activate in relevant working directories:
 
 - **Global** (used everywhere): github, openrouter-flash, playwright, browsermcp, context7
-- **Global** (cross-project infrastructure): n8n, colab, google-workspace, jupyter, chrome-devtools
+- **Global** (cross-project infrastructure): automation, notebook, workspace, and browser-devtools servers
 - **Project-level** (frontend projects): shadcn-ui, magicui, tailwindcss, aceternityui, google-maps-code-assist
 
 Claude Code's own `ToolSearch` tool already implements deferred loading for MCP tools - tools aren't available until discovered. This IS the deferred init pattern applied to tool availability.

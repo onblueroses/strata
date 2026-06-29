@@ -182,7 +182,7 @@ The user's privacy denylist lives in their CLAUDE.md (typically under a `## Cons
 Pull the project-codename list from the user's CLAUDE.md privacy section. Flag any match in the diff as `[HIGH]`.
 
 **[HIGH] Private IPs in diff:**
-Pull the IP list (VPS, Tailscale, internal hosts) from the user's CLAUDE.md privacy section. Flag matches.
+Pull the IP list (VPS, mesh VPN, internal hosts) from the user's CLAUDE.md privacy section. Flag matches.
 
 **[MEDIUM] Domain-revealing example data in diff:**
 If the CLAUDE.md privacy section enumerates domain-specific vocabulary (industry jargon, client-specific terminology) that leaks the user's market or clients, flag matches in example/test/README files and propose neutral replacements.

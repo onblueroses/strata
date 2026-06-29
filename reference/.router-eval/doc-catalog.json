@@ -40,11 +40,6 @@
   "description": "Bare `codex` CLI standard. Different flag sets for `codex exec` vs `codex review` (verified against CLI v0.138.0). Config defaults, which skill uses which form."
  },
  {
-  "doc": "colab-gdrive.md",
-  "keywords": "colab, google colab, rclone, gdrive, google drive, gpu training, notebook, jupyter, T4",
-  "description": "Colab via rclone + Google Drive: upload notebook/data with rclone, open in Colab from Drive. The only reliable automated path."
- },
- {
   "doc": "dmux-dispatch-protocol.md",
   "keywords": "dmux, dispatch, parallel agents, worktree, tmux panes, field agent, task brief, collect, scratchpad, orchestrate parallel work, fan out agents",
   "description": "dmux parallel-orchestration protocol: roles, brief format, result format, scratchpad rules, agent merge policy."
@@ -58,16 +53,6 @@
   "doc": "followup-convention.md",
   "keywords": "followup, autonomous command, get-to-work, batch op, followup file, autonomous",
   "description": "Follow-up file pattern for autonomous commands."
- },
- {
-  "doc": "free-compute-catalog.md",
-  "keywords": "free gpu, kaggle, lightning ai, modal, compute budget, free compute, gpu quota, serverless gpu",
-  "description": "Free GPU/CPU tiers. Capacity tracking rule."
- },
- {
-  "doc": "gpu-training-workflow.md",
-  "keywords": "training run, vram, gpu training, overnight training, tmux monitor, fine-tune, unsloth, training workflow, gpu workflow, unattended training",
-  "description": "End-to-end workflow for semi-autonomous GPU training: VRAM/disk/time requirements analysis, platform selection, tmux, cron monitor, mid-run recovery, session context saving, failure taxonomy."
  },
  {
   "doc": "knowledge-management.md",
@@ -118,10 +103,5 @@
   "doc": "tier-classification.md",
   "keywords": "tier, complexity, risk, classification, sizing, verify risk, research tier, project size",
   "description": "Shared classification systems extracted from commands. Research complexity, project size, verify risk."
- },
- {
-  "doc": "vastai-operations.md",
-  "keywords": "vastai, vast.ai, gpu instance, gpu rental, vastai cli, instance launch, vast instance",
-  "description": "Vast.ai CLI, single-SSH launch pattern, data transfer, auto-teardown, billing safety."
  }
 ]
