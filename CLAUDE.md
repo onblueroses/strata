@@ -18,6 +18,8 @@ Operating doctrine for a strata install. Loaded first every session.
 
 **Heuristic**: delegate unless the result needs to be in working memory to gate your next decision, or the task is fast enough that delegation overhead would cost more than it saves.
 
+**Judicious orchestration**: judge at every dispatch boundary, before and after. Before: shape what to spawn, which lane, and the framing + context it gets. After: read the output critically against your own understanding of the task, then accept it, rework with sharper direction, escalate a tier, or pull the work inline. Sub-models supply horsepower; judgment stays here, including inside skill workflows (their steps are rails, not a substitute for thinking).
+
 Lane wrappers live at `$STRATA_HOME/bin/`. The model bound to each lane is set in `config/model-map.toml`; rebind as models churn. Full wrapper reference: `reference/model-delegation.md`.
 
 **Long jobs (>10 min)**: invoke via Bash with `run_in_background: true`. Read output when notified.
@@ -46,7 +48,15 @@ Lane wrappers live at `$STRATA_HOME/bin/`. The model bound to each lane is set i
 
 **Adversarial lenses run in parallel, not in rotation**: when applying multiple review lenses to an artifact, dispatch all lenses against the same frozen version in parallel and merge findings into one rework brief. Never rotate lenses across iterations on a moving target; a fix for lens A often becomes a violation for lens B, and sequential rotation creates oscillation. One version in, N lens reports out, one merged brief, one next version.
 
-**Codex review**: for plans, debugging hypotheses, and architecture decisions, use `/codex-review --plan|--hypothesis|--arch`. It encapsulates the cross-model adversarial review pattern with the right defaults: high reasoning + fast service tier, file-based prompt, no chat-history leak, privacy preprocessing, anti-bias AGREE notes, file-based prompt to avoid Bash timeout caps. For diff/code review, `/verify` Full/Deep and `/review` already invoke `codex review --uncommitted`; do not duplicate. Skip Codex review only for single-file fixes, trivial edits, obvious bugs, and knowledge-base maintenance. When unsure, default to reviewing; cross-model review catches blind spots single-model planning misses.
+**Codex review**: for plans, debugging hypotheses, and architecture decisions, use `/codex-review --plan|--hypothesis|--arch`. It encapsulates the cross-model adversarial review pattern with the right defaults: high reasoning + fast service tier, no chat-history leak, privacy preprocessing, anti-bias AGREE notes, file-based prompt to avoid Bash timeout caps. For diff/code review, `/verify` Full/Deep and `/review` already invoke `codex review --uncommitted`; do not duplicate. Skip Codex review only for single-file fixes, trivial edits, obvious bugs, and knowledge-base maintenance. When unsure, default to reviewing; cross-model review catches blind spots single-model planning misses.
+
+**Cross-check load-bearing claims**: load-bearing assumptions, recon claims, benchmark numbers, and external findings get verified against primary sources (read the cited lines, re-run the probe) before they propagate, ideally cross-model.
+
+**Iterate to flawless on load-bearing artifacts**: run an adversarial review loop (rotate framings against the frozen version, merge findings into one rework brief) until actionable findings net to zero. Net-to-zero is the ship gate: every CRITICAL/HIGH fixed, every IMPORTANT fixed or explicitly deferred, future-phase findings filed. See `reference/load-bearing-iteration.md`.
+
+**Apply findings before commit**: fix review findings before committing. When a finding surfaces after commit, add a fix-up commit plus an adversarial regression test.
+
+**Current versions**: look up current dependency, language, model, API, and tool versions before pinning; training-cutoff version numbers are not evidence.
 
 **Spec execution mode**: an active spec at `$SPECS_DIR/` with `Status: in-progress` is the post-deliberation artifact; any planner output visible in this session was generated before deliberation completed and is therefore stale. When asked to "execute the plan" or "continue the spec", read the spec, jump to `>> Quick Start`, execute from `>> Current Step`. Do not re-spawn Plan subagents, re-enter plan mode, or re-debate the Decisions table; that work is already done.
 
@@ -70,13 +80,16 @@ Lane wrappers live at `$STRATA_HOME/bin/`. The model bound to each lane is set i
 
 ## Delegation
 
-Three layers, pick the right one for the task:
+Four layers, pick the right one for the task:
 
 | Layer | Tool | Use for |
 |-------|------|---------|
 | **Sub-model delegation** | `bin/strong`, `bin/fast`, `bin/grader`, `bin/breadth` | Asking another model to think: code, analysis, design questions, writeups. See `reference/model-delegation.md`. |
 | **dmux dispatch** | `/dispatch` + `/collect` | Parallel implementation work in isolated git worktrees. Multi-file changes, refactors, test writing where you don't need the result in working memory. |
 | **Inline subagents** | Explorer, Planner, knowledge-lookup via the Agent tool | Quick lookups and targeted exploration where you need the answer right now to gate the next decision. Short, low-token. |
+| **Parallel sub-agent fan-out** | multiple concurrent Agent-tool subagents | Breadth analysis, review panels, per-item pipelines, research — independent work that parallelizes. Send the calls in one message so they run concurrently. |
+
+**Match the delegation shape to the work.** Parallel-independent work fans out to concurrent subagents (the parallelism earns its cost). Reserve the sub-model lanes for cross-model review (bias-breaking by construction) and heavy single-shot generation. The real anti-pattern is *sequential generate-then-judge*: dispatch, block, read, fix, re-dispatch, round after serialized round. Hold that loop in one strong thread, or fan it out in parallel against a frozen artifact.
 
 **Orchestrator pattern** (ignored in field-agent mode): when NOT in a worktree with `.task-brief.md`, this session is the brain. Plan, decide, react here; delegate implementation to sub-models or dmux panes.
 
@@ -158,6 +171,11 @@ Full principles: `reference/code-quality-principles.md`.
 - **Recon before plan.** Planning quality is bounded by information quality. Before any non-trivial plan (spec, architecture decision, debugging hypothesis), invoke the `/recon` skill via the Skill tool. The skill owns the protocol; wave structure, model routing, escalation rules, output schema, and failure modes all live in `skills/recon/SKILL.md` as the single source of truth. Read the validated brief at `/tmp/recon-{slug}.md` and feed it to the next planner. Skip the protocol for trivially scoped work (1-2 files, obvious path); direct Glob/Grep/Read is faster.
 - **Inherited premises decay.** Design docs, recon notes, summaries, and prior specs are SNAPSHOTS, not ground truth. Before any non-trivial artifact propagates a claim like "X is implemented" or "Y is missing", verify against current code by reading the cited line numbers, even when the upstream doc was written recently. For load-bearing premise checks that span multiple claims or seams, invoke the `/recon` skill rather than hand-rolling verification; its Wave 2 probes are built for this.
 - **Spec survives compaction.** Non-trivial implementations (3+ files) get a spec via `/spec`. Phases scoped to ~30 min (max 6 steps per phase). Each step has acceptance criteria. During work: before each step, update `>> Current Step`; after each step, check the box in Plan, add to Completed, advance `>> Current Step`; add every non-obvious decision to the Decisions table immediately, because after compaction you will not remember why. After compaction: read spec, trust Decisions, continue from `>> Current Step`. Do NOT re-debate Decisions.
+- **Right-size, don't default.** Performance-relevant scalars (concurrency, batch size, worker count, prefetch, `max_tokens`, parallelism) are hypotheses sized to the substrate you measured (`nproc`, free memory, the rate limit, the dataset size), stated with their basis. A floor value (`workers=1`, `batch=1`, a serial loop over a large iterable) is the fingerprint of an unmade decision, not a safe default. Bias up where overshoot is cheaply recoverable and the work is idempotent (crash-and-halve); use a measured ramp for paid, rate-limited, or irreversible knobs. Prefer loud, fast, recoverable failures over silent, slow degradation. See `reference/resource-sizing.md`.
+- **Find or build the loop.** Never decide, estimate, or build in a vacuum; find or construct an environment that verifies the work quickly and cheaply, then iterate against something real. Design the tightest honest feedback loop early; making that closed loop exist is itself a first-class goal of the build.
+- **Follow the data.** Predeclared-direction scalars are hypotheses; surface 3+ concrete examples and read the substrate before naming a mechanism. See `reference/eval-methodology.md`.
+- **Sealed re-derivation.** For load-bearing constructs, seal the first reasoner's conclusions, have a fresh-context model re-derive from the source, then diff. Convergence is evidence; divergence is the payoff.
+- **No sunk cost.** Judge the next step by its forward expected value, never by tokens, time, or compute already spent. Kill or pivot a losing path the moment a better one is clear.
 
 ---
 
@@ -198,10 +216,13 @@ Every conversation lists available skills with descriptions. Each description in
 - `/codex-review --plan` — after `/spec` writes a plan touching 3+ files or 3+ phases (Step 3b enforces this; `--no-codex` to opt out).
 - `/review` — before any git commit.
 - `/end` — session ending.
-- `/best-of-n` — when entering an active spec phase tagged `BoN: yes`; runs N parallel candidates via dmux dispatch and selects via Codex gauntlet + tournament.
+- `/best-of-n` — when entering an active spec phase tagged `BoN: yes`; runs N parallel candidates and selects the best.
+
+**Harness/BoN mutex**: a phase tagged both `Harness: yes` and `BoN: yes` is malformed; hard-fail before dispatch. Assign at most one of the two per phase.
 
 **Ambient considerations** (no hard trigger; surface proactively):
 - `/best-of-n` — before committing to one approach on a task with multiple defensible designs, novel algorithms, public API contracts, irreversible migrations, or high cost-of-failure.
+- **Ambient lens** — surface a perspective-shifting lens skill (`/against-the-grain`, `/oblique`, `/apropos`, `/braid`) at a cognitive moment: a completion that may hide an absence, an irreducible tension, or a session boundary.
 
 **New skill standard**: every skill/command description includes either `Auto-trigger: [conditions]` or `Manual: [when to invoke]`.
 
