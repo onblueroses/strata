@@ -38,8 +38,8 @@ JSON schema for `$STATE_DIR/harness-state-{session-id}.json` (one file per sessi
   "mode": "linear | competitive",
   "candidates_per_round": 1,
   "slot_configs": [
-    {"index": 0, "model": "opus", "strategy": "correctness-first"},
-    {"index": 1, "model": "sonnet", "strategy": "simplicity-first"}
+    {"index": 0, "model": "<tierA>", "strategy": "correctness-first"},
+    {"index": 1, "model": "<tierB>", "strategy": "simplicity-first"}
   ],
   "from_spec": null,
   "rework_fail_counts": {},
@@ -100,7 +100,7 @@ JSON schema for `$STATE_DIR/harness-state-{session-id}.json` (one file per sessi
 | `context_files` | array | no | Read-only files for generator context |
 | `mode` | enum | yes | `"linear"` (default) or `"competitive"`. Competitive spawns N generators per iteration |
 | `candidates_per_round` | number | yes | 1 for linear mode, N for competitive mode (2-5) |
-| `slot_configs` | array | no | Per-slot model and strategy overrides. Set when `--models` flag is passed. Index maps to candidate slot (0-based). Absent or empty means all slots use `"opus"` with round-robin strategy hints. |
+| `slot_configs` | array | no | Per-slot model and strategy overrides. Set when `--models` flag is passed. Index maps to candidate slot (0-based). Absent or empty means all slots use `"inherit"` with round-robin strategy hints. |
 | `strictness` | enum | yes | Evaluator strictness level: `"strict"`, `"standard"` (default), or `"lenient"`. Controls the text block injected into Stage B via `{{strictness}}`. See `references/strictness-blocks.md`. |
 | `from_spec` | string/null | no | Spec filename if criteria derived from spec |
 | `rework_fail_counts` | object | yes | Map of criterion ID -> consecutive rework failure count. Tracks per-criterion persistence across rework iterations. If any criterion reaches count 2, next iteration uses fresh mode. Criteria that pass are removed from the map. Initialized as `{}`. |

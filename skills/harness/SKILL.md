@@ -1,6 +1,6 @@
 ---
 name: harness
-description: "Adversarial generator-evaluator loop for high-stakes implementation tasks. Claude Opus generates, Codex (gpt-5.5 xhigh) evaluates — cross-model asymmetry breaks same-model systematic bias by construction. The evaluator never sees the task description or generator reasoning, only criteria and output files. Rotates adversarial framings (security-audit, specification-lawyer, production-load, maintainability, adversarial-user, dependency-skeptic, reality-declaration) across iterations to surface different blindspots. Termination is convergence-based: the loop runs until Stage A passes and Stage B has no CRITICAL findings, or a convergence signal (SPINNING, OSCILLATING, STRUCTURAL, DIMINISHING_RETURNS) fires twice and escalates to the user. No hard iteration cap — convergence detectors are the budget. Targeted rework with evaluator feedback on failure, fresh generation as fallback after structural-failure detection. Supports competitive mode (--competitive N) that spawns N generators with different strategies per iteration and picks the best candidate before evaluation. Costs scale with convergence rate; typical runs finish in 1-3 iterations. MANDATORY when an active spec's current phase has `Harness: yes` and implementation of that phase is about to begin — no confirmation, no asking, just run /harness --from-spec. Triggers on: 'run the harness', 'gen-eval loop', 'adversarial loop', 'iterative review', 'harness this', 'competitive mode', 'run N candidates', 'evaluator feedback', 'cross-model implementation review'. Also triggers when: /verify Deep tier finds criteria failures on a second pass; high-stakes implementation requires more than one-shot review; a /codex-review surfaced BLOCKING findings that need iterative correction; the user explicitly invokes the harness for ad-hoc work. Pairs with /codex-review (upstream one-shot review; harness adds the loop), /spec (reads phase tags for Harness: yes), /verify (downstream gate after harness completes), /best-of-n (mutex — a phase tagged both BoN:yes and Harness:yes is malformed). Manual invocation supported for ad-hoc use outside spec phases."
+description: "Adversarial generator-evaluator loop for high-stakes implementation tasks. A generator lane generates and a different-model-family evaluator lane evaluates — cross-model asymmetry breaks same-model systematic bias by construction. The evaluator never sees the task description or generator reasoning, only criteria and output files. Rotates adversarial framings (security-audit, specification-lawyer, production-load, maintainability, adversarial-user, dependency-skeptic, reality-declaration) across iterations to surface different blindspots. Termination is convergence-based: the loop runs until Stage A passes and Stage B has no CRITICAL findings, or a convergence signal (SPINNING, OSCILLATING, STRUCTURAL, DIMINISHING_RETURNS) fires twice and escalates to the user. No hard iteration cap — convergence detectors are the budget. Targeted rework with evaluator feedback on failure, fresh generation as fallback after structural-failure detection. Supports competitive mode (--competitive N) that spawns N generators with different strategies per iteration and picks the best candidate before evaluation. Costs scale with convergence rate; typical runs finish in 1-3 iterations. MANDATORY when an active spec's current phase has `Harness: yes` and implementation of that phase is about to begin — no confirmation, no asking, just run /harness --from-spec. Triggers on: 'run the harness', 'gen-eval loop', 'adversarial loop', 'iterative review', 'harness this', 'competitive mode', 'run N candidates', 'evaluator feedback', 'cross-model implementation review'. Also triggers when: /verify Deep tier finds criteria failures on a second pass; high-stakes implementation requires more than one-shot review; a /codex-review surfaced BLOCKING findings that need iterative correction; the user explicitly invokes the harness for ad-hoc work. Pairs with /codex-review (upstream one-shot review; harness adds the loop), /spec (reads phase tags for Harness: yes), /verify (downstream gate after harness completes), /best-of-n (mutex — a phase tagged both BoN:yes and Harness:yes is malformed). Manual invocation supported for ad-hoc use outside spec phases."
 ---
 
 # Harness
@@ -8,18 +8,18 @@ description: "Adversarial generator-evaluator loop for high-stakes implementatio
 Goal: Run an adversarial generator-evaluator loop that turns high-stakes implementation tasks into criteria-checked, convergence-driven code changes.
 
 Success means:
-  - Claude Opus generates implementation candidates and Codex evaluates them through isolated Stage A and Stage B passes.
+  - The generator lane produces implementation candidates and a different-family evaluator lane evaluates them through isolated Stage A and Stage B passes.
   - The evaluator reads the criteria, the output files, and prior-round snapshot directories used for convergence detection; the evaluator never sees the task description or generator reasoning.
   - Rotating adversarial framings cover `security-audit`, `specification-lawyer`, `production-load`, `maintainability`, `adversarial-user`, `dependency-skeptic`, and `reality-declaration`.
   - The loop terminates only through DONE, convergence-detector escalation, user choice, or unrecoverable error.
 
 Stop when: Stage A passes and Stage B meets the selected `done_bar`, or a convergence detector fires twice and the loop escalates to the user.
 
-Run an adversarial generator-evaluator loop. Use Claude Opus for generation, Codex for evaluation, cross-model asymmetry for bias-breaking, rotating adversarial framings for coverage, and convergence detectors for termination.
+Run an adversarial generator-evaluator loop. Use a generator lane for generation and a different-model-family evaluator lane for evaluation (strata dispatches the evaluator through `bin/strong`/`bin/grader`; see `commands/harness.md`), cross-model asymmetry for bias-breaking, rotating adversarial framings for coverage, and convergence detectors for termination.
 
 ## Conceptual Lineage
 
-Map `/harness` onto the managed-agents outcome+rubric+grader+iteration pattern; see https://platform.claude.com/docs/en/managed-agents/define-outcomes. **Grader is the evaluation role; the concrete grader in /harness is Codex via the codex-companion runtime. In /best-of-n the concrete grader is a DeepSeek swarm (grader + breadth) with Codex escalation.** Use the vocabulary table below to translate /harness's internal terms into the managed-agents canon — they describe the same machine, in different words.
+Map `/harness` onto the managed-agents outcome+rubric+grader+iteration pattern; see https://platform.claude.com/docs/en/managed-agents/define-outcomes. **Grader is the evaluation role: in /harness the grader is a cross-model reviewer dispatched via the `strong`/`grader` lane (bound to a different model family than the generator so the asymmetry holds); in /best-of-n the grader is the orchestrator itself, judging candidate diffs against the BoN rubric.** Use the vocabulary table below to translate /harness's internal terms into the managed-agents canon — they describe the same machine, in different words.
 
 | Harness vocab | Managed-agents vocab |
 |---|---|
@@ -38,7 +38,7 @@ Map `/harness` onto the managed-agents outcome+rubric+grader+iteration pattern; 
 /harness --from-spec                  # Derive criteria from active spec
 /harness --framing security-audit     # Force a specific evaluator framing
 /harness --competitive 3              # Spawn 3 generators per iteration, pick best
-/harness --models opus,sonnet,haiku   # Per-slot model override (use with --competitive)
+/harness --models strong,fast,grader  # Per-slot lane override (use with --competitive)
 /harness --strictness strict          # Evaluator strictness: strict|standard|lenient (default: standard)
 /harness --done-bar critical-only     # Definition of done: critical-only (default) | no-warnings | stage-a-only
 /harness --cost-warn 500000           # Soft warning when cumulative tokens exceed this (default 500000)
@@ -92,7 +92,7 @@ Prepare the harness run by parsing inputs, deriving criteria, selecting the firs
 
    Expose no `max_iterations` argument. Drive termination through convergence detectors in Phase 1 Step 3, not a fixed iteration count.
 
-   **Per-slot model overrides (`--models`):** If `--competitive N` is also set, parse `--models opus,sonnet,haiku` into `slot_models: ["opus", "sonnet", "haiku"]`. Resolve each slot's model as `slot_models[K % len(slot_models)]`. Build `slot_configs`: an array of N objects `{index: K, model: <resolved model>, strategy: <strategy hint K>}` where strategy hints are assigned using the same round-robin order already defined for strategy hints. If `--models` is absent, all slots use `"opus"` and `slot_configs` is `[]` (empty). `--models` without `--competitive` is ignored with a warning.
+   **Per-slot model overrides (`--models`):** If `--competitive N` is also set, parse `--models <tierA>,<tierB>,<tierC>` (host model tiers) into `slot_models: ["<tierA>", "<tierB>", "<tierC>"]`. Resolve each slot's model as `slot_models[K % len(slot_models)]`. Build `slot_configs`: an array of N objects `{index: K, model: <resolved model>, strategy: <strategy hint K>}` where strategy hints are assigned using the same round-robin order already defined for strategy hints. If `--models` is absent, all slots use `"inherit"` and `slot_configs` is `[]` (empty). `--models` without `--competitive` is ignored with a warning.
 
 2. **Derive acceptance criteria.** Use binary PASS/FAIL gates exclusively; leave scores and "mostly works" outside the rubric. The criteria below form a **rubric in the managed-agents sense** — explicit, gradeable conditions the grader evaluates against (see Conceptual Lineage callout above). When a rubric is unavailable, give Claude an example of a known-good artifact and ask it to derive what makes that content good; turn that analysis into a rubric. This middle-ground approach often produces tighter criteria than first-principles authoring.
 
@@ -162,7 +162,7 @@ Iterate until a termination condition fires (see Step 3 for the full ladder). Ea
 <details>
 <summary>Step 1: Generate</summary>
 
-Spawn a general-purpose subagent with `model: "opus"`. The generator gets a fresh context window each iteration - no inherited bias from previous attempts.
+Spawn a general-purpose subagent with `model: "inherit"`. The generator gets a fresh context window each iteration - no inherited bias from previous attempts.
 
 **Generator prompt template:**
 
@@ -302,9 +302,9 @@ Write all reasoning and outputs to files in {artifact_dir}/round-{N}/.
 
 **Competitive mode (`--competitive N`):**
 
-**Rework iterations in competitive mode:** When `retry_mode` is `"rework"`, competitive mode drops to a single generator for that iteration. Multiple candidates reworking the same code produce near-identical fixes with little added diversity. The single rework generator uses Opus (ignoring `slot_configs`). If rework fails and the next iteration switches to fresh mode, competitive mode resumes with N candidates. Record `candidates_evaluated: 1` and `winning_candidate: null` for rework iterations in the state file.
+**Rework iterations in competitive mode:** When `retry_mode` is `"rework"`, competitive mode drops to a single generator for that iteration. Multiple candidates reworking the same code produce near-identical fixes with little added diversity. The single rework generator uses the inherited host model (ignoring `slot_configs`). If rework fails and the next iteration switches to fresh mode, competitive mode resumes with N candidates. Record `candidates_evaluated: 1` and `winning_candidate: null` for rework iterations in the state file.
 
-**Fresh iterations** (iteration 1, or after rework fallback): Step 1 spawns N generator subagents in parallel instead of 1. Each uses the model from its `slot_configs` entry (resolved in Phase 0 Step 1). If `slot_configs` is empty, all slots use `"opus"`. Each receives the same prompt template but with a different `STRATEGY HINT` appended, and the ARTIFACTS paths use the candidate subdirectory:
+**Fresh iterations** (iteration 1, or after rework fallback): Step 1 spawns N generator subagents in parallel instead of 1. Each uses the model from its `slot_configs` entry (resolved in Phase 0 Step 1). If `slot_configs` is empty, all slots use `"inherit"`. Each receives the same prompt template but with a different `STRATEGY HINT` appended, and the ARTIFACTS paths use the candidate subdirectory:
 
 ```
 Goal: Produce this competitive candidate with the assigned model and strategy while writing candidate-scoped artifacts.
@@ -339,7 +339,7 @@ After all N generators complete, the orchestrator proceeds to Step 1.5b (Quick C
 <details>
 <summary>Step 1.5: Quick Gate</summary>
 
-Run a fast parent-context sanity check on the generator's output before spending an Opus evaluator call. This catches obviously broken generations while saving evaluator tokens.
+Run a fast parent-context sanity check on the generator's output before spending an evaluator call. This catches obviously broken generations while saving evaluator tokens.
 
 1. **Verify files exist.** Glob each target file path. If any file the generator was supposed to create is missing, skip evaluation - log `no_output` and retry.
 
@@ -406,7 +406,7 @@ Select the best candidate from the N generators when `mode: "competitive"` and a
 <details>
 <summary>Step 1.7: Fixer</summary>
 
-Run the fixer only when Stage A returns `HAS_FAILURES`. On `ALL_PASS`, skip directly to Stage B. The fixer is a Sonnet subagent that applies targeted fixes based on evaluator evidence, writing corrected files to a separate directory for arbitration.
+Run the fixer only when Stage A returns `HAS_FAILURES`. On `ALL_PASS`, skip directly to Stage B. The fixer is a lighter-tier subagent that applies targeted fixes based on evaluator evidence, writing corrected files to a separate directory for arbitration.
 
 **When to run:** Run after Stage A completes with `HAS_FAILURES` and identifies specific failures.
 
@@ -460,7 +460,7 @@ CONSTRAINTS:
 
 **If the fixer fails or produces no output:** Proceed through the existing rework/fresh retry logic in Step 3. Record `fixer_ran: false`.
 
-**Model:** Use Sonnet. The fixer applies prescribed fixes as mechanical work while Opus tokens stay reserved for evaluation.
+**Model:** Use a lighter tier for the fixer; it applies prescribed fixes as mechanical work while heavier model budget stays reserved for evaluation.
 
 </details>
 
@@ -506,7 +506,7 @@ Run evaluation in two sequential stages. Stage A (spec compliance) must pass bef
 
 Use Stage A as **the grader for spec-compliance** in the managed-agents sense. Its separate Codex context window structurally mirrors the managed-agents grader's isolation property and keeps generator bias out of the review.
 
-Invoke Codex via the codex-companion runtime. This reviewer checks ONLY whether the implementation matches what was asked for. Using a different model family (gpt-5.5 xhigh) from the generator (Claude Opus) provides cross-model adversarial diversity by construction, so Stage A gets bias-breaking from model isolation.
+Invoke the evaluator via the codex-companion runtime (strata: `bin/strong`/`bin/grader`). This reviewer checks ONLY whether the implementation matches what was asked for. Binding the evaluator to a different model family than the generator provides cross-model adversarial diversity by construction, so Stage A gets bias-breaking from model isolation.
 
 **Before invoking Stage A**, the orchestrator:
 1. Writes the evaluation prompt to `{artifact_dir}/round-{N}/stage-a-prompt.md` (Codex reads files more reliably than receiving long inline prompts)
@@ -629,7 +629,7 @@ Use Bash tool with `timeout: 600000` (10 minutes). Capture stdout as the Stage A
 
 **If Stage A returns `NEEDS_CONTEXT`:** Provide the missing context (appends to stage-a-prompt.md) and re-run Stage A (counts as the same iteration).
 
-**If Codex is unavailable or errors:** Fall back to spawning a general-purpose subagent with `model: "opus"` for this stage. Log "Codex: unavailable, fell back to Opus" in the iteration state. Treat this as degraded mode because the loop continues with the cross-model benefit lost.
+**If Codex is unavailable or errors:** Fall back to spawning a general-purpose subagent with `model: "inherit"` for this stage. Log "Codex: unavailable, fell back to the inherited model" in the iteration state. Treat this as degraded mode because the loop continues with the cross-model benefit lost.
 
 </details>
 
@@ -736,7 +736,7 @@ Use Bash tool with `timeout: 600000` (10 minutes). Capture stdout as the Stage B
 - Keep Stage A output, generator reasoning, harness state, and artifact directory outside Stage B context
 - Treat CRITICAL findings as FAIL. Surface WARNINGs while allowing completion under `critical-only`.
 
-**If Codex is unavailable or errors:** Fall back to spawning a general-purpose subagent with `model: "opus"` for this stage. Log "Codex: unavailable, fell back to Opus" in the iteration state.
+**If Codex is unavailable or errors:** Fall back to spawning a general-purpose subagent with `model: "inherit"` for this stage. Log "Codex: unavailable, fell back to the inherited model" in the iteration state.
 
 </details>
 
@@ -846,12 +846,12 @@ Close the run by reporting cost, final state, iteration history, next steps, ins
 
 1. **Cost report.** Report actual usage from `convergence_state.cumulative_tokens` and the iteration count:
    - **Linear mode:**
-     - Generator calls: {iteration_count} Opus subagent spawns
+     - Generator calls: {iteration_count} generator subagent spawns
      - Stage A (spec compliance) calls: {iteration_count} Codex task invocations
      - Stage B (code quality) calls: {stage_b_count} Codex task invocations (skipped when Stage A fails or `done_bar == "stage-a-only"`)
      - Cumulative tokens: {cumulative_tokens} ({"exceeded soft cap of " + cost_warn_threshold if exceeded else "under soft cap of " + cost_warn_threshold})
    - **Competitive mode:**
-     - Generator calls: {iteration_count * candidates_per_round - rework_iteration_count * (candidates_per_round - 1)} Opus subagent spawns (rework iterations drop to 1 candidate)
+     - Generator calls: {iteration_count * candidates_per_round - rework_iteration_count * (candidates_per_round - 1)} generator subagent spawns (rework iterations drop to 1 candidate)
      - Stage A + Stage B: same as linear (only the winning candidate is evaluated)
      - Cumulative tokens: as above
 
@@ -942,7 +942,7 @@ Keep these structural properties intact throughout the run.
 - **Second-strike escalation:** When any convergence detector fires twice, the loop MUST escalate to the user via AskUserQuestion. Escalation preserves the safety design.
 - **Cost signal:** When `cumulative_tokens > cost_warn_threshold`, print the warning once so the user can intervene before more tokens burn.
 - **Criteria stability:** Freeze criteria at Phase 0. When criteria are wrong, escalate and restart with better criteria; the "refine criteria and restart" branch in Step 6 is the supported path.
-- **Codex evaluation:** Use Codex (gpt-5.5 xhigh) via the codex-companion runtime for evaluators. The cross-model asymmetry is the core mechanism; Claude evaluating Claude's own output loses the adversarial benefit. Use the Opus fallback only when Codex is unavailable (degraded mode).
+- **Cross-model evaluation:** Run evaluators through the evaluator lane (codex-companion runtime; strata `bin/strong`/`bin/grader`), bound to a different model family than the generator. The cross-model asymmetry is the core mechanism; a model evaluating its own family's output loses the adversarial benefit. Use a same-family fallback only when the cross-family evaluator is unavailable (degraded mode).
 - **Competitive cost:** Monitor the cost soft warning closely in `--competitive` mode. N candidates per iteration multiply generator cost. Lower the `--cost-warn` threshold for competitive runs (e.g. `--cost-warn 250000`) so the warning fires earlier and the user can intervene before runaway spend.
 - **File-based evaluator prompt:** Write the evaluation prompt to a file and tell Codex to read it. File-based prompting is more reliable for structured output than truncated inline prompt content in Codex task commands.
 - **Evaluator filesystem scope:** Write all context into the prompt file. Keep the artifact directory path out of the Codex task command so Codex navigates only the files it is evaluating, not harness internals.
@@ -951,7 +951,7 @@ Keep these structural properties intact throughout the run.
 
 Verify these properties after the loop completes:
 
-1. **Cross-model asymmetry maintained** - generators are Claude Opus subagents, evaluators are Codex (gpt-5.5 xhigh) via codex-companion. Evaluator prompt files contain zero task description text and zero generator reasoning. The only artifact-directory paths permitted in evaluator prompts are the prior-round `snapshots/` references that drive the SPINNING convergence check. Generator prompts contain zero framing preamble.
+1. **Cross-model asymmetry maintained** - generators and evaluators run on different-model-family lanes (evaluators via the codex-companion runtime / `bin/grader`). Evaluator prompt files contain zero task description text and zero generator reasoning. The only artifact-directory paths permitted in evaluator prompts are the prior-round `snapshots/` references that drive the SPINNING convergence check. Generator prompts contain zero framing preamble.
 2. **Framing rotated** - consecutive iterations used different evaluator framings unless the run completed in 1 iteration
 3. **Rework/fresh mode correct** - rework iterations inject evaluator feedback directly; fresh mode only activates when any criterion in `rework_fail_counts` reaches 2; competitive mode drops to single generator during rework iterations
 4. **State file valid** - `$STATE_DIR/harness-state-{session-id}.json` has all required fields per `references/state-schema.md` including `run_id`, `artifact_dir`, `definition_of_done`, and `convergence_state` with populated `failing_set_history` and `fix_count_history`. The session-suffixed filename is what allows concurrent harness runs in different sessions
