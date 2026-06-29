@@ -220,7 +220,9 @@ Run Full tier checks (Codex + inline), then run these additional inline checks:
 
 **D4. Import graph.** Build a dependency graph of all edited files' imports. Verify the import graph remains acyclic.
 
-Report using the Full verdict format with `DEEP` label and D1-D4 items in the report.
+**D5. Spec conformance.** For spec-driven multi-phase work: when a `$SPECS_DIR/` spec is in play, verify that each Completed phase's `Produces` artifacts actually exist, that the `>> Current Step` pointer matches the real repo state, that no phase marked done has an unmet acceptance criterion, and that Decisions are reflected in the shipped code.
+
+Report using the Full verdict format with `DEEP` label and D1-D5 items in the report.
 
 </details>
 

@@ -261,7 +261,7 @@ Run fan-out review when the threshold gate selects specialist review.
 
 Run only when Step 1b's threshold gate triggered fan-out (>= 10 files OR >= 500 lines changed). For smaller diffs, use the single-reviewer path entirely.
 
-**Specialist reviewers:** Spawn Sonnet subagents in parallel, one per non-empty bucket from Step 1b's categorization. Each specialist gets only the files in its bucket.
+**Specialist reviewers:** Spawn subagents in parallel (Agent-tool review panel), one per non-empty bucket from Step 1b's categorization. Each specialist gets only the files in its bucket.
 
 | Bucket | Specialist perspective | Focus |
 |--------|----------------------|-------|
@@ -375,6 +375,8 @@ Verify these checks before reporting:
 6. Fan-out: threshold gate applied correctly (>= 10 files OR >= 500 lines)?
 7. Fan-out: specialist findings deduplicated by file:line:description?
 8. Fan-out: noisy specialists truncated to 10 highest-severity findings?
+
+**Optional final step (non-blocking).** Before signing off, name what this change leaves comfortably unaddressed: the risk the diff satisfies on paper but not in reality. Name the error path it never added, the assumption it left unstated, the test the green checkmark made feel unnecessary. A clean review confirms the present code is sound; this asks what a sound-looking change quietly leaves out. Skip it for trivial, low-stakes, or purely mechanical diffs (renames, formatting, dependency bumps) where there is no design surface to hide an absence. It adds an author-facing note only and never changes the PASS/FAIL verdict.
 
 ### Review Boundaries
 
@@ -558,7 +560,7 @@ cd /tmp/gh-audit/$repo
 git add -A
 git commit -m "Privacy and quality cleanup
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+Co-Authored-By: Claude <noreply@anthropic.com>"
 git push origin main
 ```
 
@@ -567,6 +569,6 @@ git push origin main
 Preserve git history when committed secrets appear. Mention the exposure and recommend rotating the credential instead.
 Treat the GitHub handle in CI badges, repo URLs, or shield.io badges as expected.
 Treat emails in git commit Author metadata as standard and history-bound.
-Treat public model names (deepseek/deepseek-r1, google/gemma-3-12b) as model names, not secrets.
+Treat public model names (`org/model-name` identifiers in configs and code) as model names, not secrets.
 Treat `test@example.com` and other obvious placeholder emails in test fixtures as placeholders.
 Read grep output only during the history scan. Keep tokens low.
