@@ -118,6 +118,12 @@
       {
         "matcher": "Bash",
         "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-destructive-git.sh", "if": "Bash(git *)", "timeout": 3000 }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
           { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-paid-compute-destroy.sh", "timeout": 3000 }
         ]
       }
@@ -139,6 +145,7 @@
         "matcher": "Edit|Write",
         "hooks": [
           { "type": "command", "command": "bash $STRATA_HOME/hooks/quality-lint-on-write.sh", "timeout": 15000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/quality-resource-sizing.sh", "timeout": 5000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/observe-track-edits.sh", "timeout": 2000 }
         ]
       },
