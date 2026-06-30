@@ -18,12 +18,15 @@ on demand over whatever the sink already contains and never assumes telemetry is
 
 Usage:
   cost_rollup.py <sid>        # one session
-  cost_rollup.py --aggregate  # totals across session-metrics.jsonl
+  cost_rollup.py --aggregate  # totals across recorded sessions
 """
 
 import sys
 import os
 import json
+import gzip
+import glob
+import re
 
 # Runtime path contract — matches telemetry-emit.sh. STRATA_HOME defaults to the parent of this
 # script's directory (the script ships at $STRATA_HOME/telemetry/cost_rollup.py).
@@ -50,29 +53,83 @@ DEFAULT_RATE = {
     "billing": "subscription",
 }
 
+DATE_SUFFIX_RE = re.compile(r"^-\d{4}-\d{2}-\d{2}$")
+
 
 def load_rates():
     try:
         with open(RATES_PATH) as fh:
-            return json.load(fh)
-    except Exception:
-        return {}  # basis: missing rate table -> DEFAULT_RATE everywhere, still produces a ledger
+            rates = json.load(fh)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as e:
+        raise ValueError(f"invalid JSON in {RATES_PATH}: {e}") from e
+    if not isinstance(rates, dict):
+        raise ValueError(f"invalid rate table in {RATES_PATH}: expected object")
+    return validate_rates(rates)
+
+
+def validate_rates(rates):
+    valid = {}
+    for model, row in rates.items():
+        if not isinstance(row, dict):
+            continue
+        for key in ("in", "cache_read", "cache_write", "out"):
+            value = row.get(key, DEFAULT_RATE[key])
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(
+                    f"invalid rate {key!r} for model {model!r} in {RATES_PATH}: expected number"
+                )
+        billing = row.get("billing", DEFAULT_RATE["billing"])
+        if not isinstance(billing, str):
+            raise ValueError(
+                f"invalid rate 'billing' for model {model!r} in {RATES_PATH}: expected string"
+            )
+        valid[model] = row
+    return valid
 
 
 def rate_for(model, rates):
     if not model:
         return DEFAULT_RATE
-    if model in rates:
+    if isinstance(rates.get(model), dict):
         return {**DEFAULT_RATE, **rates[model]}
-    for (
-        k,
-        v,
-    ) in (
-        rates.items()
-    ):  # prefix match (e.g. "<model-id>-<date-suffix>" -> "<model-id>")
-        if model.startswith(k) or k.startswith(model):
-            return {**DEFAULT_RATE, **v}
+    best = None
+    for k, v in rates.items():
+        if not isinstance(v, dict):
+            continue
+        suffix = model[len(k) :] if model.startswith(k) else ""
+        if DATE_SUFFIX_RE.fullmatch(suffix) and (best is None or len(k) > len(best[0])):
+            best = (k, v)
+    if best:
+        return {**DEFAULT_RATE, **best[1]}
     return DEFAULT_RATE
+
+
+def jsonl_paths(path):
+    base = os.path.splitext(os.path.basename(path))[0]
+    archive = os.path.join(os.path.dirname(path), "archive", f"{base}-*.jsonl.gz")
+    return sorted(glob.glob(archive)) + ([path] if os.path.exists(path) else [])
+
+
+def open_jsonl(path):
+    if path.endswith(".gz"):
+        return gzip.open(path, "rt")
+    return open(path)
+
+
+def iter_jsonl(path):
+    for jsonl_path in jsonl_paths(path):
+        try:
+            fh = open_jsonl(jsonl_path)
+        except Exception:
+            continue
+        with fh:
+            for line in fh:
+                try:
+                    yield json.loads(line)
+                except Exception:
+                    continue  # basis: skip one malformed JSONL line; a read-time tool never aborts
 
 
 def _cost_split(t, r):
@@ -100,48 +157,36 @@ def cost_delegations(sid, rates):
     """Delegation-lane cost for this sid from events.jsonl. An event carrying a full token-split
     dict (.tokens) is costed exactly; an event carrying only a total (.tokens_total) is estimated
     at the output rate and flagged."""
+    if not sid:
+        return 0.0, 0.0, 0, False
     notional = real = 0.0
     n = 0
     estimated = False
-    try:
-        fh = open(EVENTS)
-    except Exception:
-        return (
-            0.0,
-            0.0,
-            0,
-            False,
-        )  # basis: no events file -> zero delegation cost, ledger still valid
-    with fh:
-        for line in fh:
-            try:
-                ev = json.loads(line)
-            except Exception:
-                continue  # basis: skip one malformed JSONL line; a read-time tool never aborts
-            if ev.get("kind") != "delegation" or ev.get("sid") != sid:
-                continue
-            r = rate_for(ev.get("model"), rates)
-            tk = ev.get("tokens")
-            if isinstance(tk, dict):  # full token split -> exact cost
-                c = (
-                    tk.get("input", 0) / 1e6 * r["in"]
-                    + tk.get("cache_read", 0) / 1e6 * r["cache_read"]
-                    + tk.get("output", 0) / 1e6 * r["out"]
-                )
-                n += 1
-            elif ev.get("tokens_total"):  # total only -> estimate at output rate
-                c = ev["tokens_total"] / 1e6 * r["out"]
-                estimated = True
-                n += 1
-            else:
-                continue  # event without token counts (e.g. duration-only); skip
-            notional += c
-            if r.get("billing") == "marginal":
-                real += c
+    for ev in iter_jsonl(EVENTS):
+        if ev.get("kind") != "delegation" or ev.get("sid") != sid:
+            continue
+        r = rate_for(ev.get("model"), rates)
+        tk = ev.get("tokens")
+        if isinstance(tk, dict):  # full token split -> exact cost
+            c = _cost_split(tk, r)
+            n += 1
+        elif ev.get("tokens_total"):  # total only -> estimate at output rate
+            c = ev["tokens_total"] / 1e6 * r["out"]
+            estimated = True
+            n += 1
+        else:
+            continue  # event without token counts (e.g. duration-only); skip
+        notional += c
+        if r.get("billing") == "marginal":
+            real += c
     return notional, real, n, estimated
 
 
-def ledger_for(rec, rates):
+def round_cost(value, enabled):
+    return round(value, 4) if enabled else value
+
+
+def ledger_for(rec, rates, round_costs=True):
     sid = rec.get("sid")
     main_n, main_r = cost_by_model(rec.get("tok_by_model"), rates)
     sub = rec.get("subagents") or {}
@@ -153,23 +198,23 @@ def ledger_for(rec, rates):
         "project": rec.get("project"),
         "channels": {
             "main_loop": {
-                "cost_notional": round(main_n, 4),
-                "cost_real": round(main_r, 4),
+                "cost_notional": round_cost(main_n, round_costs),
+                "cost_real": round_cost(main_r, round_costs),
             },
             "subagents": {
                 "n_agents": sub.get("n_agents", 0),
-                "cost_notional": round(sub_n, 4),
-                "cost_real": round(sub_r, 4),
+                "cost_notional": round_cost(sub_n, round_costs),
+                "cost_real": round_cost(sub_r, round_costs),
             },
             "delegations": {
                 "n_dispatches": dl_count,
-                "cost_notional": round(dl_n, 4),
-                "cost_real": round(dl_r, 4),
+                "cost_notional": round_cost(dl_n, round_costs),
+                "cost_real": round_cost(dl_r, round_costs),
                 "estimated": dl_est,
             },
         },
-        "total_cost_notional": round(total_n, 4),
-        "total_cost_real": round(main_r + sub_r + dl_r, 4),
+        "total_cost_notional": round_cost(total_n, round_costs),
+        "total_cost_real": round_cost(main_r + sub_r + dl_r, round_costs),
         "cap_pct": round(100 * main_n / total_n, 1) if total_n else 0.0,
         "invisible_leg_pct": round(100 * dl_n / total_n, 1) if total_n else 0.0,
         "headline_output_tok": rec.get("tok_output", 0),
@@ -178,16 +223,19 @@ def ledger_for(rec, rates):
 
 def load_metrics():
     recs = {}
-    try:
-        for line in open(METRICS):
-            try:
-                r = json.loads(line)
-            except Exception:
-                continue  # basis: skip one malformed JSONL line; a read-time tool never aborts
-            recs[r.get("sid")] = r  # last wins (dedup)
-    except Exception:
-        pass  # basis: unreadable metrics file -> empty dict, caller reports "no session_metrics"
+    for r in iter_jsonl(METRICS):
+        sid = r.get("sid")
+        if sid:
+            recs[sid] = r  # last wins (dedup)
     return recs
+
+
+def load_delegation_sids():
+    return {
+        ev.get("sid")
+        for ev in iter_jsonl(EVENTS)
+        if ev.get("kind") == "delegation" and ev.get("sid")
+    }
 
 
 def main(argv):
@@ -196,10 +244,12 @@ def main(argv):
         return 1
     rates = load_rates()
     recs = load_metrics()
+    delegation_sids = load_delegation_sids()
     if argv[0] == "--aggregate":
         agg = {"main": 0.0, "sub": 0.0, "deleg": 0.0, "real": 0.0, "n": 0}
-        for rec in recs.values():
-            led = ledger_for(rec, rates)
+        for sid in sorted(set(recs) | delegation_sids):
+            rec = recs.get(sid) or {"sid": sid}
+            led = ledger_for(rec, rates, round_costs=False)
             agg["main"] += led["channels"]["main_loop"]["cost_notional"]
             agg["sub"] += led["channels"]["subagents"]["cost_notional"]
             agg["deleg"] += led["channels"]["delegations"]["cost_notional"]
@@ -226,6 +276,8 @@ def main(argv):
         return 0
     sid = argv[0]
     rec = recs.get(sid)
+    if not rec and sid in delegation_sids:
+        rec = {"sid": sid}
     if not rec:
         sys.stderr.write(f"no session_metrics for sid {sid}\n")
         return 1
