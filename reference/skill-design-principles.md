@@ -92,7 +92,7 @@ Not every part of a skill needs the same level of prescription.
   approach exists but details vary by context. Example: `/security-review`'s
   threat model step - structured process, but the specific threats depend on the codebase.
 - **High freedom** (text guidelines, heuristics): Use when multiple approaches
-  are valid and context determines the best one. Example: `/humanizer-de`'s
+  are valid and context determines the best one. Example: `/humanizer`'s
   "add personality" section - can't be scripted, depends on text type.
 
 The test: "If someone follows these instructions incorrectly, how bad is the

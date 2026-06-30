@@ -304,7 +304,7 @@ Parent (orchestrator, long-lived)
 
 **Monitoring between waves:** The parent is idle while agents work. Options:
 - Manual: watch dmux TUI, run `/collect` when agents finish
-- `/loop 5m /collect` to auto-poll every 5 minutes (stops when all complete)
+- poll every 5 minutes with a repeating `/collect` (stop when all complete)
 - Watch for `.task-result.md` files: `watch -n 10 'find .dmux/worktrees -name .task-result.md'`
 
 ### Decision Framework: Subagent vs. dmux
@@ -320,7 +320,7 @@ Parent (orchestrator, long-lived)
 
 ## Contemplation Summary
 
-Two Lotus Wisdom journeys across 13 steps.
+Two contemplative-reasoning journeys across 13 steps.
 
 **Journey 1** (begin -> open -> examine -> direct -> integrate -> meditate -> sudden -> embody):
 Domains: process_flow -> meta_cognitive -> skillful_means -> non_dual -> meditation -> skillful_means -> non_dual.

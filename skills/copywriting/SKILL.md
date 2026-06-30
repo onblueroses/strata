@@ -324,4 +324,4 @@ After writing copy, verify before presenting:
 3. **Specificity test** - are there vague claims ("save time", "improve efficiency") that could be replaced with numbers or concrete scenarios?
 4. **CTA strength** - does every CTA start with an action verb and tell the reader what they get?
 5. **Voice consistency** - does the tone match from headline through final CTA? (Common failure: punchy headline, corporate body copy)
-6. **German check** - if German copy, grep for false umlauts (`üll|ünz|üe|ürft`) and run through /humanizer-de mentally
+6. **German check** - if German copy, grep for false umlauts (`üll|ünz|üe|ürft`) and apply German de-slop / umlaut-correction principles mentally

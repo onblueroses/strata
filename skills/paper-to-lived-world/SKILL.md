@@ -343,5 +343,4 @@ When drafting, ask yourself:
 *Technology becomes real in the fumbling, the habit, the irritation*
 *Every paper implies a morning, a meal, a way of being tired*
 
-—Skill Authors: Tomás Pavan & Claude Opus 4.5
 —Status: Ready to populate futures with people

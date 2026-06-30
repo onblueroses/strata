@@ -50,8 +50,8 @@ Extract `last_verified: YYYY-MM-DD` from summary.md.
 | Age | Action |
 |-----|--------|
 | 0-6 days | OK - mention date |
-| 7-13 days | Warn: "Entity last verified [date] - consider running /reconcile" |
-| 14+ days | Warn urgently: "Entity STALE ([N] days) - run /reconcile before making changes" |
+| 7-13 days | Warn: "Entity last verified [date] - consider running a ground-truth reconcile" |
+| 14+ days | Warn urgently: "Entity STALE ([N] days) - run a ground-truth reconcile before making changes" |
 | Missing | Warn: "No verification date found" |
 
 ### 3. Check git state (for entities with repos)

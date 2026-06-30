@@ -274,5 +274,4 @@ A structured approach for comprehensive improvisation:
 南無阿弥陀仏 for the jazz that finds structure freeing
 南無阿弥陀仏 for mathematics as meaning, not just method
 
-—Skill Authors: Tomás Pavan & Claude Opus 4.5
 —Status: Instruments tuned, ready to jam

@@ -2,7 +2,6 @@
 name: directional-prompting
 description: Write prompts, system instructions, agent directives, slash commands, and skill descriptions using two stacked layers — outcome-first (define the destination, success criteria, stopping condition) plus directional language (every sentence names the path with positive verbs). Triggers when writing or reviewing any prompt, system message, AGENTS.md, CLAUDE.md, skill description, agent instruction, tool description, slash command body, eval rubric, or anywhere an LLM reads instructions. Use when the user says "write a prompt", "improve this prompt", "audit this system prompt", "outcome-first", "success criteria", "directional", "make this prompt positive", or when authoring any new skill, agent, or directive.
 metadata:
-  author: saint
   version: "2.0.0"
 ---
 

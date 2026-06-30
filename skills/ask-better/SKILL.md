@@ -48,7 +48,7 @@ Rate your confidence in what the user wants. This determines whether to ask at a
    The user's time is more expensive than a Codex/subagent call. Default to spending the cheaper one first.
 4. **Are you asking because YOU'RE uncertain, or because THE USER should decide?** Both are valid - but if it's your uncertainty, more research or a Codex check might resolve it. If it's their decision, ask.
 
-**Composition with /grill.** When inside `/grill`, each question still passes through this 4-gate Confidence Check. `/grill` structures the walkdown (one question at a time, walk the decision tree); this skill gates each individual question's quality. They compose: grill is the outer loop, ask-better is the inner filter. A question that fails any of the four gates above gets revised or dropped before the next grill step.
+**Composition with a clarifying-question walkdown.** When inside a structured one-question-at-a-time clarifying walkdown, each question still passes through this 4-gate Confidence Check. The walkdown structures the sequence (one question at a time, walk the decision tree); this skill gates each individual question's quality. They compose: the walkdown is the outer loop, ask-better is the inner filter. A question that fails any of the four gates above gets revised or dropped before the next step.
 
 ### What to Probe: Underspecification Checklist
 

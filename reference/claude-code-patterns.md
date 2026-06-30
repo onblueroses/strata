@@ -79,7 +79,7 @@ Nothing loads until trust is established. This is the 5th stage of the 7-stage b
 
 Domain-specific MCP servers should not load globally. Move them to project-level `.claude/settings.json` so they only activate in relevant working directories:
 
-- **Global** (used everywhere): github, openrouter-flash, playwright, browsermcp, context7
+- **Global** (used everywhere): your always-on servers (e.g. code-host, browser-automation, docs-lookup)
 - **Global** (cross-project infrastructure): automation, notebook, workspace, and browser-devtools servers
 - **Project-level** (frontend projects): shadcn-ui, magicui, tailwindcss, aceternityui, google-maps-code-assist
 

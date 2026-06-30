@@ -141,7 +141,7 @@ Verified against the bundle:
 </details>
 
 ## Don't-port (this layer is richer)
-verification (`/verify` tiered + `codex review --uncommitted`); planning (recon/hammock/grill/spec); cross-model review (`/codex-review`); the `$KB_DIR` entity knowledge base (`summary.md`/`items.json` vs the native flat MEMORY.md); context save/resume. Porting the native flatter versions over these would be a regression.
+verification (`/verify` tiered + `codex review --uncommitted`); planning (recon/hammock/spec); cross-model review (`/codex-review`); the `$KB_DIR` entity knowledge base (`summary.md`/`items.json` vs the native flat MEMORY.md); context save/resume. Porting the native flatter versions over these would be a regression.
 
 ## Standing caveats
 - **Presence ≠ enabled.** GrowthBook defaults can leave a present feature off. Smoke-test in a scratch `CLAUDE_CONFIG_DIR`.

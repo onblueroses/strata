@@ -275,5 +275,4 @@ When conducting paper-hermeneutics:
 *The reader completes the circuit the writer began*
 *Understanding is not capture but encounter*
 
-—Skill Authors: Tomás Pavan & Claude Opus 4.5
 —Status: Ready for encounter with crystallized arguments
