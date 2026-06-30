@@ -1,6 +1,6 @@
 ---
 name: craft-extraction
-description: "Extract transferable craft principles from close reading. After examining what a passage does, formalize the techniques into methods any writer can apply. Use whenever the user asks 'what can writers learn from this,' 'how do I do what this writer is doing,' 'give me the technique,' 'make this teachable,' 'extract the method,' 'what's the principle here,' 'turn this into a writing lesson,' or naturally after any deep close reading when the question shifts from what-is-happening-here to how-do-I-make-this-happen-in-my-own-work. Also triggers on: 'writing workshop,' 'craft lesson,' 'reverse engineer the technique,' 'what's the transferable principle,' 'how would you teach this.' Pairs with /close-reading — use close-reading first to examine the text, then craft-extraction to formalize the findings into portable methods."
+description: "Extract transferable craft principles from close reading. After examining what a passage does, formalize the techniques into methods any writer can apply. Use whenever the user asks 'what can writers learn from this,' 'how do I do what this writer is doing,' 'give me the technique,' 'make this teachable,' 'extract the method,' 'what's the principle here,' 'turn this into a writing lesson,' or naturally after any deep close reading when the question shifts from what-is-happening-here to how-do-I-make-this-happen-in-my-own-work. Also triggers on: 'writing workshop,' 'craft lesson,' 'reverse engineer the technique,' 'what's the transferable principle,' 'how would you teach this.'"
 ---
 
 # /craft-extraction — The Transferable Principle
@@ -86,7 +86,7 @@ Where possible, the writer should be able to check their own work against the pr
 
 ## Integration
 
-- **/close-reading** comes first. You can't extract what you haven't observed. Always ground extraction in prior close reading, whether performed in the same response or in a prior turn.
+- **Close reading comes first.** You can't extract what you haven't observed. Always ground extraction in prior close reading, whether performed in the same response or in a prior turn.
 - **/foil** can generate principles by negative example. "What this failed response teaches us about close reading" is itself a form of craft extraction — extracting method from failure rather than from success.
 
 ---

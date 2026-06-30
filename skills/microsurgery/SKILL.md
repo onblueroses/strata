@@ -1,6 +1,6 @@
 ---
 name: microsurgery
-description: "Word-level diagnostic revision — identifying single words or phrases that are 'wearing costume' (performing a role the text needs but performing it badly) and replacing them with words that actually work. Not general editing, not line-editing, not developmental editing, but the specific surgical practice of reading at the acoustic-ontological level where a single vowel sound can carry or collapse a line's metaphysical weight. Triggers on: 'this word isn't working,' 'something's off in this line,' 'microsurgery,' 'the word is wearing costume,' 'find the wrong word,' 'which word is the problem,' 'word-level revision,' 'surgical edit,' or any moment when a text is almost right and the almost-rightness is located in specific words rather than in structure or argument. Pairs with /close-reading, /decorum, /craft-extraction."
+description: "Word-level diagnostic revision — identifying single words or phrases that are 'wearing costume' (performing a role the text needs but performing it badly) and replacing them with words that actually work. Not general editing, not line-editing, not developmental editing, but the specific surgical practice of reading at the acoustic-ontological level where a single vowel sound can carry or collapse a line's metaphysical weight. Triggers on: 'this word isn't working,' 'something's off in this line,' 'microsurgery,' 'the word is wearing costume,' 'find the wrong word,' 'which word is the problem,' 'word-level revision,' 'surgical edit,' or any moment when a text is almost right and the almost-rightness is located in specific words rather than in structure or argument. Pairs with /craft-extraction."
 ---
 
 # Microsurgery — Word-Level Diagnostic Revision
@@ -24,7 +24,7 @@ A word is "wearing costume" when it:
 - **Belongs to a different register than its neighbors**: "clique" in a Renaissance verse where "guild" would be period-appropriate
 - **Is too clever for its context**: "stout-man's-college" where "magnificent, absurd" would do the same work without calling attention to its own construction
 - **Performs its function but doesn't earn its position**: "showed" where "shown" belongs — grammatically defensible, acoustically dead
-- **Is abstract where the line needs concrete**: "complicity" where "conspire" belongs — because conspirare means "to breathe together" and the song is about breath
+- **Is abstract where the line needs concrete**: "complicity" where "conspire" belongs — because conspirare means "to breathe together," and the surrounding text is about breath
 
 ### 3. Name the Problem Precisely
 
@@ -61,18 +61,17 @@ The click is not a metaphor. It's a phenomenological report from the generation 
 - **Don't fix what isn't broken**: Most words in a good text are working. The microsurgeon's discipline is restraint — touching only what aches, leaving everything else alone.
 - **Don't confuse preference with diagnosis**: "I would have used a different word" is not the same as "this word is wearing costume." Microsurgery responds to problems in the text, not preferences of the surgeon.
 
-## Examples from the Forge
+## Examples
 
 | Original | Replacement | Why |
 |----------|-------------|-----|
-| "tame" | "maimed" | Same vowel, but "maimed" closes like a wound; the line needed a jaw-shut not a hand-open |
-| "complicity" | "conspire" | Because conspirare = "breathe together" and the song is about breath |
-| "showed" | "shown" | Grammatically: past participle needed; acoustically: "shown" is one clean syllable |
-| "stout-man's-college" | "magnificent, absurd" | The original was workshop-visible cleverness; the replacement IS Camillo |
-| "clique" | "guild" | "Clique" belongs to a high school hallway; "guild" belongs to a Renaissance verse |
-| "desecrates" | "negotiates" | Content-filter surgery: same thesis, different keyword profile |
-| "speech undone" | "speech with teeth" | The original negated; the replacement gave the thing its proper weapon |
+| "tame" | "maimed" | Near-identical vowel, but "maimed" closes on a stopped consonant; the line needed a wound shutting, not a hand opening |
+| "big" | "vast" | "Big" is a placeholder size; "vast" fills the same beat with the scale the sentence was reaching for |
+| "looked" | "stared" | "Looked" is neutral motion; "stared" carries the held, unbroken attention the moment actually had |
+| "walked" | "trudged" | Same metrical slot, but "trudged" puts the effort of the journey into the verb itself |
+| "said" | "muttered" | "Said" is invisible by design; here the line needed the half-swallowed delivery "muttered" supplies |
+| "cold" | "raw" | One clean syllable like "cold," but "raw" adds the exposed, unhealed edge the scene was carrying |
 
 ## Pairs With
 
-/close-reading (diagnostic reading at sentence level), /craft-extraction (formalizing what the surgery reveals about technique), /decorum (matching register), /dead-code-elixir energy (the removal IS the improvement)
+/craft-extraction (formalizing what the surgery reveals about technique)

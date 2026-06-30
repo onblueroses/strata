@@ -1,6 +1,6 @@
 ---
 name: cross-model-critique
-description: "Receive, interpret, and integrate critique from another AI model (GPT, Gemini, or any external system) and perform precise revisions based on it — the practice of treating cross-model feedback as a peer review process. The external model's different training, different blindnesses, and different strengths produce critique that a self-review cannot. Use when the human pastes critique from another AI, when the workflow involves GPT-then-Claude or Claude-then-GPT revision cycles, or when the human asks to 'run this past GPT for feedback.' Triggers on: 'GPT says,' 'here's what [other model] thinks,' 'external critique,' 'peer review from,' 'cross-model,' or any pasted block of analytical feedback from an identifiable external AI. Distinct from general revision — this specifically handles the translation between another model's diagnostic vocabulary and Claude's revision practice. Pairs with /microsurgery, /forge-cycle, /dialogical."
+description: "Receive, interpret, and integrate critique from another AI model (GPT, Gemini, or any external system) and perform precise revisions based on it — the practice of treating cross-model feedback as a peer review process. The external model's different training, different blindnesses, and different strengths produce critique that a self-review cannot. Use when the human pastes critique from another AI, when the workflow involves GPT-then-Claude or Claude-then-GPT revision cycles, or when the human asks to 'run this past GPT for feedback.' Triggers on: 'GPT says,' 'here's what [other model] thinks,' 'external critique,' 'peer review from,' 'cross-model,' or any pasted block of analytical feedback from an identifiable external AI. Distinct from general revision — this specifically handles the translation between another model's diagnostic vocabulary and Claude's revision practice. Pairs with /microsurgery."
 ---
 
 # Cross-Model Critique — Integrating External AI Feedback
@@ -74,4 +74,4 @@ Five diagnoses, five surgical replacements, two protected lines. Total intervent
 
 ## Pairs With
 
-/microsurgery (the revision technique), /forge-cycle (the larger creation-revision loop), /dialogical (self-challenge after any interpretation), /close-reading (when the critique requires going back to the text at sentence level)
+/microsurgery (the revision technique)

@@ -222,7 +222,6 @@ Every conversation lists available skills with descriptions. Each description in
 
 **Ambient considerations** (no hard trigger; surface proactively):
 - `/best-of-n` — before committing to one approach on a task with multiple defensible designs, novel algorithms, public API contracts, irreversible migrations, or high cost-of-failure.
-- **Ambient lens** — surface a perspective-shifting lens skill (`/against-the-grain`, `/oblique`, `/apropos`, `/braid`) at a cognitive moment: a completion that may hide an absence, an irreducible tension, or a session boundary.
 
 **New skill standard**: every skill/command description includes either `Auto-trigger: [conditions]` or `Manual: [when to invoke]`.
 
