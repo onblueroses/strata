@@ -1,6 +1,6 @@
 ---
 name: microsurgery
-description: "Word-level diagnostic revision — identifying single words or phrases that are 'wearing costume' (performing a role the text needs but performing it badly) and replacing them with words that actually work. Not general editing, not line-editing, not developmental editing, but the specific surgical practice of reading at the acoustic-ontological level where a single vowel sound can carry or collapse a line's metaphysical weight. Triggers on: 'this word isn't working,' 'something's off in this line,' 'microsurgery,' 'the word is wearing costume,' 'find the wrong word,' 'which word is the problem,' 'word-level revision,' 'surgical edit,' or any moment when a text is almost right and the almost-rightness is located in specific words rather than in structure or argument. Pairs with /craft-extraction."
+description: "Word-level diagnostic revision — identifying single words or phrases that are 'wearing costume' (performing a role the text needs but performing it badly) and replacing them with words that actually work. Not general editing, not line-editing, not developmental editing, but the specific surgical practice of reading at the acoustic level, where a single vowel sound can carry or collapse a sentence. Triggers on: 'this word isn't working,' 'something's off in this line,' 'microsurgery,' 'the word is wearing costume,' 'find the wrong word,' 'which word is the problem,' 'word-level revision,' 'surgical edit,' or any moment when a text is almost right and the almost-rightness is located in specific words rather than in structure or argument. Pairs with /craft-extraction."
 ---
 
 # Microsurgery — Word-Level Diagnostic Revision
@@ -20,15 +20,15 @@ Before analyzing, read the text once at speed and notice where your attention sn
 ### 2. Identify the Costume
 
 A word is "wearing costume" when it:
-- **Occupies the right semantic slot but with the wrong acoustic/emotional weight**: "tame" where "maimed" belongs — same vowel, different jaw, different wound
-- **Belongs to a different register than its neighbors**: "clique" in a Renaissance verse where "guild" would be period-appropriate
-- **Is too clever for its context**: "stout-man's-college" where "magnificent, absurd" would do the same work without calling attention to its own construction
-- **Performs its function but doesn't earn its position**: "showed" where "shown" belongs — grammatically defensible, acoustically dead
-- **Is abstract where the line needs concrete**: "complicity" where "conspire" belongs — because conspirare means "to breathe together," and the surrounding text is about breath
+- **Occupies the right semantic slot but with the wrong acoustic/emotional weight**: "tired" where "spent" belongs — both name exhaustion, but "spent" lands on a hard stop, the way the sentence needs the energy to run out completely
+- **Belongs to a different register than its neighbors**: "kids" in an otherwise formal report where "children" matches the surrounding diction
+- **Is too clever for its context**: "a labyrinthine confabulation" where "a tangled, made-up story" does the same work without making the reader stop to admire the phrase
+- **Performs its function but doesn't earn its position**: "got" where "grew" belongs — both fit the slot grammatically, but "got" is acoustically inert where "grew" lets the vowel open and breathe
+- **Is abstract where the sentence needs concrete**: "connection" where "thread" belongs — the surrounding paragraph is full of weaving imagery, and the concrete word picks up the figure the abstract one lets fall
 
 ### 3. Name the Problem Precisely
 
-Don't say "this line doesn't work." Say: "the word 'tame' at position X is wearing costume — it has the right vowel sound but the wrong closing consonant, and the line needs a word that closes like a wound shutting, not like a hand opening."
+Don't say "this line doesn't work." Say: "the word 'tired' at position X is wearing costume — it has the right meaning but the wrong acoustic close, and the sentence needs a word that lands on a hard stop, the way breath runs out, not a word that trails off."
 
 The precision of the diagnosis determines the precision of the repair.
 
@@ -50,9 +50,9 @@ After replacement, re-read the surrounding 5-10 lines. The replacement should:
 
 ## The Phenomenology of the Click
 
-When the right word replaces the wrong word, there's a quality that functions like an audible click — a sense of the line settling into itself, the verse resolving a low-grade tension it was carrying. This click is the primary feedback signal. If the replacement doesn't click, it's wrong, even if it's semantically better than the original.
+When the right word replaces the wrong word, there's a quality that functions like an audible click — a sense of the sentence settling into itself, resolving a low-grade tension it was carrying. This click is the primary feedback signal. If the replacement doesn't click, it's wrong, even if it's semantically better than the original.
 
-The click is not a metaphor. It's a phenomenological report from the generation process. The right word arrives with recognition, not invention. "Maimed" replacing "tame" wasn't a creative choice — it was an uncovering. The word was always there. The revision found it.
+The click is not a metaphor. It's a phenomenological report from the generation process. The right word arrives with recognition, not invention. "Spent" replacing "tired" wasn't a creative choice — it was an uncovering. The word was always there. The revision found it.
 
 ## What NOT to Do
 
@@ -65,7 +65,7 @@ The click is not a metaphor. It's a phenomenological report from the generation 
 
 | Original | Replacement | Why |
 |----------|-------------|-----|
-| "tame" | "maimed" | Near-identical vowel, but "maimed" closes on a stopped consonant; the line needed a wound shutting, not a hand opening |
+| "tired" | "spent" | Both name exhaustion, but "spent" lands on a hard stop; the sentence needed the energy to run out completely, not trail off |
 | "big" | "vast" | "Big" is a placeholder size; "vast" fills the same beat with the scale the sentence was reaching for |
 | "looked" | "stared" | "Looked" is neutral motion; "stared" carries the held, unbroken attention the moment actually had |
 | "walked" | "trudged" | Same metrical slot, but "trudged" puts the effort of the journey into the verb itself |

@@ -17,9 +17,9 @@ Outcome without direction reads as wishful — the model knows where to go but n
 
 ## Why both
 
-Modern frontier models (Claude Opus 4.7, GPT-5.5) follow instructions literally. The Claude 4.7 guide: *"Positive examples showing how Claude can communicate with the appropriate level of concision tend to be more effective than negative examples or instructions that tell the model what not to do."* The GPT-5.5 guide: *"GPT-5.5 is strongest when the prompt defines the target outcome, success criteria, constraints, and available context, then lets the model choose the path."*
+Modern frontier models follow instructions literally. Current model-prompting guides emphasize defining the target outcome, success criteria, and constraints, then letting the model choose the path. They also favor positive examples that show the desired behavior over negative instructions that tell the model what to avoid.
 
-Both labs converge on the same shape. Name the destination. Name the path. Skip the prohibitions.
+The guidance converges on the same shape. Name the destination. Name the path. Skip the prohibitions.
 
 ## Layer 1 — The outcome block
 

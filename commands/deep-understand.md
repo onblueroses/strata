@@ -99,7 +99,7 @@ Do this yourself, directly, before spawning any agents. This phase should take s
    - Any `pyproject.toml`, `Cargo.toml`, `go.mod` (just the project metadata section)
 
 6. **Derive scratchpad filename:**
-   - For path targets: slug = last path component, lowercased, spaces → hyphens (e.g. `src/auth` → `auth`, `$HOME/PROJECT-A` → `projecta`)
+   - For path targets: slug = last path component, lowercased, spaces → hyphens (e.g. `src/auth` → `auth`, `$HOME/My Project` → `my-project`)
    - For concept targets: slug = `$ARGUMENTS` lowercased, spaces → hyphens (e.g. `data pipeline` → `data-pipeline`)
    - Full path: `.claude/scratchpad-deep-understand-{slug}.md`
 
@@ -356,10 +356,10 @@ After writing the scratchpad and before presenting to the user:
 
 ## Special Behaviors
 
-**For PROJECT-A specifically:**
-- Always check for BAYIKO constraint
-- Note the 5 personas
-- Highlight the vault -> PROJECT-A-leadgen publishing flow
+**Per-project special behaviors (example pattern):** register rules unique to one project so every scan applies them automatically. For a content vault you might:
+- Check for a project-specific constraint (e.g. a house style or brand rule)
+- Note the distinct content voices in use
+- Highlight the source -> published-output flow
 - Check automation/workflow tool status
 
 **For code projects:**
@@ -379,8 +379,8 @@ After writing the scratchpad and before presenting to the user:
 /deep-understand authentication
 -> Concept mode, scans full project size, spawns scaled concept-tracing agents
 
-/deep-understand $HOME/PROJECT-A
--> Detects vault, classifies size, spawns vault-specific agents with PROJECT-A special behaviors
+/deep-understand $HOME/notes-vault
+-> Detects vault, classifies size, spawns vault-specific agents with any per-project special behaviors
 
 /deep-understand data pipeline
 -> Concept mode, traces data flow across project with scaled agent count
