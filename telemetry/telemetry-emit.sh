@@ -26,18 +26,29 @@ out="$dir/events.jsonl"
 
 write_row() { printf '%s\n' "$1" >> "$out" 2>/dev/null || true; }
 
+encode_row_with_python() {
+  python3 - "$ts" "$sid" "$kind" "$payload" <<'PY' 2>/dev/null
+import json
+import sys
+
+ts, sid, kind, payload = sys.argv[1:5]
+obj = json.loads(payload)
+if not isinstance(obj, dict):
+    raise SystemExit(1)
+obj.update({"ts": ts, "sid": sid, "kind": kind, "source": "live"})
+print(json.dumps(obj, separators=(",", ":")))
+PY
+}
+
 if command -v jq >/dev/null 2>&1; then
   # $p first, fixed envelope second so payload keys can NEVER override ts/sid/kind/source.
   row="$(jq -cn --arg ts "$ts" --arg sid "$sid" --arg kind "$kind" --argjson p "$payload" \
      '$p + {ts:$ts,sid:$sid,kind:$kind,source:"live"}' 2>/dev/null || true)"
   [ -n "$row" ] && write_row "$row"
 else
-  # no jq: splice the payload object's inner fields into the envelope.
-  inner="${payload#\{}"; inner="${inner%\}}"
-  if [ -n "${inner// /}" ]; then pre="$inner,"; else pre=""; fi
-  # inner first, fixed envelope last: on a duplicate key JSON parsers keep the last value, so
-  # ts/sid/kind/source can't be overridden by a payload key on this fallback path either.
-  row="$(printf '{%s"ts":"%s","sid":"%s","kind":"%s","source":"live"}' "$pre" "$ts" "$sid" "$kind")"
-  write_row "$row"
+  if command -v python3 >/dev/null 2>&1; then
+    row="$(encode_row_with_python || true)"
+    [ -n "$row" ] && write_row "$row"
+  fi
 fi
 exit 0
