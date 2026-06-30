@@ -128,7 +128,8 @@ link_or_backup() {
   if [[ -L "$target" ]]; then
     rm "$target"
   elif [[ -e "$target" ]]; then
-    local backup="$target.pre-strata.$(date +%Y%m%d%H%M%S)"
+    local backup
+    backup="$target.pre-strata.$(date +%Y%m%d%H%M%S)"
     mv "$target" "$backup"
     echo "  backed up $target -> $backup"
   fi
@@ -173,9 +174,10 @@ else
 fi
 "$VENV/bin/pip" install --quiet --upgrade pip
 "$VENV/bin/pip" install --quiet -r "$REQ"
-echo "Deps:     $(grep -v '^#' "$REQ" | grep -v '^$' | wc -l) packages installed"
+deps_count="$(grep -cvE '^(#|$)' "$REQ" || true)"
+echo "Deps:     $deps_count packages installed"
 
-# === Workspace seed (Decision 21) ===
+# === Workspace seed ===
 
 echo ""
 echo "=== Workspace seed ==="
