@@ -2,7 +2,7 @@
 # Agent Architecture Patterns
 
 Transferable patterns for building LLM-powered agents. Distilled from production
-implementations (Qwen-Agent, Reddit agent, pipewright) and first principles.
+implementations (Qwen-Agent, Reddit agent, and production agent pipelines) and first principles.
 
 Reference repos worth reading when designing new agents:
 - **Qwen-Agent** (`github.com/QwenLM/Qwen-Agent`) - 14k+ stars, backs Qwen Chat production.
@@ -51,7 +51,7 @@ response = main_agent.run(messages + context)
 ```
 
 **Why**: composability. You can swap implementations, chain memory agents, or use
-memory as a sub-agent. In pipewright terms: RAG retrieval is just another node.
+memory as a sub-agent. In a node-graph agent pipeline: RAG retrieval is just another node.
 
 **Source**: Qwen-Agent `memory/memory.py` - Memory inherits from Agent.
 
@@ -138,7 +138,7 @@ while calls_remaining > 0:
     # ... execute tool, append result, continue
 ```
 
-Already in pipewright as `maxSteps`. Include in any new agent.
+Commonly implemented as `maxSteps`. Include in any new agent.
 
 ### 6. Agent Selection Strategies (Multi-Agent)
 

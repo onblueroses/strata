@@ -558,9 +558,7 @@ Report with the same severity format as pre-commit review. After reporting, offe
 ```bash
 cd /tmp/gh-audit/$repo
 git add -A
-git commit -m "Privacy and quality cleanup
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+git commit -m "remove private identifiers from tracked files"
 git push origin main
 ```
 

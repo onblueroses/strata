@@ -1,7 +1,7 @@
 <!-- keywords: optimization, optimizer, autooptimize, autooptimization, SA, simulated annealing, packing, search, metaheuristic, Monte Carlo, MCMC -->
 # Optimization Philosophy
 
-Principles for automated numerical optimization, distilled from semicircle packing work (April 2026). Applies to any combinatorial/continuous optimization where you're running SA, MCMC, evolutionary, or similar metaheuristic search.
+Principles for automated numerical optimization. Applies to any combinatorial/continuous optimization where you're running SA, MCMC, evolutionary, or similar metaheuristic search.
 
 ## Quick Nav
 

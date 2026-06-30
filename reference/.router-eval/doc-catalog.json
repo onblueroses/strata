@@ -2,7 +2,7 @@
  {
   "doc": "agent-architecture.md",
   "keywords": "agent, pipeline, multi-agent, routing, memory, rag, circuit breaker, fallback chain, orchestrator, llm agent, agent loop",
-  "description": "Agent patterns. Sources: Qwen-Agent, Reddit agent, pipewright."
+  "description": "Agent patterns. Sources: Qwen-Agent, Reddit agent, production pipelines."
  },
  {
   "doc": "agent-taxonomy.md",

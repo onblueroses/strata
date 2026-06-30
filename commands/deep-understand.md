@@ -30,7 +30,7 @@ Arguments via `$ARGUMENTS`:
 Before spawning any agents, check if the target maps to a known entity with a recent summary.
 
 1. Normalize the target: lowercase, strip path prefix, strip common suffixes (`-vault`, etc.)
-2. Scan MEMORY.md entities table for a name match (fuzzy ok: `phila` matches `phila`, `stg` matches `sturmglas`)
+2. Scan MEMORY.md entities table for a name match (fuzzy ok: `proj` matches `project-alpha`, `stg` matches `staging-service`)
 3. If a match is found, read the entity's `summary.md` first line block to get `last_verified`
 4. **If `last_verified` is within 14 days**: stop and say:
    > "[entity] has a summary from [date]. Use `/pickup [entity]` to load it (much cheaper). Run `/deep-understand [entity]` only if you need a full re-scan."

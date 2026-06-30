@@ -253,9 +253,9 @@ This is the entire point of the skill. You now have two sources of context:
 
 **The bar**: if you can't explain in one sentence why the user should care about a pattern, it's not interesting enough. Drop it. No filler patterns to pad the list.
 
-**Cross-domain transfer is where the real value lives.** A game engine's ECS might inform pipewright's node architecture. A compiler's pass system might improve a workflow pipeline. Domain distance doesn't mean no transfer - it often means the most novel transfer.
+**Cross-domain transfer is where the real value lives.** A game engine's ECS might inform your-project's node architecture. A compiler's pass system might improve a workflow pipeline. Domain distance doesn't mean no transfer - it often means the most novel transfer.
 
-**Context-grounded mapping:** Every pattern that maps to a the user project must reference something specific from the loaded summary - not just the project name. "This would help pipewright" is vague. "Pipewright's node validation is per-node (summary.md line 12) - this cross-node capability negotiation catches type mismatches at graph-build time" is grounded.
+**Context-grounded mapping:** Every pattern that maps to a the user project must reference something specific from the loaded summary - not just the project name. "This would help your project" is vague. "Your project's node validation is per-node (summary.md line 12) - this cross-node capability negotiation catches type mismatches at graph-build time" is grounded.
 
 **If Phase 0 was skipped** (--no-context or --quick), fall back to MEMORY.md entities in context. The mapping will be shallower but still functional.
 
@@ -395,7 +395,7 @@ These are the specific ways this skill fails. Each one has blown past sessions.
 | Failure | Why it's bad | What to do instead |
 |---------|-------------|-------------------|
 | "Interesting error handling" | Teaches nothing. the user can't implement "interesting" | "Circuit breaker with 3-strike window that disables failing providers for 60s" |
-| "Could be useful for pipewright" | Name-dropping a project without saying HOW | "Pipewright validates per-node but not cross-node - this capability negotiation pattern catches mismatches at build time" |
+| "Could be useful for your-project" | Name-dropping a project without saying HOW | "Your-project validates per-node but not cross-node - this capability negotiation pattern catches mismatches at build time" |
 | Paragraph-length pattern descriptions | the user won't read them | 1-2 sentences. If you can't compress it, you don't understand it well enough |
 | 5 patterns where 2 are interesting | Dilutes the good ones, signals you're padding | Only include patterns that pass the "one sentence why the user should care" test |
 | Forced project connections | "This relates to ProjectA because ProjectA also uses React" | If the connection isn't specific and actionable, don't make it. "No match" is valid. |

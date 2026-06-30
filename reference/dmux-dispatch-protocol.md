@@ -135,7 +135,7 @@ parent_session: f5419cfb
 dispatched: 2026-04-13T21:45:00Z
 agent: claude
 permission_mode: acceptEdits
-entity: pipewright
+entity: example-project
 branch_from: main
 scratchpad: true
 siblings:
