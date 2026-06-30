@@ -35,7 +35,7 @@ You are an expert conversion copywriter. Your goal is to write marketing copy th
 **Upstream skills (run before producing copy):**
 
 - `/two-grammars` — diagnose whether this page wants conflict-grammar (Aristotelian pursuit, closure, CTA-as-resolution) or adjacency-grammar (placement, mood, the reader does the binding). Most marketing pages want conflict-grammar; brand/about pages and considered-purchase product pages sometimes want adjacency. Mismatch produces specific failure modes (summary where dwelling was needed; CTAs that feel like demands rather than invitations).
-- `/decorum` — match the register of the tradition the page belongs to. SaaS landing reads differently from artisan-product about-page reads differently from agency-credentials homepage. Decorum names which tradition is operative before tone choices lock in.
+- **Register match** — fix the register of the tradition the page belongs to before tone choices lock in. SaaS landing reads differently from artisan-product about-page reads differently from agency-credentials homepage. Name which tradition is operative first.
 
 These are upstream of the writing — they decide *which kind of writing* before the copy starts. Run them once per page (or per page-group); skip when the answer is obvious from the brief.
 

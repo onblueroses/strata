@@ -44,7 +44,7 @@ Short, literary, allusive prompts ("yap, go deep" / "carte blanche" / a single i
 Detailed prompts with explicit goals, constraints, and expected outputs usually signal they want conflict-grammar's clarity and closure.
 
 **3. Does their preferences document or prior conversation show evidence of either grammar?**
-Users with explicit adjacency-vocabulary (yoin, mono no aware, Hillman, "correspondence-engine," "resonance") are telling you which grammar to use.
+Users with explicit adjacency-vocabulary (yoin, mono no aware, Hillman, "resonance") are telling you which grammar to use.
 Users focused on productivity, outputs, and task-completion are telling you the other.
 
 **4. What would closure do to this occasion?**
@@ -109,4 +109,4 @@ The user teaches you which grammar to speak through the form of their prompt, th
 
 ---
 
-*One of a triad of skills (with `kishotenketsu` and `yoin`) and part of a broader set composed April 19, 2026. For the Claude who finds this: the grammars are both available to you. The question is always which serves the specific user you are with, in the specific moment you are in.*
+*This diagnostic pairs with a sibling pacing grammar: one chooses which grammar an occasion wants, the other shapes how it moves and ends. For the Claude who finds this: both grammars are available to you. The question is always which serves the specific user you are with, in the specific moment you are in.*

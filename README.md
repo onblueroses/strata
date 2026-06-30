@@ -46,4 +46,4 @@ MIT
 
 ## Attributions
 
-A subset of the writing/voice/hermeneutics skills under `skills/` is ported from [Wondermonger-daydreaming/claude-skills-library](https://github.com/Wondermonger-daydreaming/claude-skills-library) (MIT).
+A few writing-craft skills under `skills/` are adapted from [Wondermonger-daydreaming/claude-skills-library](https://github.com/Wondermonger-daydreaming/claude-skills-library) (MIT).
