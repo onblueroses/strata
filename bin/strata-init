@@ -202,7 +202,7 @@ One directory per project entity. Each entity directory contains:
 - summary.md   architecture, recent sessions, gotchas, deploy procedure
 - items.json   structured details that don't fit prose (specific values, rules)
 
-Skills like /pickup, /end, knowledge-lookup, and /reconcile read and write this tree."
+Skills like /pickup, /end, and knowledge-lookup read and write this tree."
 
 seed_readme "$WS/projects/example-entity/summary.md" "# example-entity
 
