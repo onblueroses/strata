@@ -5,7 +5,7 @@ Mandatory reference for setting up any new Rust project where Claude Code will w
 
 Design goal: zero human code review required. The toolchain IS the reviewer.
 
-Proven on: predator-prey-evolution-communication (37 source files, NEAT neuroevolution sim), strata (40+ source files, CLI tool with scanner/lint engine/template system).
+Proven on: a NEAT neuroevolution simulator (~37 source files) and strata itself (40+ source files: a CLI tool with scanner, lint engine, and template system).
 
 Evidence base: Rust-SWE-bench (Feb 2026, 500 tasks/34 repos), Microsoft Pragmatic Rust Guidelines for AI (Sept 2025), Anthropic's 100k-line C compiler, Vjeux's 100k-line TS-to-Rust port, arXiv instruction-following research (20 frontier models), Chroma context-rot study, Tweag Agentic Coding Handbook.
 

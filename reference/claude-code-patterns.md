@@ -51,7 +51,6 @@ The critical separation: permission *context* (what's denied) is data. Permissio
 | Generator | /harness generators | Full access (default) |
 Enforcement is through agent YAML `tools:` field and skill prompt instructions, not runtime hooks.
 
-Source: `src/permissions.py:6-20`, `src/tool_pool.py:28-37`, `reference_data/subsystems/hooks.json` (toolPermission handlers).
 
 </details>
 
@@ -77,13 +76,12 @@ Domain-specific MCP servers should not load globally. Move them to project-level
 
 - **Global** (used everywhere): your always-on servers (e.g. code-host, browser-automation, docs-lookup)
 - **Global** (cross-project infrastructure): automation, notebook, workspace, and browser-devtools servers
-- **Project-level** (frontend projects): shadcn-ui, magicui, tailwindcss, aceternityui, google-maps-code-assist
+- **Project-level** (frontend projects): UI-component and design-system servers
 
 Claude Code's own `ToolSearch` tool already implements deferred loading for MCP tools - tools aren't available until discovered. This IS the deferred init pattern applied to tool availability.
 
 Reference docs that load on trigger (the `$STRATA_HOME/reference/` system) are another instance of deferred init at the prompt level.
 
-Source: `src/deferred_init.py:23-31`, `src/bootstrap_graph.py`.
 
 </details>
 
@@ -124,7 +122,6 @@ Route through `notify.sh` with urgency levels:
 
 Use `notify-send --urgency=` flag for desktop notification routing.
 
-Source: `reference_data/subsystems/hooks.json`.
 
 </details>
 
@@ -157,7 +154,6 @@ Name hooks with concern prefixes:
 - `quality-*`: code quality checks (search-path-guard, lint-on-write, crlf-check)
 - `observe-*`: tracking/observability (track-edits, track-session-events, track-skill-runs)
 
-Source: `reference_data/subsystems/hooks.json`.
 
 </details>
 
@@ -190,7 +186,6 @@ Standardize hook tracking output as JSONL:
 
 Enables: session replay, cross-session analytics, skill effectiveness measurement.
 
-Source: `src/query_engine.py:106-127`.
 
 </details>
 
@@ -217,7 +212,6 @@ When spawning read-only agents (Explore, research, code-reviewer), verify their 
 
 This is Claude Code's simple_mode applied at the agent level. Already working correctly.
 
-Source: `src/tool_pool.py:28-37`, `src/tools.py`.
 
 </details>
 
@@ -247,7 +241,6 @@ Claude Code's `ToolSearch` tool is the user-facing manifestation of this pattern
 
 This validates the approach of moving domain-specific MCP servers to project-level settings - they only contribute tools when the project context makes them relevant.
 
-Source: `src/tool_pool.py`, `src/tools.py`.
 
 </details>
 
@@ -285,6 +278,5 @@ Local equivalent bootstrap:
 
 The gap is at stage 5: no trust gate, no selective loading. Moving domain-specific MCPs to project-level addresses this.
 
-Source: `src/bootstrap_graph.py`.
 
 </details>

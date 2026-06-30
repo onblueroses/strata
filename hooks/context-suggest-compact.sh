@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # Counts ALL tool calls per session, suggests /compact at threshold.
 # Fires on PostToolUse for all tools (moved from PreToolUse Edit|Write only).
-# Pattern from: everything-claude-code (tool-call-compaction-trigger)
-
 hookData=""
 if [ ! -t 0 ]; then
     hookData=$(cat)

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# PostToolUse hook: logs skill invocations to JSONL for load tracking.
-# Pattern from: everything-claude-code (skill-observation-jsonl)
-#
+# PostToolUse hook: logs skill invocations to JSONL for load tracking.#
 # Records which skills were invoked and whether they loaded successfully.
 # Does NOT track downstream success (whether the skill's instructions
 # produced good results) - that happens over the conversation, not in the
