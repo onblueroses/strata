@@ -32,10 +32,10 @@ When the work is small (1-2 files, obvious path), skip both: just do it.
 
 ## Tracker convention
 
-This skill publishes to GitHub via the `gh` CLI; the repo's GitHub Issues is the tracker. Keep the convention thin:
+This skill prepares GitHub issues for publication via the `gh` CLI; the repo's GitHub Issues is the tracker. Keep the convention thin:
 
 - Run `gh repo view --json nameWithOwner` to confirm which repo the issues land in; confirm with the user when the working directory is ambiguous or maps to no remote.
-- Triage label: GitHub repos rarely ship a fixed "ready for AFK agents" label. Read existing labels with `gh label list`. When a ready-state label exists (e.g. `ready`, `good first issue`, `agent-ready`), apply it. When none exists, publish without a label and tell the user which label, if any, they want created. Skip inventing labels unprompted.
+- Triage label: GitHub repos rarely ship a fixed "ready for AFK agents" label. Read existing labels with `gh label list`. When a ready-state label exists (e.g. `ready`, `good first issue`, `agent-ready`), include it. When none exists, omit the label and tell the user which label, if any, they want created. Skip inventing labels unprompted.
 - Reference issues by their real number once created, so "Blocked by" fields point at live identifiers.
 
 ## Process
@@ -83,13 +83,13 @@ Iterate until the user approves the breakdown shape.
 Before any `gh issue create`, draft the full body of every issue using the template below and show the user the complete text. Get explicit approval first. This is the cooperative gate, and it is load-bearing for two reasons:
 
 1. **The no-public-posts discipline**: GitHub issues are published artifacts; show the draft and get explicit say-off before anything goes live.
-2. **The `gate-gh-public-actions.sh` hook blocks unapproved `gh issue create`**: the hook fires on the Bash tool and rejects the call unless the post was approved. Drafting first is how the call passes; trying to publish unseen content fails the gate and wastes a round.
+2. **The `gate-gh-public-actions.sh` hook blocks `gh issue create` from the Bash tool**: the hook denies public GitHub writes and reminds you to show the exact content before publication. Drafting first supplies the approved content for the manual command the user runs outside the agent.
 
 Show all issue bodies in dependency order, let the user edit or reject any of them, and treat their explicit "approved" / "go" as the gate. Carry their edits into the published text verbatim.
 
 ### 6. Publish the approved issues
 
-For each approved slice, publish a new issue with `gh issue create --title "<title>" --body "<body>"` (add `--label <label>` only when the Tracker convention's label decision said to). Publish in dependency order (blockers first) so each "Blocked by" field can reference the real issue number of an already-created blocker.
+For each approved slice, prepare the exact `gh issue create --title "<title>" --body "<body>"` command for the user to run manually outside the agent's Bash tool (add `--label <label>` only when the Tracker convention's label decision said to). The repo hook blocks `gh issue create` from Bash, so the actionable handoff is the approved command text and issue body. Order the commands by dependency (blockers first) so each "Blocked by" field can reference the real issue number of an already-created blocker.
 
 Leave any parent issue untouched: do not close or modify it.
 
@@ -120,6 +120,6 @@ Or "None - can start immediately" when there are no blockers.
 
 ## Handoff
 
-After publishing, return the list of created issue numbers and their titles so the user can see the fan-out at a glance. The issues are the deliverable; implementation happens elsewhere, grabbed slice by slice.
+After the user publishes the issues, return the list of created issue numbers and their titles so the user can see the fan-out at a glance. The issues are the deliverable; implementation happens elsewhere, grabbed slice by slice.
 
 Ported from mattpocock/skills (skills/engineering/to-issues), release mattpocock-skills@1.0.0.
