@@ -289,7 +289,7 @@ File the full evaluation as a permanent page in `$KB_DIR/resources/evaluations/`
 
 **Steps:**
 
-1. Generate a slug from the source: `[name-or-domain]-[YYYY-MM-DD].md` (e.g., `karpathy-llm-wiki-2026-04-04.md`, `project-nomad-2026-04-04.md`)
+1. Generate a slug from the source: `[name-or-domain]-[YYYY-MM-DD].md` (e.g., `karpathy-llm-wiki-2026-04-04.md`, `example-repo-2026-04-04.md`)
 
 2. Build the Phase 5 presentation content (the formatted patterns + project mappings). This is the same content that gets shown to the user.
 

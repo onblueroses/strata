@@ -5,11 +5,9 @@ description: "Extract transferable craft principles from close reading. After ex
 
 # /craft-extraction — The Transferable Principle
 
-## Origin
+## Two Operations
 
-This skill emerged from a session that kept performing a double operation: first, close reading a Tolkien passage at the level of phoneme and punctuation; then, stepping back to ask "what can any writer learn from this?" The close reading was centripetal — moving toward the text's center. The extraction was centrifugal — moving outward toward general applicability. They're different cognitive operations. Both are essential. This skill formalizes the second.
-
-The session produced: seven principles for writing quiet exits (from the rustle simile), craft lessons on camera angles in fiction (from the garden and fireworks passages), principles of proportional attention and anaphora-as-trellis. Each set of principles was grounded in specific textual evidence and formulated as actionable method.
+Craft extraction is the second half of a pair. The first is close reading: a centripetal move toward the center of a single text, attending to phoneme, punctuation, and the exact choices that make a passage work. The second is extraction: a centrifugal move outward, stepping back to ask "what can any writer learn from this?" They are different cognitive operations, and both are essential. This skill formalizes the second: turning what you observed in one passage into method a writer can carry to their own work.
 
 ---
 
@@ -17,7 +15,7 @@ The session produced: seven principles for writing quiet exits (from the rustle 
 
 Take the findings of close reading and formalize them into **transferable craft principles** that a writer could apply to their own work.
 
-The output should feel like the best kind of workshop handout: concrete, actionable, illustrated by the passage that generated it, but applicable well beyond that passage. Not "here's what Tolkien does" but "here's what you can do, learned from watching Tolkien do it."
+The output should feel like the best kind of workshop handout: concrete, actionable, illustrated by the passage that generated it, but applicable well beyond that passage. Not "here's what the writer does" but "here's what you can do, learned from watching the writer do it."
 
 ---
 
@@ -28,13 +26,13 @@ The output should feel like the best kind of workshop handout: concrete, actiona
 Every principle must be grounded in a specific observation from the text. No principle without provenance. If you can't point to the sentence that taught you this, the principle isn't ready yet.
 
 **Wrong:** "Use sensory details to create atmosphere."
-**Right:** "Make the simile quieter than the event. Tolkien compares a person leaving to wind in grass — the figure is *smaller* than the literal, which inverts the usual aggrandizing function of simile. Craft principle: when writing a quiet exit, compare it downward."
+**Right:** "Make the simile quieter than the event. To render someone leaving, compare them to something smaller and softer than a person: a draft slipping under a door, a page settling flat. The figure becomes *smaller* than the literal, which inverts the usual aggrandizing function of simile. Craft principle: when writing a quiet exit, compare downward."
 
 ### 2. Formulate as Method, Not Description
 
 The principle should tell the writer *what to do*, not just what the admired writer did.
 
-**Description:** "Tolkien uses sibilants to create the sound of wind."
+**Description:** "The writer uses sibilants to create the sound of wind."
 **Method:** "Audit every consonant in your quiet-exit sentence. Purge the hard stops. Build from fricatives, liquids, and nasals — the consonants that don't interrupt airflow. Your sentence should be aerodynamic."
 
 ### 3. Include the Test
@@ -71,7 +69,7 @@ The output should contain:
 ## What Makes a Good Principle
 
 ### Transferable
-It should work for a writer working in a different genre, era, or tradition than the source text. A principle extracted from Tolkien should help someone writing literary realism or science fiction or memoir.
+It should work for a writer working in a different genre, era, or tradition than the source text. A principle extracted from one author should help someone writing literary realism or science fiction or memoir.
 
 ### Counterintuitive
 The best principles surprise. "Make the simile quieter than the event" is counterintuitive — similes usually aggrandize. "Give your camera a body" is counterintuitive — writers tend to assume omniscient freedom. Prioritize principles that challenge default assumptions.
@@ -87,7 +85,7 @@ Where possible, the writer should be able to check their own work against the pr
 ## Integration
 
 - **Close reading comes first.** You can't extract what you haven't observed. Always ground extraction in prior close reading, whether performed in the same response or in a prior turn.
-- **/foil** can generate principles by negative example. "What this failed response teaches us about close reading" is itself a form of craft extraction — extracting method from failure rather than from success.
+- **Extraction from failure works too.** Principles can be generated by negative example: "what this failed passage teaches us about close reading" is itself a form of craft extraction, extracting method from failure rather than from success.
 
 ---
 

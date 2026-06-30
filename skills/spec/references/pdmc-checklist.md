@@ -1,6 +1,6 @@
 # Probe-Design Methodological Checklist (PDMC)
 
-Source: internal PDMC methodology reference (L4 v5).
+A methodological-review checklist for empirical probe and experiment designs.
 
 Procedural review verifies that the design specifies what the implementation should do. Methodological review verifies that the design measures what the spec intends. PDMC is the methodological review checklist and must run as a separate pass after procedural review; it cannot be folded into procedural review.
 
@@ -8,13 +8,13 @@ Each item is a binary gate. A probe design reaches PROCEED only if every applica
 
 1. **Comparator-vs-baseline distinction.**
    - What to check: Does the design explicitly distinguish the baseline subtracted in lift computation from the comparator paired in McNemar or other paired tests? If they are the same arm, does it say so? If different, are both named with exact IDs?
-   - Example violation: "LB95(lift over pv)" is paired with "McNemar vs best frozen baseline" while no field says whether lift is `bridge-pv`, `bridge-best_frozen`, or both.
-   - Acceptable repair: Define `primary_lift = mean(candidate_correct - pv_correct)` and `primary_mcnemar = McNemar(candidate_correct, pv_correct)`, or explicitly define a different named comparator for both tests.
+   - Example violation: "LB95(lift over baseline)" is paired with "McNemar vs best comparator" while no field says whether the subtracted baseline is `control`, `best_comparator`, or both.
+   - Acceptable repair: Define `primary_lift = mean(candidate_correct - baseline_correct)` and `primary_mcnemar = McNemar(candidate_correct, baseline_correct)`, or explicitly define a different named comparator for both tests.
 
 2. **Comparator label-blindness.**
    - What to check: Is the comparator's prediction stream computable without seeing eval labels or eval correctness bits?
-   - Example violation: `best_frozen_correct[item] = max(correct_bit_for_arm[item])` over multiple arms.
-   - Acceptable repair: Use one pre-locked arm such as `pv` or `frozen_contrastive_ci_s2`, selected before eval labels are read; report OR/max unions only as `oracle_diagnostic`.
+   - Example violation: `best_comparator_correct[item] = max(correct_bit_for_arm[item])` over multiple arms.
+   - Acceptable repair: Use one pre-locked arm such as `control` or a named fixed baseline, selected before eval labels are read; report OR/max unions only as `oracle_diagnostic`.
 
 3. **Selection rule pre-registration.**
    - What to check: If the design uses "best of N" anywhere, is the selection rule registered before scoring and computable from non-eval data?
@@ -28,7 +28,7 @@ Each item is a binary gate. A probe design reaches PROCEED only if every applica
 
 5. **Bootstrap clustering.**
    - What to check: For every LB95/CI computation, does the bootstrap respect the data's clustering structure, such as fold, trial, pool, instruction family, or fixed corpus?
-   - Example violation: Item-level bootstrap over concatenated D21/D22 observations when trials and folds are the independent units.
+   - Example violation: Item-level bootstrap over concatenated observations from two eval splits when trials and folds are the independent units.
    - Acceptable repair: Use a hierarchical bootstrap over `(fold, trial)` or the probe-specific cluster unit, or require both item-level and clustered LB95 gates to clear.
 
 6. **Per-fold AND aggregate gate definitions.**
@@ -42,13 +42,13 @@ Each item is a binary gate. A probe design reaches PROCEED only if every applica
    - Acceptable repair: Add a mode-gated sentinel writer and pre-launch sentinel validator; non-decision modes never write `.DONE` or `.PASS`.
 
 8. **Decision-grade vs validation-grade explicit.**
-   - What to check: Are scout, mock, and diagnostic run modes distinct from decision-grade in artifact schema, route fields, and sentinel behavior? Can a scout artifact be mistaken for a Phase 6 input?
-   - Example violation: A one-candidate scout writes `status="fail"`, `phase3a_pass=false`, and `route_on_fail="CONTENT-CHANNEL"`.
+   - What to check: Are scout, mock, and diagnostic run modes distinct from decision-grade in artifact schema, route fields, and sentinel behavior? Can a scout artifact be mistaken for a decision-grade input?
+   - Example violation: A one-candidate scout writes `status="fail"`, `gate_a_pass=false`, and `route_on_fail="ROUTE-X"`.
    - Acceptable repair: Set `decision_grade=false`, `route_eligible=false`, `phase_pass=null` or `"pending"`, omit route fields, and record missing candidates/trials.
 
 9. **Cross-probe input schema.**
    - What to check: For every prior-probe input, does the design specify consumed fields, source path, sha256, schema version, stale/retracted status, and route eligibility? Does launch hard-fail on missing or stale fields?
-   - Example violation: Probe 3B consumes "Probe 1 sym_carry_forward" without pinning the valid D28 rerun rather than the retracted full-bank artifact.
+   - Example violation: A downstream probe consumes an upstream probe's `carry_forward` field without pinning the valid rerun artifact rather than the retracted full-run artifact.
    - Acceptable repair: Add a source registry validator that checks exact paths, hashes, decision fields, effective replicates, and probe-specific booleans before launch.
 
 10. **Held-out family/lexicon contract.**
@@ -58,8 +58,8 @@ Each item is a binary gate. A probe design reaches PROCEED only if every applica
 
 11. **Calibration-vs-eval overlap audit.**
     - What to check: Are overlap counts for every relevant key recorded in trial JSON, and are hard-fail versus soft-report categories explicit?
-    - Example violation: Calibration permits correct-value overlap with D22 eval, but trial JSON lacks `value_qid_overlap_count` and `relation_value_overlap_count`.
-    - Acceptable repair: Record overlap by `entity_qid`, `value_qid`, option QID, full triple, relation-value pair, source statement, item ID, template ID, and lexical tokens; declare each key hard-fail or diagnostic.
+    - Example violation: Calibration permits correct-value overlap with the eval split, but trial JSON lacks `value_overlap_count` and `attribute_value_overlap_count`.
+    - Acceptable repair: Record overlap by `entity_id`, `value_id`, option ID, full tuple, attribute-value pair, source statement, item ID, template ID, and lexical tokens; declare each key hard-fail or diagnostic.
 
 12. **Trial JSON schema completeness.**
     - What to check: Does the schema include every promised audit field, training metadata field, gate input, prediction stream, correctness bit array, rate field, and source pin used by the design body?
@@ -68,8 +68,8 @@ Each item is a binary gate. A probe design reaches PROCEED only if every applica
 
 13. **Pivot rule unambiguity.**
     - What to check: Does the routing decision map every possible gate tuple to exactly one outcome, including conflicting or partial states?
-    - Example violation: `execution_gain_pass=true` but `rate_pass=false` can be read as either LATENT-LANGUAGE or CONTENT-CHANNEL.
-    - Acceptable repair: Define one composite route boolean, such as `probe_3b_pass = execution_gain_pass AND rate_pass AND source_gzip_eligible`, and make unmatched tuples a verifier hard-fail.
+    - Example violation: `gate_a_pass=true` but `gate_b_pass=false` can be read as either ROUTE-A or ROUTE-B.
+    - Acceptable repair: Define one composite route boolean, such as `probe_pass = gate_a_pass AND gate_b_pass AND gate_c_eligible`, and make unmatched tuples a verifier hard-fail.
 
 14. **Power calculation per fold.**
     - What to check: For each fold/family's smallest N, does the design show 80% power at the registered alpha to detect the gate threshold or target effect?
@@ -78,5 +78,5 @@ Each item is a binary gate. A probe design reaches PROCEED only if every applica
 
 15. **Empirical adversarial check.**
     - What to check: Does the design include an "Adversarial Check" section that walks through observed or synthetic data under the proposed gates and confirms the verdict is sensible?
-    - Example violation: A new comparator selector is introduced without showing how it behaves on the existing Probe 3A scout or on null synthetic data.
+    - Example violation: A new comparator selector is introduced without showing how it behaves on an existing scout run or on null synthetic data.
     - Acceptable repair: Include a worked example with stored or synthetic correctness bits, expected gate outputs, sentinel state, route eligibility, and failure cases.

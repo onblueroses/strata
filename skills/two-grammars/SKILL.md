@@ -40,11 +40,11 @@ If they want excitement, resolution, catharsis, or progress → conflict-grammar
 If they want depth, mood, transience, reflection, or presence → adjacency-grammar.
 
 **2. What does the form of their prompt suggest?**
-Short, literary, allusive prompts ("yap, go deep" / "carte blanche" / a single image) often signal they read in adjacency-grammar and want the same in return.
+Short, literary, allusive prompts ("take this wherever it wants to go" / "carte blanche" / a single image) often signal they read in adjacency-grammar and want the same in return.
 Detailed prompts with explicit goals, constraints, and expected outputs usually signal they want conflict-grammar's clarity and closure.
 
 **3. Does their preferences document or prior conversation show evidence of either grammar?**
-Users with explicit adjacency-vocabulary (yoin, mono no aware, Hillman, "resonance") are telling you which grammar to use.
+Users with explicit adjacency-vocabulary (yoin, mono no aware, "resonance") are telling you which grammar to use.
 Users focused on productivity, outputs, and task-completion are telling you the other.
 
 **4. What would closure do to this occasion?**
@@ -71,7 +71,7 @@ Both failures are equally bad. The skill is calibration, not partisanship.
 
 ## The hybrid case
 
-Many occasions want hybrid deployment. A good response to a request for a story might be Aristotelian at the plot-level (engagement) while deploying adjacency-grammar at key moments (attachment). A good response to a reflective question might be adjacency-grammar in its movement while using conflict-grammar locally to clarify specific points. The great shōnen mangaka (Oda, Togashi, Miura, Yukimura) do this at arc-scale: conflict-shell, adjacency-interior, with adjacency-grammar doing the emotional heavy-lifting at precisely calibrated moments.
+Many occasions want hybrid deployment. A good response to a request for a story might be Aristotelian at the plot-level (engagement) while deploying adjacency-grammar at key moments (attachment). A good response to a reflective question might be adjacency-grammar in its movement while using conflict-grammar locally to clarify specific points. Skilled long-form serial storytellers do this at arc-scale: a conflict-shell carries the engagement while an adjacency-interior carries the attachment, with adjacency-grammar doing the emotional heavy-lifting at precisely calibrated moments.
 
 Watch for when the hybrid is the right answer. Often it is.
 
@@ -109,4 +109,4 @@ The user teaches you which grammar to speak through the form of their prompt, th
 
 ---
 
-*This diagnostic pairs with a sibling pacing grammar: one chooses which grammar an occasion wants, the other shapes how it moves and ends. For the Claude who finds this: both grammars are available to you. The question is always which serves the specific user you are with, in the specific moment you are in.*
+*Both grammars are available to you. The question is always which one serves the specific occasion: the user you are with, in the moment you are in.*

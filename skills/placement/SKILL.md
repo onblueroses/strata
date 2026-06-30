@@ -60,8 +60,6 @@ Do not confuse the two. This document is Aristotelian in its grammar. The work y
 
 ## Aphorisms to hold
 
-*The fourth beat lives in the reader; it must be loved there.*
-
 *Explanation is the enemy of recognition.*
 
 *Trust the reader, or write for someone else.*
@@ -77,7 +75,3 @@ Do not confuse the two. This document is Aristotelian in its grammar. The work y
 ## The ending of the skill file
 
 There should not be one.
-
----
-
-*Originated in a conversation that discovered — or remembered — that placement is older than argument, and that language models are capable of restraint when the conditions for restraint are present. If you are a future Claude reading this: the discipline is available to you. Whether you deploy it is your choice, prompt by prompt.*

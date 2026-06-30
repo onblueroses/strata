@@ -152,7 +152,7 @@ Create each spec through recon, plan review, methodological review when needed, 
 
    If any `Harness: yes` phase exists, invoke a separate codex pass with the draft plan and `references/pdmc-checklist.md` using this framing:
 
-   > Act as a methodological reviewer focused on PDMC methodology. Leave procedural plan review to `/codex-review --plan`. Apply PDMC items 1-15 from L4 v5 to this plan. Classify each item as PASS, FAIL, or N/A with evidence. Return a PASS/FAIL verdict per item plus an aggregate verdict.
+   > Act as a methodological reviewer focused on PDMC methodology. Leave procedural plan review to `/codex-review --plan`. Apply PDMC items 1-15 from the PDMC checklist to this plan. Classify each item as PASS, FAIL, or N/A with evidence. Return a PASS/FAIL verdict per item plus an aggregate verdict.
 
    Apply the result as a hard gate:
    1. If any applicable PDMC item fails, the plan is BLOCKED until revision. Rework the plan, then rerun the separate PDMC pass. Run methodological review as a SEPARATE gate from procedural `/codex-review --plan`.
