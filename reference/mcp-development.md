@@ -1,7 +1,7 @@
 <!-- keywords: mcp, model context protocol, mcp server, tool registration, resource registration, mcp tool, mcp transport, mcp app -->
 # MCP Development Reference
 
-Private reference for building MCP (Model Context Protocol) servers and apps.
+Reference for building MCP (Model Context Protocol) servers and apps.
 
 **Source**: Official spec (version 2025-06-18), TypeScript SDK docs, workshop patterns.
 
