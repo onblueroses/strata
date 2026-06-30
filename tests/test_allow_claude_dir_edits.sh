@@ -3,39 +3,66 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="$ROOT_DIR/hooks/allow-claude-dir-edits.sh"
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
 
-dangerous_input='{"tool_name":"Write","tool_input":{"file_path":"/tmp/repo/.claude/settings.json"}}'
-benign_input='{"tool_name":"Write","tool_input":{"file_path":"/tmp/repo/.claude/README.md"}}'
-
-dangerous_stdout=$(mktemp)
-dangerous_stderr=$(mktemp)
-benign_stdout=$(mktemp)
-benign_stderr=$(mktemp)
-trap 'rm -f "$dangerous_stdout" "$dangerous_stderr" "$benign_stdout" "$benign_stderr"' EXIT
-
-dangerous_status=0
-printf '%s' "$dangerous_input" | bash "$HOOK" >"$dangerous_stdout" 2>"$dangerous_stderr" || dangerous_status=$?
-
-if [ "$dangerous_status" -eq 0 ]; then
-    echo "expected .claude/settings.json write to be blocked" >&2
+fail() {
+    printf '%s\n' "$1" >&2
     exit 1
-fi
+}
 
-if ! grep -q 'BLOCKED' "$dangerous_stderr"; then
-    echo "expected block reason on stderr for .claude/settings.json write" >&2
-    exit 1
-fi
+run_hook() {
+    local file_path="$1"
 
-if grep -q '"permissionDecision":"allow"' "$dangerous_stdout"; then
-    echo "dangerous .claude/settings.json write was still auto-approved" >&2
-    exit 1
-fi
+    jq -n --arg file_path "$file_path" \
+        '{tool_name: "Write", tool_input: {file_path: $file_path}}' \
+        | bash "$HOOK"
+}
 
-printf '%s' "$benign_input" | bash "$HOOK" >"$benign_stdout" 2>"$benign_stderr"
+assert_blocked() {
+    local file_path="$1"
+    local stdout
+    local stderr
+    local status
 
-if ! grep -q '"permissionDecision":"allow"' "$benign_stdout"; then
-    echo "expected inert .claude README edit to be auto-approved" >&2
-    cat "$benign_stdout" >&2
-    cat "$benign_stderr" >&2
-    exit 1
-fi
+    stdout=$(mktemp "$TMP_DIR/stdout.XXXXXX")
+    stderr=$(mktemp "$TMP_DIR/stderr.XXXXXX")
+    status=0
+
+    run_hook "$file_path" >"$stdout" 2>"$stderr" || status=$?
+
+    [ "$status" -ne 0 ] || fail "expected blocked: $file_path"
+    grep -q 'BLOCKED' "$stderr" || fail "expected block reason on stderr: $file_path"
+    ! grep -q '"permissionDecision":"allow"' "$stdout" || fail "expected no allow decision: $file_path"
+}
+
+assert_allowed() {
+    local file_path="$1"
+    local stdout
+    local stderr
+    local status
+
+    stdout=$(mktemp "$TMP_DIR/stdout.XXXXXX")
+    stderr=$(mktemp "$TMP_DIR/stderr.XXXXXX")
+    status=0
+
+    run_hook "$file_path" >"$stdout" 2>"$stderr" || status=$?
+
+    [ "$status" -eq 0 ] || fail "expected allowed: $file_path"
+    grep -q '"permissionDecision":"allow"' "$stdout" || fail "expected allow decision: $file_path"
+}
+
+REPO_DIR="$TMP_DIR/repo"
+CLAUDE_DIR="$REPO_DIR/.claude"
+mkdir -p "$CLAUDE_DIR"
+
+printf '{}\n' >"$CLAUDE_DIR/settings.json"
+ln -s settings.json "$CLAUDE_DIR/README.md"
+
+assert_blocked "$CLAUDE_DIR/settings.json"
+assert_blocked "$CLAUDE_DIR/README.md"
+
+rm "$CLAUDE_DIR/README.md"
+printf '# Notes\n' >"$CLAUDE_DIR/README.md"
+
+assert_allowed "$CLAUDE_DIR/README.md"
