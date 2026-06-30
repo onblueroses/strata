@@ -81,11 +81,12 @@ skips a malformed or partial line and drops an unreadable stream rather than abo
 **`out_path_is_safe` guard.** The unified stream can carry raw event payload text, and an install
 tree may push to a remote, so `--out` refuses to leak that text into version control. The guard:
 expands the path; refuses a symlinked destination outright; resolves the realpath before asking git
-(a lexical check is bypassable via an ignored symlink pointing at a tracked file); asks
-`git -C <parent> rev-parse --is-inside-work-tree`; treats a destination **outside any git work tree**
-as safe; inside a work tree, allows it only when `git check-ignore` reports the target gitignored,
-and refuses a tracked path. It **fails closed**: any git error or indeterminate status refuses the
-write and falls back to stdout.
+(a lexical check is bypassable via an ignored symlink pointing at a tracked file); refuses a
+nonexistent output parent; scrubs `GIT_*` environment overrides before invoking git; asks
+`git -C <parent> rev-parse --show-toplevel`; treats a destination **outside any git metadata
+ancestor** as safe; inside a work tree, allows it only when `git check-ignore` reports the target
+gitignored, and refuses other paths. It **fails closed**: any git error or indeterminate status
+inside a metadata ancestor refuses the write and falls back to stdout.
 
 ### `rotate_telemetry.sh`
 
