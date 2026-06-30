@@ -73,18 +73,18 @@ Reconcile entity summaries when Step 3 touched entity-scoped files. Apply the th
 
 **Apply gates in this order. First match wins:**
 
-**Gate 1 — Empty-entities fast skip.** Check `entities_touched` from Step 3. If it is empty (zero entity-scoped files modified this session), skip Step 4 entirely — dream-state gate, lock gate, and 4.1-4.6 included. Jump to Step 5. Preserve existing `last_run` because the session contributed zero entity state. This is the cheap path for pure Q&A or knowledge-base sessions.
+**Gate 1 — Empty-entities fast skip.** Check `entities_touched` from Step 3. If it is empty (zero entity-scoped files modified this session), skip Step 4 entirely — autoend-state gate, lock gate, and 4.1-4.6 included. Jump to Step 5. Preserve existing `last_run` because the session contributed zero entity state. This is the cheap path for pure Q&A or knowledge-base sessions.
 
-**Gate 2 — Dream-state skip.** Read `$STATE_DIR/dream-state.json` (create parent dir if needed). If missing, treat as `{ "last_run": null, "sessions_since": 0 }`. Increment `sessions_since` by 1 immediately. Then apply the skip if all three conditions hold:
+**Gate 2 — Auto-end skip.** Read `$STATE_DIR/autoend-state.json` (create parent dir if needed). If missing, treat as `{ "last_run": null, "sessions_since": 0 }`. Increment `sessions_since` by 1 immediately. Then apply the skip if all three conditions hold:
 - `last_run` is not null
 - fewer than 4 hours since `last_run` (strict less-than; exactly 4 hours fails the skip)
 - `sessions_since` < 5
 
-If skipping: write `{ "last_run": "<existing value>", "sessions_since": <incremented value> }` back to `dream-state.json`. Jump to Step 5.
+If skipping: write `{ "last_run": "<existing value>", "sessions_since": <incremented value> }` back to `autoend-state.json`. Jump to Step 5.
 
-**Gate 3 — Lock gate.** Check `$STATE_DIR/dream.lock`. If it exists and was modified within the last 5 minutes, a concurrent session is reconciling — skip, write incremented `sessions_since`, jump to Step 5. Otherwise: create the lock file (write current ISO timestamp as contents). Proceed with 4.1-4.6 below. Delete the lock file after 4.6 completes (even if steps error).
+**Gate 3 — Lock gate.** Check `$STATE_DIR/autoend.lock`. If it exists and was modified within the last 5 minutes, a concurrent session is reconciling — skip, write incremented `sessions_since`, jump to Step 5. Otherwise: create the lock file (write current ISO timestamp as contents). Proceed with 4.1-4.6 below. Delete the lock file after 4.6 completes (even if steps error).
 
-**Reconcile path (gates 1-3 passed).** Proceed with steps 4.1-4.6. After 4.6, write `{ "last_run": "<ISO timestamp>", "sessions_since": 0 }` to `dream-state.json`.
+**Reconcile path (gates 1-3 passed).** Proceed with steps 4.1-4.6. After 4.6, write `{ "last_run": "<ISO timestamp>", "sessions_since": 0 }` to `autoend-state.json`.
 
 **Schema:** `{ "last_run": "ISO-8601 or null", "sessions_since": integer }`
 

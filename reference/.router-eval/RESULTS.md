@@ -24,7 +24,6 @@ Baseline for comparison: the keyword-only matcher (prompt-vocabulary match, the 
 | codex | 0.89 |
 | dmux | 1.00 |
 | eval-methodology | 1.00 |
-| gpu-training | 0.89 |
 | knowledge-management | 1.00 |
 | mcp-development | 1.00 |
 | model-delegation | 0.67 |

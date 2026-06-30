@@ -1,7 +1,7 @@
 <!-- keywords: harness, hook, permission context, notification, bootstrap, tool pool, claude code internals, deferred init, stream event -->
 # Claude Code Internal Patterns
 
-Transferable architectural patterns from studying Claude Code's internal architecture (1902 TS files, 207 commands, 184 tools, 38 subsystems). Derived from the instructkr/claude-code Python reconstruction and reference data snapshots of the original system.
+Transferable architectural patterns from studying Claude Code's internal architecture (1902 TS files, 207 commands, 184 tools, 38 subsystems). Derived from studying a Python reconstruction of Claude Code and reference snapshots of the original system.
 
 These patterns inform how to build on top of Claude Code effectively - working with the system's grain, not against it.
 
@@ -17,8 +17,6 @@ These patterns inform how to build on top of Claude Code effectively - working w
 | Simple Mode | Simple Mode Restrictions | Restricting tool access for read-only agents |
 | Tool Pool Assembly | Tool Pool Assembly | Understanding how Claude Code filters available tools |
 | Bootstrap Sequence | Bootstrap Sequence | Understanding session lifecycle |
-
-Source: `$HOME/Work/claude-code/` (instructkr reconstruction). Deep-understand scratchpad: `.claude/scratchpad-deep-understand-claude-code.md`.
 
 ---
 
@@ -51,8 +49,6 @@ The critical separation: permission *context* (what's denied) is data. Permissio
 | Explorer | /deep-understand, research agents | Read, Grep, Glob, WebSearch, WebFetch |
 | Reviewer | /review code-reviewer | Read, Grep, Glob, Bash |
 | Generator | /harness generators | Full access (default) |
-| Deployer | /deploy | Bash(restricted), Read |
-
 Enforcement is through agent YAML `tools:` field and skill prompt instructions, not runtime hooks.
 
 Source: `src/permissions.py:6-20`, `src/tool_pool.py:28-37`, `reference_data/subsystems/hooks.json` (toolPermission handlers).
