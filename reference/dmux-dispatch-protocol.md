@@ -1,9 +1,5 @@
 <!-- keywords: dmux, dispatch, parallel agents, worktree, tmux panes, field agent, task brief, collect, scratchpad, orchestrate parallel work, fan out agents -->
-# dmux Dispatch Protocol - Design Document
-
-**Mode**: Deep
-**Date**: 2026-04-13
-**Status**: Final
+# dmux Dispatch Protocol
 
 ## Quick Nav
 | Task | Section |
@@ -15,7 +11,7 @@
 
 ## Problem Statement
 
-Claude Code's parallel work model has three costs: (1) subagent output inflates parent context, compounding over a session, (2) the Codex subscription is underused as a reviewer-only tool, (3) no visibility into parallel agent status. Beyond fixing these, the deeper need is meaningful orchestration - one Claude Code session spreading work across multiple independent agents without losing overview or control.
+Claude Code's parallel work model has three costs: (1) subagent output inflates parent context, compounding over a session, (2) a capable cross-model reviewer is otherwise confined to reviewer-only use, (3) no visibility into parallel agent status. Beyond fixing these, the deeper need is meaningful orchestration - one Claude Code session spreading work across multiple independent agents without losing overview or control.
 
 ## Understanding
 
@@ -26,12 +22,12 @@ Claude Code's parallel work model has three costs: (1) subagent output inflates 
 - dmux's status detection polls tmux pane content via LLM (small fast models racing)
 - dmux supports 11 agent CLIs with per-agent prompt transport and permission flags
 - Claude Code subagents share the parent context window - output compounds
-- your existing system: 52 skills, 16 hooks, entity summaries, MEMORY.md, daily notes
+- a substantial skill/hook system: skills, hooks, entity summaries, MEMORY.md, daily notes
 
 ### Context
 - No existing framework handles independent CLI session handoffs (CrewAI/AutoGen/LangGraph work in-process)
 - The community pattern for parallel AI coding is raw worktrees with no formalized protocol
-- your skill/hook system travels with CLAUDE.md and settings.json (global config)
+- the skill/hook system travels with CLAUDE.md and settings.json (global config)
 - Entity summaries contain project context that code exploration alone can't surface
 
 ### Constraints
