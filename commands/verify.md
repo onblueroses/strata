@@ -1,6 +1,6 @@
 ---
 name: verify
-description: "Post-implementation integrity gate with risk-based tiers. Classifies edited files by risk (Skip/Light/Full/Deep) and runs proportional checks. Skip auto-passes for knowledge-base files (`$STRATA_HOME/skills/**/*.md`, `$STRATA_HOME/reference/**/*.md`, `.claude/projects/*/memory/**/*.md`, `$KB_DIR/**/*.md`, etc.). Light runs inline checks for 1-3 code files in a single project (re-read, debris scan, tests). Full uses Codex review (`codex review --uncommitted`) plus inline mechanical checks for 4+ files or multi-project work. Deep requires explicit --deep flag for spec-driven multi-phase work (extended doc-currency, import-graph, config-affects-runtime trace). MANDATORY after editing files, before reporting task completion — the Stop hook (verify-gate.sh) auto-passes Skip-tier sessions and blocks all others until /verify passes. Triggers on: 'verify', '/verify', 'verify the changes', 'check the work', 'integrity check', 'before I close out', 'pre-completion check', 'did everything pass'. Also triggers when: files have been edited this session and the user is about to report task completion or end the session; the Stop hook fires with 'VERIFICATION REQUIRED' or 'FILES EDITED AFTER VERIFICATION' messages; /end is about to run (verify must pass first). Pairs with /review (downstream — review runs after verify), /end (downstream — end requires verify marker), /spec (Deep tier checks spec currency). Marker file at $STATE_DIR/.verify-passed-{sessionId} is the receipt the Stop hook checks. Manual invocation: /verify or /verify --deep."
+description: "Post-implementation integrity gate with risk-based tiers. Classifies edited files by risk (Skip/Light/Full/Deep) and runs proportional checks. Skip auto-passes for knowledge-base files (`$STRATA_HOME/skills/**/*.md`, `$STRATA_HOME/reference/**/*.md`, `.claude/projects/*/memory/**/*.md`, `$KB_DIR/**/*.md`, etc.). Light runs inline checks for 1-3 code files in a single project (re-read, debris scan, tests). Full uses Codex review (`codex review --uncommitted`) plus inline mechanical checks for 4+ files or multi-project work. Deep requires explicit --deep flag for spec-driven multi-phase work (extended doc-currency, import-graph, config-affects-runtime trace). MANDATORY after editing files, before reporting task completion — the Stop hook (gate-verify.sh) auto-passes Skip-tier sessions and blocks all others until /verify passes. Triggers on: 'verify', '/verify', 'verify the changes', 'check the work', 'integrity check', 'before I close out', 'pre-completion check', 'did everything pass'. Also triggers when: files have been edited this session and the user is about to report task completion or end the session; the Stop hook fires with 'VERIFICATION REQUIRED' or 'FILES EDITED AFTER VERIFICATION' messages; /end is about to run (verify must pass first). Pairs with /review (downstream — review runs after verify), /end (downstream — end requires verify marker), /spec (Deep tier checks spec currency). Marker file at $STATE_DIR/.verify-passed-{sessionId} is the receipt the Stop hook checks. Manual invocation: /verify or /verify --deep."
 tier: core
 cost_hint: medium
 parallelizable: false
@@ -236,7 +236,7 @@ Use the marker file exactly as the Stop hook expects.
 **Content:** ISO timestamp on a single line (e.g., `2026-03-25T14:30:00`)
 **Purpose:** Stop hook checks this file. Treat missing or stale marker files as blocked.
 
-Use the Stop hook (`verify-gate.sh`) auto-written marker for Skip-tier sessions; knowledge-base-only work passes without explicit /verify.
+Use the Stop hook (`gate-verify.sh`) auto-written marker for Skip-tier sessions; knowledge-base-only work passes without explicit /verify.
 
 ---
 
@@ -251,7 +251,7 @@ Apply these verification rules after tier classification.
 - Treat warnings as non-blocking; for example, `as any` casts and missing tests remain warnings, and PASS remains valid when actual errors are absent.
 - Verify only files from the session edit list.
 - Stop after 3 failed /verify attempts on the same issue and ask the user.
-- For /verify infrastructure edits (`verify-gate.sh` or this skill file), write the marker manually.
+- For /verify infrastructure edits (`gate-verify.sh` or this skill file), write the marker manually.
 - Report only concrete findings and keep PASS for clean code.
 
 <details>

@@ -90,8 +90,8 @@ FILE_COUNT=N
 **Tell the user before proceeding:**
 ```
 Detected: Next.js 15 static export, ~37 files
-Infra: nginx (agency-app.ai)
-URL: https://agency-app.ai
+Infra: nginx (example.com)
+URL: https://example.com
 Running: fingerprinting, XSS, config, deps, dynamic headers...
 Skipping: injection (static export - no server runtime), auth (no login), DB (no database)
 ```
@@ -397,7 +397,7 @@ const nextConfig = {
 
 **Why needed:** `assetPrefix` only prefixes URLs for CDN - it does not rename the `_next/` directory and does not rewrite the webpack publicPath string hardcoded in JS bundles. Only a find-replace across all output files works.
 
-**Reference implementation:** `$HOME/projects/agency-app-website/scripts/obfuscate-assets.mjs`
+**Reference implementation:** `$HOME/projects/your-site/scripts/obfuscate-assets.mjs`
 
 Core pattern:
 1. After `next build`, walk `out/` directory

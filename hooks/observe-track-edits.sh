@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse hook: tracks which files were edited this session.
 # Appends file paths to $STATE_DIR/.session-edits-{sessionId} (deduped).
-# Used by verify-gate.sh Stop hook to enforce /verify before stopping.
+# Used by gate-verify.sh Stop hook to enforce /verify before stopping.
 
 stdinContent=""
 if [ ! -t 0 ]; then
@@ -39,7 +39,7 @@ jsonlFile="$stateDir/.session-edits-$sessionId.jsonl"
 # Extract tool name for JSONL
 toolName=$(echo "$data" | jq -r '.tool_name // "unknown"' 2>/dev/null)
 
-# Plain-text: append if not already listed (verify-gate.sh reads this)
+# Plain-text: append if not already listed (gate-verify.sh reads this)
 alreadyListed=false
 if [ -f "$editsFile" ]; then
     if grep -qxF "$filePath" "$editsFile" 2>/dev/null; then

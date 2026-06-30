@@ -17,7 +17,7 @@ set -uo pipefail
 # Teardown command patterns to guard (extended-regex fragments matched against
 # the Bash command). Built-ins cover the common paid-compute CLIs. Add any other
 # provider CLI you use by extending EXTRA_TEARDOWN_PATTERNS, e.g.:
-#   EXTRA_TEARDOWN_PATTERNS+=('prime[[:space:]]+pods[[:space:]]+(stop|remove|delete)')
+#   EXTRA_TEARDOWN_PATTERNS+=('gpupod[[:space:]]+(stop|remove|delete)')
 #   EXTRA_TEARDOWN_PATTERNS+=('mycloud[[:space:]]+(destroy|stop)')
 TEARDOWN_PATTERNS=(
   'aws[[:space:]]+ec2[[:space:]]+(stop|terminate)-instances'
