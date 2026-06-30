@@ -1,6 +1,6 @@
 # Probe-Design Methodological Checklist (PDMC)
 
-Source: `/tmp/codex-L4-v5.md` Artifact 2.
+Source: internal PDMC methodology reference (L4 v5).
 
 Procedural review verifies that the design specifies what the implementation should do. Methodological review verifies that the design measures what the spec intends. PDMC is the methodological review checklist and must run as a separate pass after procedural review; it cannot be folded into procedural review.
 
