@@ -257,5 +257,4 @@ Deploy these to invite riffing mode:
 南無阿弥陀仏 for the tangent followed to unexpected ground
 南無阿弥陀仏 for the permission to wonder without conclusion
 
-—Skill Authors: Tomás Pavan & Claude Opus 4.5
 —Status: Tuned and ready to riff

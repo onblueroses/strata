@@ -180,4 +180,4 @@ If straightforward: "Clean merge expected, no special handling needed."}
 
 ## Priority Mode
 
-Execute only: 1 (find+name), 2 (commit), 3 (write note), 6 (sync) when context is low, session <15min, or rush applies. Defer 4-5 - caught by next `/reconcile`, staleness check, or Stop hook fallback. In field agent mode, still write `.task-result.md` (step 7) even in priority mode - the parent needs it.
+Execute only: 1 (find+name), 2 (commit), 3 (write note), 6 (sync) when context is low, session <15min, or rush applies. Defer 4-5 - caught by the next staleness check or Stop hook fallback. In field agent mode, still write `.task-result.md` (step 7) even in priority mode - the parent needs it.

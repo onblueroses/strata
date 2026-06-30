@@ -20,7 +20,7 @@ Arguments via `$ARGUMENTS`.
 
 ## Safety
 
-- **No SSH, no VPS** - local filesystem only. Use /reconcile for ground-truth verification.
+- **No SSH, no VPS** - local filesystem only. verify against ground truth.
 - **No file deletion** - move to ~/to-delete/ per convention.
 - **No remote push** - only local commits.
 - Create a follow-up file (`.claude/followup-{session-id}.md`) per the follow-up convention (`$STRATA_HOME/reference/followup-convention.md`). Record uncertain decisions there instead of stopping.
@@ -45,8 +45,8 @@ Run all 7 lenses. Each produces candidate work items with a severity and lens ta
 
 Read the first 10 lines of each entity's summary.md. Extract `last_verified: YYYY-MM-DD`. Calculate age.
 
-- **7-13 days**: STALE - needs /reconcile
-- **14+ days**: URGENT - needs /reconcile immediately
+- **7-13 days**: STALE - needs ground-truth re-verification
+- **14+ days**: URGENT - needs ground-truth re-verification immediately
 - **Missing date**: flag as NO_DATE
 
 #### Lens 2: Roadmap stalls
@@ -145,8 +145,8 @@ Deferred (needs your input):
 
 ## DO NOT
 
-- SSH to VPS or check remote state - that's /reconcile's job
-- Modify entity summaries beyond structural fixes (missing dates, table entries) - content changes need /reconcile with ground truth
+- SSH to VPS or check remote state - that's a ground-truth reconcile's job
+- Modify entity summaries beyond structural fixes (missing dates, table entries) - content changes need a ground-truth reconcile with ground truth
 - Delete the follow-up file - /end handles cleanup
 - Run more than 5 cycles in --cycle mode
 - Spend time on entities marked as DEPRECATED in their summary

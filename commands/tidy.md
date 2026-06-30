@@ -6,7 +6,7 @@ description: |
 
 # Tidy
 
-Structural consistency check for the knowledge base. /tidy checks structure. /reconcile checks truth. Don't overlap.
+Structural consistency check for the knowledge base. /tidy checks structure. a ground-truth reconcile checks truth. Don't overlap.
 
 No SSH, no VPS, no ground truth verification. Just: are the indexes accurate, are the references valid, is anything orphaned or approaching limits?
 
@@ -59,7 +59,7 @@ Read first 10 lines of each entity's summary.md. Extract `last_verified:`.
 - **7-13 days**: STALE
 - **14+ days**: URGENT
 - **Missing**: NO_DATE
-- **Flag only** - content may still be accurate. Suggest /reconcile for urgent ones.
+- **Flag only** - content may still be accurate. Suggest a ground-truth reconcile for urgent ones.
 
 ### 6. Decision library capacity
 
@@ -141,8 +141,8 @@ After the report, list each flagged item with enough detail to act on it.
 
 ## DO NOT
 
-- SSH to VPS or check service state - that's /reconcile
+- SSH to VPS or check service state - that's a ground-truth reconcile
 - Modify entity summary.md content beyond structural fields (last_verified dates, table entries)
 - Delete any files - flag for manual review
 - Run more than the 9 listed checks - keep this fast and focused
-- Overlap with /reconcile's ground-truth verification (steps 2-5 in reconcile)
+- Overlap with a ground-truth reconcile's ground-truth verification (steps 2-5 in reconcile)

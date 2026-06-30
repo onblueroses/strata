@@ -33,9 +33,9 @@ entity-name/
 
 - **`## Recent Sessions`**: Table in summary.md before `## Links`. Capped at 10 rows (oldest removed). Each row: date, session name (session_id), one-line summary. This is the entity's reverse index to sessions - lets you answer "what happened to X?" without grepping daily notes. Updated by /end automatically.
 
-- **`/trace`**: Skill for querying entity history. Reads Recent Sessions table, then scans daily notes for the full timeline.
+- **Entity-history query**: read the Recent Sessions table, then scan daily notes for the full timeline.
 
-- **`/reconcile`**: Periodic deep verification of all entities against VPS and local ground truth. Checks that documented claims (auth status, ports, versions, domains, etc.) match actual system state. Fixes clear-cut mismatches, flags ambiguous ones. Updates `last_verified` on all checked entities. Use when /status shows STALE entities or as a weekly review. Supports `--local` flag to skip VPS checks.
+- **Ground-truth reconcile**: Periodic deep verification of all entities against remote (e.g. a VPS) and local ground truth. Checks that documented claims (auth status, ports, versions, domains, etc.) match actual system state. Fixes clear-cut mismatches, flags ambiguous ones. Updates `last_verified` on all checked entities. Use when /status shows STALE entities or as a weekly review.
 
 ## Source of Truth
 
@@ -67,7 +67,7 @@ summary.md and items.json serve different purposes. Don't duplicate between them
 }
 ```
 
-**Normalization**: `entities_touched` entries must always be directory paths (e.g. `$KB_DIR/projects/myapp`), never file paths (`$KB_DIR/projects/myapp/summary.md`). /end step 3 enforces this by mapping modified paths to MEMORY.md's Entities table. /trace uses prefix matching when scanning older notes that may have the file-path format.
+**Normalization**: `entities_touched` entries must always be directory paths (e.g. `$KB_DIR/projects/myapp`), never file paths (`$KB_DIR/projects/myapp/summary.md`). /end step 3 enforces this by mapping modified paths to MEMORY.md's Entities table. An entity-history scan uses prefix matching when reading older notes that may have the file-path format.
 
 ## Where to Store What
 

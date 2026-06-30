@@ -246,7 +246,7 @@ Apply these verification rules after tier classification.
 
 - Classify any code edit, including a single `.ts`, at least as Light and reserve Skip for non-code files.
 - Run Light tier checks inline in this session; reserve subagent dispatch for Full and Deep tiers where the cost is justified.
-- Scope verify checks to edited files only and leave entity summaries to /end and /reconcile.
+- Scope verify checks to edited files only and leave entity summaries to /end and a ground-truth reconcile.
 - DO NOT write the marker file on FAIL. The Stop hook checks for this. Writing on FAIL defeats the system.
 - Treat warnings as non-blocking; for example, `as any` casts and missing tests remain warnings, and PASS remains valid when actual errors are absent.
 - Verify only files from the session edit list.
@@ -261,7 +261,7 @@ Use these integration points with other skills.
 
 - **/review**: Run /verify first; /review checks that /verify passed before proceeding (marker file exists).
 - **/end**: Run /verify before /end. /end records session state that should be verified first.
-- **/reconcile**: Keep deep entity verification against ground truth in /reconcile.
+- **Ground-truth reconcile**: Keep deep entity verification against ground truth in a separate ground-truth reconcile pass, not /verify.
 - **/spec**: Check that active specs are up to date in Full/Deep tiers.
 
 </details>

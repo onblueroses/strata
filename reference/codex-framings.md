@@ -148,7 +148,7 @@ only if every claimed advantage has a corresponding cost the decision text ackno
 
 **Induces:** Field-norm-informed critique, methodology scrutiny, claim-vs-evidence ratio check
 **Counters:** Plans/hypotheses that read confidently but would not survive contact with the field that would evaluate them
-**Disambiguation:** Adapted from `/hostile-but-fair` (the Reviewer 2 voice). Sister framing to `specification-lawyer-plan` but reads from inside a discipline's standards rather than a contract's literalness. Best for research-adjacent plans, ML/scientific hypotheses, or claims aimed at an external audience.
+**Disambiguation:** Adapted from a hostile-but-fair reviewer voice (the Reviewer 2 stance). Sister framing to `specification-lawyer-plan` but reads from inside a discipline's standards rather than a contract's literalness. Best for research-adjacent plans, ML/scientific hypotheses, or claims aimed at an external audience.
 
 **Preamble:**
 ```

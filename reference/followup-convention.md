@@ -43,7 +43,7 @@ Observations that might be worth persisting to the knowledge base but aren't cle
 Use checkboxes for each item so resolution tracking is visible:
 
 ```markdown
-- [ ] **Entity staleness**: Marked myapp as STALE (12d) but didn't run /reconcile because it requires VPS access. User should run `/reconcile --entity myapp` when VPS is reachable.
+- [ ] **Entity staleness**: Marked myapp as STALE (12d) but didn't run a ground-truth reconcile because it requires remote (VPS) access. User should reconcile myapp against ground truth when the remote is reachable.
 ```
 
 Include enough context that the user can make a decision without re-reading the original source. "Fixed X" is useless. "Changed port from 3003 to 3004 in infrastructure summary because PM2 output showed 3004 - but myapp summary still says 3003, unclear which is current" is actionable.
