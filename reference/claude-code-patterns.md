@@ -1,7 +1,7 @@
 <!-- keywords: harness, hook, permission context, notification, bootstrap, tool pool, claude code internals, deferred init, stream event -->
 # Claude Code Internal Patterns
 
-Transferable architectural patterns from studying Claude Code's internal architecture (1902 TS files, 207 commands, 184 tools, 38 subsystems). Derived from studying a Python reconstruction of Claude Code and reference snapshots of the original system.
+Transferable architectural patterns from studying Claude Code's internal architecture (1902 TS files, 207 commands, 184 tools, 38 subsystems). Derived from observing Claude Code's runtime behavior and public documentation.
 
 These patterns inform how to build on top of Claude Code effectively - working with the system's grain, not against it.
 
