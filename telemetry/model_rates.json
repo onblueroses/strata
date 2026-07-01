@@ -1,5 +1,4 @@
 {
-  "_note": "PLACEHOLDER TEMPLATE. Fill in your own rates; ships with none. Numbers are USD per 1M tokens. One row per model id you bind to a lane in config/model-map.toml; add or remove rows freely and replace each <PICK_...> key with a real model id. Per-row fields: in = input/prompt tokens, out = output/completion tokens, cache_read = cached-prompt reads, cache_write = writing a prompt into cache (where the provider has no cache-write premium, set this equal to in). billing = 'marginal' when a call costs real per-call cash, or 'subscription' when it draws on a flat plan or credit pool so the cost is a notional yardstick rather than an invoiced amount. cost_rollup.py reads this file at runtime; nothing is baked into emitted events, so edits take effect on the next rollup.",
   "<PICK_MODEL_ID>":   {"in": 0.0, "out": 0.0, "cache_read": 0.0, "cache_write": 0.0, "billing": "subscription"},
   "<PICK_MODEL_ID_2>": {"in": 0.0, "out": 0.0, "cache_read": 0.0, "cache_write": 0.0, "billing": "marginal"}
 }
