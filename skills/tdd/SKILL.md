@@ -17,8 +17,8 @@ Success means:
   - The implementation grew one test at a time; no speculative code ahead of a test
   - Refactor happened only on green, with tests re-run after each step
 
-Stop when: the prioritized behaviors are covered, all tests are green, and a mutation
-           spot-check (or honest reasoning about test strength) shows the tests bite.
+Stop when: the prioritized behaviors are covered, all tests are green, and mutation
+           testing or a manual mutation spot-check shows the tests bite.
 ```
 
 ## Philosophy
@@ -113,8 +113,4 @@ Refactor only on green. Reach green first, then reshape.
 
 ## Test-strength check
 
-Line coverage tells you a line ran; it says nothing about whether a test would notice that line breaking. After the prioritized behaviors are green, spot-check test strength: run mutation testing on the changed files if the toolchain supports it, or reason honestly about whether each test would fail given a plausible bug. Feed any surviving mutant back into a new test: "this mutation survived: <description>; write a test that catches this boundary." The forbidden-pattern list and mutation-testing rationale are in `$STRATA_HOME/reference/code-quality-principles.md` section 5.
-
----
-
-Ported from mattpocock/skills (skills/engineering/tdd), release mattpocock-skills@1.0.0.
+Line coverage tells you a line ran; it says nothing about whether a test would notice that line breaking. After the prioritized behaviors are green, spot-check test strength: run mutation testing on the changed files if the toolchain supports it. When mutation tooling is unavailable, perform a manual mutation spot-check: temporarily break the implementation in a plausible way for the behavior under test, run the relevant test, and confirm it fails before restoring the implementation. Feed any surviving mutant back into a new test: "this mutation survived: <description>; write a test that catches this boundary." The forbidden-pattern list and mutation-testing rationale are in `$STRATA_HOME/reference/code-quality-principles.md` section 5.
