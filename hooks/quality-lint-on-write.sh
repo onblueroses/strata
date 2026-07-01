@@ -24,6 +24,8 @@ ext="${filePath##*.}"
 ext=$(echo ".$ext" | tr '[:upper:]' '[:lower:]')
 issues=()
 
+# This hook runs automatically after edits; keep it to tools that do not execute repo-controlled code.
+
 find_up() {
     local start="$1"
     local marker="$2"
@@ -71,13 +73,10 @@ if [ "$ext" = ".py" ]; then
 
 # -- TypeScript / JavaScript -----------------------------------------------
 elif [[ "$ext" =~ ^\.(ts|tsx|js|jsx|mjs|cjs)$ ]]; then
-    packageRoot=$(find_up "$dir" "package.json" || true)
     tsconfigRoot=$(find_up "$dir" "tsconfig.json" || true)
     projectRoot="$dir"
     if [ -n "$tsconfigRoot" ]; then
         projectRoot="$tsconfigRoot"
-    elif [ -n "$packageRoot" ]; then
-        projectRoot="$packageRoot"
     fi
 
     if [[ "$ext" =~ ^\.(ts|tsx)$ ]] && command -v tsgo &>/dev/null && [ -f "$projectRoot/tsconfig.json" ]; then
@@ -90,35 +89,13 @@ elif [[ "$ext" =~ ^\.(ts|tsx|js|jsx|mjs|cjs)$ ]]; then
         if ! result=$(biome check --write --no-errors-on-unmatched "$filePath" 2>&1); then
             issues+=("biome:"$'\n'"$result")
         fi
-    else
-        eslintCmd=""
-        localEslint="$projectRoot/node_modules/.bin/eslint"
-        if [ -x "$localEslint" ]; then
-            eslintCmd="$localEslint"
-        elif command -v eslint &>/dev/null; then
-            eslintCmd="eslint"
-        fi
-
-        if [ -n "$eslintCmd" ]; then
-            if ! result=$("$eslintCmd" --fix "$filePath" 2>&1); then
-                issues+=("eslint:"$'\n'"$result")
-            fi
-        fi
     fi
 
 # -- Rust ------------------------------------------------------------------
 elif [ "$ext" = ".rs" ]; then
-    cargoRoot=$(find_up "$dir" "Cargo.toml" || true)
-
     if command -v rustfmt &>/dev/null; then
         if ! result=$(rustfmt "$filePath" 2>&1); then
             issues+=("rustfmt:"$'\n'"$result")
-        fi
-    fi
-
-    if [ -n "$cargoRoot" ] && command -v cargo &>/dev/null; then
-        if ! result=$(cd "$cargoRoot" && cargo clippy --quiet -- -D warnings 2>&1); then
-            issues+=("cargo clippy:"$'\n'"$result")
         fi
     fi
 fi
