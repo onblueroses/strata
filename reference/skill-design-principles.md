@@ -42,7 +42,7 @@ When a field has a finite set of good values (tags, status codes, entity types),
 
 ### Leading words and the two loads
 
-The root virtue a skill chases is **predictability**: the agent taking the same *process* every run, not producing the same output; every lever below serves that. Adapted from the open-source `writing-great-skills` skill (mattpocock/skills).
+The root virtue a skill chases is **predictability**: the agent taking the same *process* every run, not producing the same output; every lever below serves that.
 
 Two costs trade off when placing a skill:
 - **Context load**: a model-invoked skill's `description` sits in the window every turn. Pay it only when the agent, or another skill, must reach the skill autonomously.

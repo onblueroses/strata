@@ -119,5 +119,3 @@ Before declaring the PRD done:
 3. **Seams confirmed**: the test seams were sketched, are as high and as few as the codebase allows, and the user agreed to them.
 4. **No stale specifics**: implementation decisions carry no file paths and no code beyond a justified prototype fragment.
 5. **Placed, not orphaned**: the PRD is written to the path the user designated, ready for `/spec` to plan or `/to-issues` to split.
-
-Ported from mattpocock/skills (skills/engineering/to-prd), release mattpocock-skills@1.0.0.

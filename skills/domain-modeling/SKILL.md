@@ -171,5 +171,3 @@ Before declaring the model sharper and stopping:
 4. **Code agrees**: every "how it works" claim was checked against the code; contradictions were surfaced and resolved, not buried.
 5. **CONTEXT.md stayed a glossary**: no implementation details, specs, or rationale leaked in.
 6. **ADRs earned, not sprayed**: each ADR passed all three gate tests; routine decisions stayed out.
-
-Ported from mattpocock/skills (skills/engineering/domain-modeling), release mattpocock-skills@1.0.0.
