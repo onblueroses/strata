@@ -10,7 +10,7 @@ Usage: dmux-dispatch.sh --project DIR --slug NAME --agent AGENT --brief FILE [OP
 
 Required:
   --project DIR          Git repository root
-  --slug NAME            Worktree/branch name (filesystem-safe)
+  --slug NAME            Worktree name; branch is dmux/NAME
   --agent AGENT          Agent CLI to launch (claude, codex, gemini, etc.)
   --brief FILE           Path to .task-brief.md file
 
@@ -24,6 +24,13 @@ EOF
   exit 0
 }
 
+require_operand() {
+  if [[ $# -lt 2 ]]; then
+    echo "Error: $1 requires a value" >&2
+    exit 1
+  fi
+}
+
 # Defaults
 BRANCH_FROM="main"
 PERMISSION_MODE="acceptEdits"
@@ -33,13 +40,13 @@ PROJECT="" SLUG="" AGENT="" BRIEF=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --project)        PROJECT="$2"; shift 2 ;;
-    --slug)           SLUG="$2"; shift 2 ;;
-    --agent)          AGENT="$2"; shift 2 ;;
-    --brief)          BRIEF="$2"; shift 2 ;;
-    --branch-from)    BRANCH_FROM="$2"; shift 2 ;;
-    --permission-mode) PERMISSION_MODE="$2"; shift 2 ;;
-    --session)        SESSION="$2"; shift 2 ;;
+    --project)        require_operand "$@"; PROJECT="$2"; shift 2 ;;
+    --slug)           require_operand "$@"; SLUG="$2"; shift 2 ;;
+    --agent)          require_operand "$@"; AGENT="$2"; shift 2 ;;
+    --brief)          require_operand "$@"; BRIEF="$2"; shift 2 ;;
+    --branch-from)    require_operand "$@"; BRANCH_FROM="$2"; shift 2 ;;
+    --permission-mode) require_operand "$@"; PERMISSION_MODE="$2"; shift 2 ;;
+    --session)        require_operand "$@"; SESSION="$2"; shift 2 ;;
     --dry-run)        DRY_RUN=true; shift ;;
     -h|--help)        usage ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -74,7 +81,7 @@ fi
 if [[ -z "$SESSION" ]]; then
   PROJECT_NAME=$(basename "$PROJECT")
   # Try to match a dmux session containing the project name first
-  SESSION=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^dmux.*${PROJECT_NAME}" | head -1 || true)
+  SESSION=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^dmux' | grep -F -- "$PROJECT_NAME" | head -1 || true)
   # Fallback: any dmux session
   if [[ -z "$SESSION" ]]; then
     SESSION=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -m1 '^dmux' || true)
@@ -87,6 +94,7 @@ if [[ -z "$SESSION" ]]; then
 fi
 
 WORKTREE_PATH="$PROJECT/.dmux/worktrees/$SLUG"
+BRANCH_NAME="dmux/$SLUG"
 
 # Bootstrap prompt: agent-specific because only Claude has /end skill
 BOOTSTRAP_COMMON="You are a dispatched field agent in a dmux worktree. Read .task-brief.md for your mission. Execute the task respecting all constraints. Check .dmux/scratchpad/ if the brief has scratchpad: true. If you discover something siblings should know, write to .dmux/scratchpad/${SLUG}.md."
@@ -123,6 +131,8 @@ run_or_print() {
   if $DRY_RUN; then
     echo "[dry-run] $*"
   else
+    # Existing call sites pass one pre-quoted command string for dry-run parity.
+    # shellcheck disable=SC2294
     eval "$@"
   fi
 }
@@ -136,14 +146,12 @@ run_or_print "cd \"$PROJECT\" && git worktree prune 2>/dev/null || true"
 if [[ -d "$WORKTREE_PATH" ]]; then
   echo "Worktree already exists at $WORKTREE_PATH"
 else
-  # Clean up stale branch from previous dispatch if it exists
-  if ! $DRY_RUN; then
-    cd "$PROJECT" && git branch -D "$SLUG" 2>/dev/null || true
-  else
-    echo "[dry-run] cd \"$PROJECT\" && git branch -D \"$SLUG\" 2>/dev/null || true"
+  if ! $DRY_RUN && git -C "$PROJECT" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+    echo "Error: Branch already exists: $BRANCH_NAME" >&2
+    exit 1
   fi
   run_or_print "mkdir -p \"$(dirname "$WORKTREE_PATH")\""
-  run_or_print "cd \"$PROJECT\" && git worktree add \"$WORKTREE_PATH\" -b \"$SLUG\" \"$BRANCH_FROM\""
+  run_or_print "cd \"$PROJECT\" && git worktree add \"$WORKTREE_PATH\" -b \"$BRANCH_NAME\" \"$BRANCH_FROM\""
 fi
 
 # 3. Copy brief into worktree
@@ -174,7 +182,7 @@ else
   # Poll pane content for up to 15 seconds, send Enter when trust prompt detected
   (
     sleep 2
-    for i in $(seq 1 60); do
+    for _ in $(seq 1 60); do
       CONTENT=$(tmux capture-pane -t "$NEWEST_PANE" -p 2>/dev/null || true)
       # Match trust prompts from any agent:
       #   Claude: "trust this folder", "Yes, I trust"

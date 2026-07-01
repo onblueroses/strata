@@ -26,6 +26,8 @@ TIMEOUT=1800
 
 # Opt-in delegation telemetry (STRATA_TELEMETRY=1). Fail-open: never changes this wrapper's exit.
 __t_start=$(date +%s 2>/dev/null || echo 0)
+# Trap invokes this function indirectly at shell exit.
+# shellcheck disable=SC2329
 __tel_emit() {
   [ "${STRATA_TELEMETRY:-0}" = "1" ] || return 0
   local emit="$STRATA_HOME/telemetry/telemetry-emit.sh"
@@ -36,14 +38,21 @@ __tel_emit() {
 }
 trap '__tel_emit $?' EXIT
 
+require_operand() {
+  if [[ $# -lt 2 ]]; then
+    echo "$LANE: $1 requires a value" >&2
+    exit 1
+  fi
+}
+
 ARGS=()
 PROMPT_FILE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --file) PROMPT_FILE="$2"; shift 2 ;;
-    --system) ARGS+=(--system "$2"); shift 2 ;;
-    --timeout) TIMEOUT="$2"; shift 2 ;;
-    --effort|--reasoning|--cache|--max-tokens) shift 2 ;;
+    --file) require_operand "$@"; PROMPT_FILE="$2"; shift 2 ;;
+    --system) require_operand "$@"; ARGS+=(--system "$2"); shift 2 ;;
+    --timeout) require_operand "$@"; TIMEOUT="$2"; shift 2 ;;
+    --effort|--reasoning|--cache|--max-tokens) require_operand "$@"; shift 2 ;;
     --raw) shift ;;
     -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \?//'; exit 0 ;;
     --) shift; ARGS+=(--prompt "$*"); break ;;
@@ -57,15 +66,19 @@ VENV_PY="$STRATA_HOME/.local/agent-venv/bin/python"
 
 MODEL_MAP="$STRATA_HOME/config/model-map.toml"
 [[ -f "$MODEL_MAP" ]] || { echo "$LANE: model-map missing: $MODEL_MAP" >&2; exit 1; }
-MODEL=$("$VENV_PY" -c "
+MODEL=$("$VENV_PY" - "$MODEL_MAP" "$LANE" <<'PY' 2>/dev/null
+import sys
 try:
     import tomllib
 except ImportError:
     import tomli as tomllib
-with open('$MODEL_MAP', 'rb') as f:
+
+model_map, lane = sys.argv[1], sys.argv[2]
+with open(model_map, 'rb') as f:
     data = tomllib.load(f)
-print(data.get('lanes', {}).get('$LANE', ''))
-" 2>/dev/null)
+print(data.get('lanes', {}).get(lane, ''))
+PY
+)
 if [[ -z "$MODEL" || "$MODEL" =~ ^\<PICK_ ]]; then
   echo "$LANE: lane '$LANE' unset or still placeholder ($MODEL)" >&2
   echo "  edit $MODEL_MAP and set [lanes].$LANE to a concrete model id" >&2
