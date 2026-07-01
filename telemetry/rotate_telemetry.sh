@@ -24,7 +24,8 @@ TEL="${STRATA_TELEMETRY_DIR:-$state_dir/telemetry}"
 
 ARCDIR="$TEL/archive"
 LOCK="$TEL/.rotate.lock"
-KEEP_ARCHIVES="${STRATA_TELEMETRY_KEEP_ARCHIVES:-12}"  # gzip files retained per base before pruning
+# Documented TELEMETRY_* names take precedence; STRATA_* remains a compatibility fallback.
+KEEP_ARCHIVES="${TELEMETRY_KEEP_ARCHIVES:-${STRATA_TELEMETRY_KEEP_ARCHIVES:-12}}"  # gzip files retained per base before pruning
 
 mkdir -p "$ARCDIR" 2>/dev/null || exit 0
 
@@ -53,13 +54,14 @@ rotate_one() {
   fi
 
   # prune oldest archives for this base beyond KEEP_ARCHIVES
-  ls -1t "$ARCDIR/${base}-"*.jsonl.gz 2>/dev/null | tail -n +$(( KEEP_ARCHIVES + 1 )) \
-    | while read -r old; do rm -f "$old" 2>/dev/null; done
+  find "$ARCDIR" -maxdepth 1 -type f -name "${base}-*.jsonl.gz" -printf '%T@ %p\n' 2>/dev/null \
+    | sort -rn | tail -n +$(( KEEP_ARCHIVES + 1 )) | cut -d' ' -f2- \
+    | while IFS= read -r old; do rm -f "$old" 2>/dev/null; done
 }
 
 # events.jsonl grows fastest (many events/session); keep a large recent window.
-rotate_one "$TEL/events.jsonl" "${STRATA_TELEMETRY_EVENTS_MB:-50}" "${STRATA_TELEMETRY_EVENTS_KEEP:-150000}"
+rotate_one "$TEL/events.jsonl" "${TELEMETRY_EVENTS_MB:-${STRATA_TELEMETRY_EVENTS_MB:-50}}" "${TELEMETRY_EVENTS_KEEP:-${STRATA_TELEMETRY_EVENTS_KEEP:-150000}}"
 # session-metrics.jsonl is one row/session and dedups by sid on read; keep the last N sessions.
-rotate_one "$TEL/session-metrics.jsonl" "${STRATA_TELEMETRY_METRICS_MB:-20}" "${STRATA_TELEMETRY_METRICS_KEEP:-5000}"
+rotate_one "$TEL/session-metrics.jsonl" "${TELEMETRY_METRICS_MB:-${STRATA_TELEMETRY_METRICS_MB:-20}}" "${TELEMETRY_METRICS_KEEP:-${STRATA_TELEMETRY_METRICS_KEEP:-5000}}"
 
 exit 0

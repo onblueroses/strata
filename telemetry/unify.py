@@ -23,6 +23,25 @@ import argparse
 import subprocess
 
 
+def _has_git_metadata_ancestor(path):
+    current = os.path.realpath(path)
+    while True:
+        marker = os.path.join(current, ".git")
+        try:
+            if os.path.isfile(marker):
+                return True
+            if os.path.isdir(marker):
+                entries = set(os.listdir(marker))
+                if "HEAD" in entries or "commondir" in entries:
+                    return True
+        except OSError:
+            return True
+        parent = os.path.dirname(current)
+        if parent == current:
+            return False
+        current = parent
+
+
 def out_path_is_safe(path):
     """Refuse dumping the unified stream (it can carry raw query text) to a git-TRACKED path;
     the install tree may be a tracked repo with a remote. Refuse a symlinked destination and
@@ -34,24 +53,43 @@ def out_path_is_safe(path):
         return False  # a symlinked export destination is refused outright
     target = os.path.realpath(raw)
     parent = os.path.dirname(target) or "."
+    if not os.path.isdir(parent):
+        return False
+    git_env = os.environ.copy()
+    for key in (
+        "GIT_CEILING_DIRECTORIES",
+        "GIT_COMMON_DIR",
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+    ):
+        git_env.pop(key, None)
     try:
-        inside = subprocess.run(
-            ["git", "-C", parent, "rev-parse", "--is-inside-work-tree"],
+        top = subprocess.run(
+            ["git", "-C", parent, "rev-parse", "--show-toplevel"],
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=5,
+            env=git_env,
         )
     except Exception:
-        return False  # cannot determine repo status -> fail closed
-    if inside.returncode != 0 or inside.stdout.strip() != "true":
-        return True  # outside any git work tree -> safe to write
+        return not _has_git_metadata_ancestor(parent)
+    if top.returncode != 0:
+        return not _has_git_metadata_ancestor(parent)
+    toplevel = top.stdout.strip()
+    if not toplevel:
+        return False
+    rel_target = os.path.relpath(target, os.path.realpath(toplevel))
+    if rel_target == ".." or rel_target.startswith(f"..{os.sep}"):
+        return False
     try:
         chk = subprocess.run(
-            ["git", "-C", parent, "check-ignore", "-q", target],
+            ["git", "-C", toplevel, "check-ignore", "-q", "--", rel_target],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=5,
+            env=git_env,
         )
     except Exception:
         return False  # inside a work tree and git failed -> fail closed
@@ -67,20 +105,10 @@ TEL_DIR = os.environ.get("STRATA_TELEMETRY_DIR") or f"{STATE_DIR}/telemetry"
 
 SOURCES = {
     "injection-log": f"{STRATA_HOME}/reference/.router-eval/injection-log.jsonl",
-    "lifecycle": f"{STATE_DIR}/logs/lifecycle-events.jsonl",
     "skill-runs": f"{STATE_DIR}/skill-runs.jsonl",
     "live": f"{TEL_DIR}/events.jsonl",  # MUST equal the emitter's sink
 }
 SESSION_EVENTS_GLOB = f"{STATE_DIR}/session-events-*.jsonl"
-
-LIFECYCLE_KIND = {
-    "PostToolUseFailure": "tool_fail",
-    "SubagentStop": "subagent_stop",
-    "SessionEnd": "session_end",
-    "TaskCreated": "task_created",
-    "TaskCompleted": "task_completed",
-    "PostCompact": "post_compact",
-}
 
 
 def norm(source, obj):
@@ -99,16 +127,6 @@ def norm(source, obj):
             "work_context": obj.get("work_context"),
             "score": obj.get("score"),
             "plen": obj.get("plen"),
-        }
-    if source == "lifecycle":
-        ev = obj.get("event", "unknown")
-        return {
-            "ts": obj.get("ts"),
-            "sid": obj.get("session_id"),
-            "source": source,
-            "kind": LIFECYCLE_KIND.get(
-                ev, ev.lower() if isinstance(ev, str) else "unknown"
-            ),
         }
     if source == "skill-runs":
         return {
@@ -177,7 +195,11 @@ def main():
 
     events.sort(key=lambda e: str(e.get("ts")))
 
-    out = open(args.out, "w") if args.out else sys.stdout
+    try:
+        out = open(args.out, "w") if args.out else sys.stdout
+    except OSError as exc:
+        print(f"unify.py: cannot open --out {args.out}: {exc}", file=sys.stderr)
+        return 1
     for e in events:
         out.write(json.dumps(e) + "\n")
     if args.out:
@@ -196,7 +218,8 @@ def main():
         )
         print("  by source:", dict(sources.most_common()), file=sys.stderr)
         print("  by kind:  ", dict(kinds.most_common()), file=sys.stderr)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
