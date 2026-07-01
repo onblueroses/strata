@@ -14,11 +14,11 @@ Goal: Install a working Husky pre-commit gate in the current JS/TS repo — lint
 
 Success means:
   - The repo has package.json and a detected package manager (npm/pnpm/yarn/bun)
-  - .husky/pre-commit runs lint-staged, then typecheck, then test (lines for absent scripts dropped + reported)
+  - .husky/pre-commit contains and runs lint-staged, then typecheck, then test
   - .lintstagedrc, a Prettier config, and the `prepare: "husky"` script all exist
-  - `npx lint-staged` runs clean as a smoke test
+  - the hook body is verified for all three stages before `./.husky/pre-commit` or the exact hook commands run clean as the smoke test
 
-Stop when: the gate is installed, the smoke test passes, and the user is told which scripts (if any) were skipped.
+Stop when: the gate is installed, the hook includes and passes lint-staged, typecheck, and test, and the original goal includes both typecheck and test.
 ```
 
 ## Scope: JS/TS only
@@ -62,7 +62,7 @@ npm run typecheck
 npm run test
 ```
 
-Adapt the runner to the detected package manager. Read package.json `scripts` first: when `typecheck` or `test` is absent, drop that line and tell the user which gate was skipped and how to add the missing script. The full-project typecheck and test are the load-bearing reason this gate exists, so name explicitly any one you had to omit.
+Adapt the runner to the detected package manager. Read package.json `scripts` first. Treat any missing `typecheck` or `test` script as a blocking gap under this skill's original goal: add repo-appropriate scripts with the user, or confirm the user wants a downgraded lint-staged-only goal. Report the original goal successful only after both scripts exist and both hook commands run. Call a downgraded result lint-staged-only so it is distinct from the full typecheck/test gate.
 
 ### 5. Write `.lintstagedrc`
 
@@ -98,7 +98,10 @@ Check each invariant:
 - `.lintstagedrc` exists
 - the `prepare` script in package.json reads `"husky"`
 - a Prettier config exists
-- `npx lint-staged` runs clean as a smoke test
+- `typecheck` and `test` scripts exist in package.json for the original goal
+- `.husky/pre-commit` contains the three stage commands in order: lint-staged, typecheck, test
+- Report any hook missing typecheck or test as a blocking gap, even when direct hook execution exits 0
+- after the stage-order check passes, run `./.husky/pre-commit` from the repo root; when direct hook execution is unavailable, run the exact command lines from `.husky/pre-commit` in order and require each to pass
 
 ### 8. Commit (ask first)
 
@@ -110,5 +113,3 @@ Ask the user before committing rather than auto-committing. When they say go, st
 - `prettier --ignore-unknown` keeps the staged pass from choking on binary or unparseable files.
 - The hook order is intentional: lint-staged is fast and staged-only, so it runs first; the full typecheck and test run after, since they are the slower, higher-value gate.
 - When the repo already has a Husky setup or a different pre-commit framework (lefthook, simple-git-hooks, pre-commit), surface that to the user and ask before layering Husky on top; do not stack two gates blindly.
-
-Ported from mattpocock/skills (skills/misc/setup-pre-commit), release mattpocock-skills@1.0.0.
