@@ -221,7 +221,15 @@ def main() -> int:
     if args.prompt:
         prompt = args.prompt
     elif args.prompt_file:
-        prompt = Path(args.prompt_file).read_text()
+        try:
+            prompt = Path(args.prompt_file).read_text()
+        except OSError as e:
+            detail = e.strerror or str(e)
+            print(
+                f"strata-agent: cannot read prompt file '{args.prompt_file}': {detail}",
+                file=sys.stderr,
+            )
+            return 1
     elif not sys.stdin.isatty():
         prompt = sys.stdin.read()
     else:
