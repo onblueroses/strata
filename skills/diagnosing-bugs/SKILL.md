@@ -157,5 +157,3 @@ Required before declaring done:
 **Then ask: what would have prevented this bug?** When the answer involves architectural change (no good test seam, tangled callers, hidden coupling), hand off to the `/improve-codebase-architecture` skill with the specifics (the seam that was missing, the callers that were tangled, the coupling that hid the bug). Make the recommendation **after** the fix is in, not before; you have more information now than when you started.
 
 Run `/verify` as a post-implementation self-check on the fix and regression test, then `/review` before committing.
-
-Ported from mattpocock/skills (skills/engineering/diagnosing-bugs), release mattpocock-skills@1.0.0.

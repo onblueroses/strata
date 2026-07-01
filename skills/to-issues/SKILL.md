@@ -121,5 +121,3 @@ Or "None - can start immediately" when there are no blockers.
 ## Handoff
 
 After the user publishes the issues, return the list of created issue numbers and their titles so the user can see the fan-out at a glance. The issues are the deliverable; implementation happens elsewhere, grabbed slice by slice.
-
-Ported from mattpocock/skills (skills/engineering/to-issues), release mattpocock-skills@1.0.0.

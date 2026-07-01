@@ -83,5 +83,3 @@ When the user is around, the capture is a quick conversation; when they are not,
 - **/decision-mapping** (upstream): its Prototype ticket invokes this skill; the ticket names the question, this skill answers it and feeds the captured answer back into the decision map.
 - **/frontend-design** and **/mobile-preview** (UI branch): generate and preview the variations.
 - **/decision-mapping** (alternative path): when the question is walkable by reasoning it through rather than running it, resolve it as a Discuss ticket in the decision map instead of building a prototype.
-
-Ported from mattpocock/skills (skills/engineering/prototype), release mattpocock-skills@1.0.0.

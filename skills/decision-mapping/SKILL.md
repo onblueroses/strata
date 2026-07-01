@@ -96,5 +96,3 @@ Often the initial /domain-modeling interview surfaces no fog: no unresolved tick
 When they skip it, recommend either implementing directly or using /spec (or /to-prd) to schedule a multi-session implementation.
 
 ## Provenance
-
-Ported from mattpocock/skills (skills/in-progress/decision-mapping), release mattpocock-skills@1.0.0.

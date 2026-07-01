@@ -217,5 +217,3 @@ Increment the number each time. Records drive spacing: a record marked `needs-re
 6. Build or update any reference document the lesson leans on; keep the glossary authoritative.
 7. Open the lesson for the user via a CLI command when possible, and run the feedback loop.
 8. Write the learning record; update `MISSION.md`, `RESOURCES.md`, and `NOTES.md` for anything that changed.
-
-Ported from mattpocock/skills (skills/productivity/teach), release mattpocock-skills@1.0.0.

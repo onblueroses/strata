@@ -41,5 +41,3 @@ Three rules are load-bearing; hold them even under pressure to just make it comp
 The `/collect` flow merges parallel worktree branches back to the base and emits `# If conflicts: resolve, then git add . && git commit` with no procedure behind "resolve". This skill is that procedure: when a `/collect` merge step conflicts, run the five steps above on it before moving to the next branch in the merge order. The branches are independent agent work, so step 2 (recover intent) leans on each branch's `.task-result.md` Surprises section and commit history rather than tickets.
 
 After a clean resolution, if your workspace pre-authorizes force-push (warn first only when the target is `main` or `master`), a finished rebase can be pushed without a separate confirmation.
-
-Ported from mattpocock/skills (skills/engineering/resolving-merge-conflicts), release mattpocock-skills@1.0.0.

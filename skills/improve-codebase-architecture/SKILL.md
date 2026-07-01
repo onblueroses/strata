@@ -194,5 +194,3 @@ Plain English, concise; the architectural nouns and verbs come straight from `/c
 No hedging, no throat-clearing, no "it's worth noting that…". When a sentence could be a bullet, make it a bullet. When a bullet could be cut, cut it. When a term is missing from the `/codebase-design` glossary, reach for one that is there before inventing a new one.
 
 </details>
-
-Ported from mattpocock/skills (skills/engineering/improve-codebase-architecture), release mattpocock-skills@1.0.0.

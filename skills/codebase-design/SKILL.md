@@ -116,5 +116,3 @@ These two extensions ship in the upstream skill but were left out of this port; 
 
 - **Deepening a cluster given its dependencies.** Sort the cluster's dependencies into categories, hold seam discipline (depend on the interface, not the concrete adapter), and prefer replace-don't-layer testing: swap a real adapter for a fake at the existing seam instead of wrapping the module in a new test-only shell.
 - **Designing the interface twice.** Before locking a shape, sketch the interface several radically different ways (your first idea is rarely the best, per Ousterhout's "Design It Twice"); compare the candidates on depth, locality, and seam placement, then pick. For a high-stakes interface, `/best-of-n` spins these candidates up in parallel and judges them.
-
-Ported from mattpocock/skills (skills/engineering/codebase-design), release mattpocock-skills@1.0.0.
