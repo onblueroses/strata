@@ -33,6 +33,18 @@ HOOK = os.path.join(STRATA_HOME, "hooks", "context-doc-router.py")
 DOC_LINE = re.compile(r"^=== (.+?) ===")
 _seq = [0]
 
+# Hermetic by construction: every hook execution this process spawns (invoke() subprocess)
+# or imports in-proc reads these env overrides, so gauntlet runs write a scratch log and
+# see an EMPTY suppression registry -- never the real injection-log.jsonl, and never live
+# registry contents (which would flip R15's expected signals if a fixture doc were ever
+# listed in production). R15d layers its own registry on top via module attrs.
+_HERMETIC_DIR = tempfile.mkdtemp(prefix="gauntlet-hermetic-")
+os.environ["DOC_ROUTER_LOG"] = os.path.join(_HERMETIC_DIR, "injection-log.jsonl")
+_hermetic_sup = os.path.join(_HERMETIC_DIR, "suppressed-docs.json")
+with open(_hermetic_sup, "w") as _fh:
+    json.dump({"suppressed": []}, _fh)
+os.environ["DOC_ROUTER_SUPPRESS"] = _hermetic_sup
+
 
 def _uniq_session():
     """Session id distinct in its first 8 chars so the real hook's dedup
@@ -595,21 +607,25 @@ def battery_regression():
             os.unlink(R._seen_path(s))
         except Exception:
             pass
+    # 4th (lowest-scored) candidate is dropped by MAX_INJECT in d1 and must reappear in
+    # d2. Uses a doc that ships in this skeleton: an earlier fixture named a since-removed
+    # vendor doc, which valid_doc correctly refused to inject (R6's drift guard), making
+    # this test fail on a stale reference rather than a routing regression.
     cand4 = {
         "rust-ai-project-setup.md": 0.9,
         "eval-methodology.md": 0.8,
         "mcp-development.md": 0.7,
-        "vastai-operations.md": 0.6,
+        "model-delegation.md": 0.6,
     }
     R.cwd_path_docs = lambda cwd: dict(cand4)
     R.recent_edit_docs = lambda tx: {}
     R.lex_docs = lambda p, c: {}
     d1 = _run_main_inproc(R, {"prompt": "x", "session_id": sess})
-    R.cwd_path_docs = lambda cwd: {"vastai-operations.md": 0.6}
+    R.cwd_path_docs = lambda cwd: {"model-delegation.md": 0.6}
     d2 = _run_main_inproc(R, {"prompt": "x", "session_id": sess})
     chk(
         "R4 dropped doc reappears later (no silent loss)",
-        "vastai-operations.md" not in d1 and "vastai-operations.md" in d2,
+        "model-delegation.md" not in d1 and "model-delegation.md" in d2,
         f"d1={d1} d2={d2}",
     )
     try:
@@ -846,9 +862,18 @@ def battery_regression():
     # file via the in-proc module so the real injection-log is untouched.
     fd_log, logp = tempfile.mkstemp(suffix=".jsonl", prefix="gaunt-zerolog-")
     os.close(fd_log)
+    # Point the hook at a scratch suppression registry this test controls: empty for
+    # (a)-(c) so they suppress nothing, then loaded with one doc for (d). Isolates the
+    # test from both the live registry and the module's hermetic-env default.
+    fd_sup, supp = tempfile.mkstemp(suffix=".json", prefix="gaunt-suppress-")
+    os.close(fd_sup)
+    with open(supp, "w") as sf:
+        json.dump({"suppressed": []}, sf)
     old_log = R.LOG
+    old_sup = R.SUPPRESS_FILE
     try:
         R.LOG = logp
+        R.SUPPRESS_FILE = supp
         # (a) true zero-route: nothing matches -> one doc:null with signal "none"
         _run_main_inproc(
             R, {"prompt": "zzz qqq nonsense", "session_id": _uniq_session()}
@@ -887,9 +912,63 @@ def battery_regression():
             and sigs == ["deduped", "none"],
             f"true_zero_sig={true_zero[0].get('signal') if true_zero else None} null_sigs={sigs} routed={routed_logged}",
         )
+        # (d) registry-suppressed sole cause: the routed doc is in the suppression
+        # registry and nothing else matches -> doc:null with signal "suppressed" (NOT
+        # "none"/"deduped"), so suppression cost stays distinguishable from a true
+        # zero-route in every downstream rate.
+        with open(supp, "w") as sf:
+            json.dump({"suppressed": ["rust-ai-project-setup.md"]}, sf)
+        n_before = len([ln for ln in open(logp)])
+        _run_main_inproc(
+            R,
+            {
+                "prompt": "set up cargo clippy lints",
+                "cwd": "/home/user/proj",
+                "session_id": _uniq_session(),
+            },
+        )
+        rows2 = [json.loads(ln) for ln in open(logp)][n_before:]
+        chk(
+            "R15d registry-suppressed sole cause logs signal=suppressed",
+            len(rows2) == 1
+            and rows2[0].get("doc") is None
+            and rows2[0].get("signal") == "suppressed",
+            f"rows={rows2}",
+        )
+        # (e) suppressed AND mandatory: a registry-suppressed doc that a present marker
+        # force-injects is re-added and routes, so it must NOT carry a "suppressed" field
+        # (the drop did not happen). A real cwd holding Cargo.toml fires the rust MANDATORY
+        # marker; dropped_suppressed is refiltered after the mandatory pass.
+        marker_dir = tempfile.mkdtemp(prefix="gaunt-mandatory-")
+        open(os.path.join(marker_dir, "Cargo.toml"), "w").close()
+        with open(supp, "w") as sf:
+            json.dump({"suppressed": ["rust-ai-project-setup.md"]}, sf)
+        n_before2 = len([ln for ln in open(logp)])
+        _run_main_inproc(
+            R,
+            {
+                "prompt": "zzz qqq nonsense",
+                "cwd": marker_dir,
+                "session_id": _uniq_session(),
+            },
+        )
+        rows3 = [json.loads(ln) for ln in open(logp)][n_before2:]
+        rust_rows = [r for r in rows3 if r.get("doc") == "rust-ai-project-setup.md"]
+        try:
+            os.unlink(os.path.join(marker_dir, "Cargo.toml"))
+            os.rmdir(marker_dir)
+        except Exception:
+            pass
+        chk(
+            "R15e suppressed+mandatory doc routes without a suppressed field",
+            len(rust_rows) == 1 and "suppressed" not in rust_rows[0],
+            f"rows3={rows3}",
+        )
     finally:
         R.LOG = old_log
+        R.SUPPRESS_FILE = old_sup
         os.unlink(logp)
+        os.unlink(supp)
 
     # R16: a non-string session_id (numeric JSON value) must NOT crash -- session is
     # coerced to str at the source, so dedup-flag and log-row slicing stay safe and the

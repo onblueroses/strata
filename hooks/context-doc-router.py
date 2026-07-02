@@ -28,7 +28,32 @@ STRATA_HOME = os.environ.get("STRATA_HOME") or os.path.dirname(
 REF = os.path.join(STRATA_HOME, "reference")
 EVAL = os.path.join(REF, ".router-eval")
 LEX_CACHE = os.path.join(EVAL, ".lex-cache.json")
-LOG = os.path.join(EVAL, "injection-log.jsonl")
+# Env overrides exist for the gauntlet only: hermetic runs point both at scratch files
+# so tests never write the real log or depend on live registry contents. Unset in
+# production (the hook chain sets neither), so the defaults below are the live paths.
+LOG = os.environ.get("DOC_ROUTER_LOG") or os.path.join(EVAL, "injection-log.jsonl")
+SUPPRESS_FILE = os.environ.get("DOC_ROUTER_SUPPRESS") or os.path.join(
+    EVAL, "suppressed-docs.json"
+)
+
+
+def load_suppressed():
+    # Data-driven suppression of measured-dead docs: a doc that keeps routing but a
+    # retrieval eval shows is never actually used can be listed here to drop it from
+    # routing. A registry FILE, not a hardcoded set, so the list is tunable without code
+    # edits and revisitable once a real retrieval eval exists. Ships EMPTY in this
+    # skeleton; populate it from your own measured injection-log. Fail-open:
+    # unreadable/malformed -> suppress nothing. A hand-edited non-list (e.g. a bare
+    # string) would iterate as characters, so guard the type before comprehending.
+    try:
+        with open(SUPPRESS_FILE) as f:
+            d = json.load(f)
+        names = d.get("suppressed")
+        if not isinstance(names, list):
+            return set()
+        return {n for n in names if isinstance(n, str)}
+    except Exception:
+        return set()
 
 
 def _lex_thresh():
@@ -379,10 +404,20 @@ def main():
         for name, score in src.items():
             if name not in merged or score > merged[name][0]:
                 merged[name] = (score, sig)
+    # measured-dead docs drop out here, BEFORE mandatory: an explicit context-marker
+    # force-inject outranks the suppression registry by design.
+    suppressed = load_suppressed()
+    dropped_suppressed = [n for n in merged if n in suppressed]
+    for n in dropped_suppressed:
+        del merged[n]
     # mandatory force-inject (keyword-independent)
     for doc, (marker, kind) in MANDATORY.items():
         if kind == "marker" and cwd and has_marker(cwd, marker):
             merged.setdefault(doc, (0.95, "mandatory"))
+    # A doc that was suppressed but then mandatory-reinjected is NOT actually dropped;
+    # keep only docs still absent from the final candidates so the "suppressed"
+    # signal/field never records a drop that did not happen.
+    dropped_suppressed = [n for n in dropped_suppressed if n not in merged]
 
     flag = _seen_path(session)
     seen = read_seen(flag)
@@ -400,21 +435,29 @@ def main():
         # doc already reached the model, NOT a fallback candidate); conflating them would
         # inflate the rate the decision rests on. Skip blank/whitespace prompts.
         if prompt.strip():
-            zero_signal = "deduped" if any(valid_doc(n) for n in merged) else "none"
+            # Three distinguishable absences (conflating them corrupts the zero-route
+            # rate any fallback decision rests on): "deduped" = a valid doc matched but
+            # already fired this session; "suppressed" = only registry-dead docs matched
+            # (sole cause; co-injection cases ride the "suppressed" field on injected
+            # rows below); "none" = nothing valid matched, a true zero-route / fallback
+            # candidate. Keyed on valid_doc, NOT raw merged: an invalid/drift match must
+            # not masquerade as deduped.
+            if any(valid_doc(n) for n in merged):
+                zero_signal = "deduped"
+            elif any(valid_doc(n) for n in dropped_suppressed):
+                zero_signal = "suppressed"
+            else:
+                zero_signal = "none"
             log_rows(
                 [
                     {
                         "ts": datetime.datetime.now().isoformat(timespec="seconds"),
                         "session": session[:8],
                         "doc": None,
-                        # "deduped" only when a VALID doc matched but every one was
-                        # suppressed by seen-state (ranked is empty, so any valid match
-                        # was non-fresh); else "none" (nothing valid matched -> a true
-                        # zero-route / fallback candidate). Keyed on valid_doc, NOT raw
-                        # merged: an invalid/drift match must not masquerade as deduped.
                         "signal": zero_signal,
                         "work_context": zero_signal,
                         "plen": len(prompt),
+                        "cwd": cwd[-120:],
                     }
                 ]
             )
@@ -439,8 +482,16 @@ def main():
         seen[name] = score
     write_seen(flag, seen)
 
-    # persistent log (observability) -- one row per fired doc
+    # persistent log (observability) -- one row per fired doc (prompt text never logged;
+    # plen + cwd only). cwd makes the matched deterministic rule derivable offline (the
+    # cwd/edit rule tables are first-match static), so a cwd-path injection stays
+    # attributable to a specific rule after the fact. The "suppressed" field carries
+    # registry drops that co-occurred with an injection -- without it the zero-route
+    # branch alone undercounts suppression cost (a doc dropped beside a successful
+    # injection would be logged nowhere). Field, not extra rows: unify counts doc/null
+    # rows into its rate denominators, so a new row kind would skew every fraction.
     ts = datetime.datetime.now().isoformat(timespec="seconds")
+    sup_note = {"suppressed": dropped_suppressed} if dropped_suppressed else {}
     log_rows(
         [
             {
@@ -451,6 +502,8 @@ def main():
                 "work_context": sig,
                 "score": score,
                 "plen": len(prompt),
+                "cwd": cwd[-120:],
+                **sup_note,
             }
             for name, (score, sig) in ranked
         ]
