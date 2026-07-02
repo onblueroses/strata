@@ -108,6 +108,9 @@ SOURCES = {
     "skill-runs": f"{STATE_DIR}/skill-runs.jsonl",
     "live": f"{TEL_DIR}/events.jsonl",  # MUST equal the emitter's sink
 }
+# Sink-append failures the emitter could not write to the live stream land here as
+# already-enveloped telemetry_error rows; fold them in so a dropping instrument surfaces.
+TELEMETRY_ERRORS = f"{TEL_DIR}/telemetry-errors.jsonl"
 SESSION_EVENTS_GLOB = f"{STATE_DIR}/session-events-*.jsonl"
 
 
@@ -117,7 +120,7 @@ def norm(source, obj):
         return None
     if source == "injection-log":
         doc = obj.get("doc")
-        return {
+        e = {
             "ts": obj.get("ts"),
             "sid": obj.get("session"),
             "source": source,
@@ -128,6 +131,12 @@ def norm(source, obj):
             "score": obj.get("score"),
             "plen": obj.get("plen"),
         }
+        # router additions: cwd (matched-rule attribution) and suppressed (registry drops
+        # on co-injection rows); optional so old rows without them stay byte-stable.
+        for k in ("cwd", "suppressed"):
+            if k in obj:
+                e[k] = obj[k]
+        return e
     if source == "skill-runs":
         return {
             "ts": obj.get("ts"),
@@ -192,6 +201,11 @@ def main():
             e = norm("session-events", obj)
             if e and e.get("ts"):
                 events.append(e)
+    for obj in read_jsonl(TELEMETRY_ERRORS):
+        # already enveloped (ts/sid/kind/source) like events.jsonl -> norm("live") passes through
+        e = norm("live", obj)
+        if e and e.get("ts"):
+            events.append(e)
 
     events.sort(key=lambda e: str(e.get("ts")))
 
