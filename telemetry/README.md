@@ -67,11 +67,16 @@ Fail-open append helper any hook can call. `json_payload` is a JSON object strin
 changes a caller's exit code. It resolves `$TEL_DIR` per the contract, creates it on demand, and
 appends one enveloped row. Uses `jq` when present, with a `jq`-less string-splice fallback.
 
+When the sink append itself fails (unwritable file, full disk), it records a `telemetry_error` row
+(`failed_kind` = the kind that could not be written) on `$TEL_DIR/telemetry-errors.jsonl` rather than
+swallowing the drop silently, so a failing instrument stays observable; that side-stream write is
+itself fail-open. `unify.py` folds the side-stream back in.
+
 ### `unify.py`
 
-Read-time merger: folds `$TEL_DIR/events.jsonl` (plus any legacy enveloped JSONL streams the install
-configures under `$STATE_DIR`) into one time-sorted stream on the common envelope, so analysis reads
-one surface. Non-invasive (legacy sources keep their own logs), idempotent, and best-effort: it
+Read-time merger: folds `$TEL_DIR/events.jsonl` and the `$TEL_DIR/telemetry-errors.jsonl` side-stream
+(plus any legacy enveloped JSONL streams the install configures under `$STATE_DIR`) into one
+time-sorted stream on the common envelope, so analysis reads one surface. Non-invasive (legacy sources keep their own logs), idempotent, and best-effort: it
 skips a malformed or partial line and drops an unreadable stream rather than aborting the merge.
 
 - `python3 unify.py` writes the normalized stream to stdout.

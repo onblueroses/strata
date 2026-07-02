@@ -40,7 +40,12 @@ rotate_one() {
   local bytes; bytes=$(stat -c%s "$f" 2>/dev/null || echo 0)
   [ "$bytes" -gt $(( thresh_mb * 1024 * 1024 )) ] || return 0
   local total; total=$(wc -l < "$f" 2>/dev/null || echo 0)
-  [ "$total" -gt "$keep" ] || return 0
+  # Trip on SIZE alone (the MB gate above already fired): a file can cross the byte
+  # threshold with fewer lines than `keep` (large enveloped rows), and the old
+  # line-count gate then never rotated it. Keep total/2 when below the keep bar; guard
+  # the empty-file edge so head/tail math stays valid.
+  [ "$total" -gt 0 ] || return 0
+  [ "$total" -gt "$keep" ] || keep=$(( total / 2 ))
 
   local base ts arc
   base=$(basename "$f" .jsonl)
@@ -63,5 +68,8 @@ rotate_one() {
 rotate_one "$TEL/events.jsonl" "${TELEMETRY_EVENTS_MB:-${STRATA_TELEMETRY_EVENTS_MB:-50}}" "${TELEMETRY_EVENTS_KEEP:-${STRATA_TELEMETRY_EVENTS_KEEP:-150000}}"
 # session-metrics.jsonl is one row/session and dedups by sid on read; keep the last N sessions.
 rotate_one "$TEL/session-metrics.jsonl" "${TELEMETRY_METRICS_MB:-${STRATA_TELEMETRY_METRICS_MB:-20}}" "${TELEMETRY_METRICS_KEEP:-${STRATA_TELEMETRY_METRICS_KEEP:-5000}}"
+# telemetry-errors.jsonl grows only when the live sink fails; a small cap bounds it even if
+# events.jsonl is persistently unwritable while the dir stays writable.
+rotate_one "$TEL/telemetry-errors.jsonl" "${TELEMETRY_ERRORS_MB:-${STRATA_TELEMETRY_ERRORS_MB:-5}}" "${TELEMETRY_ERRORS_KEEP:-${STRATA_TELEMETRY_ERRORS_KEEP:-2000}}"
 
 exit 0
