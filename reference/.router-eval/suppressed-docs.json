@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "purpose": "Data-driven suppression of measured-dead reference docs: a doc that keeps routing but a retrieval measurement shows is never actually used can be dropped from routing by listing its basename here.",
+    "semantics": "docs listed in 'suppressed' are removed from routing AFTER signal merge and BEFORE mandatory force-inject; a MANDATORY marker force-inject bypasses this registry; manual Read is unaffected; the loader is fail-open (a missing/malformed file suppresses nothing).",
+    "how_to_populate": "leave empty until you have a real retrieval eval. Then, from your own gitignored reference/.router-eval/injection-log.jsonl, list basenames with many injections and zero downstream use; re-measure the zero-route 'suppressed' signal after each change.",
+    "ships_empty": true
+  },
+  "suppressed": []
+}
