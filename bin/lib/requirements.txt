@@ -1,8 +1,4 @@
-# Strata lane agent dependencies. Installed into $STRATA_HOME/.local/agent-venv
-# by bin/strata-init. Add provider SDKs as you bind new lanes.
+# Strata lane agent dependency. Installed into $STRATA_HOME/.local/agent-venv
+# by bin/strata-init.
 
 pydantic-ai>=0.0.20
-anthropic>=0.40.0
-openai>=1.50.0
-google-genai>=0.3.0
-tomli>=2.0.0 ; python_version < "3.11"

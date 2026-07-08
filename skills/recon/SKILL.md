@@ -91,7 +91,7 @@ All wave prompts, outputs, sentinels, corpus, and the final brief live under `$R
 
 **Note on placeholders.** Curly-brace tokens in this skill's code snippets (e.g. `{slug}`, `{domain}`, `{topic}`) are template placeholders to substitute before executing — `$SLUG`, `$RUN_DIR`, and concrete domain ids should appear in the actual command. Read them as `${VAR}` in your head.
 
-**Caching for repeated recon.** When the same slug runs again within a few hours (revisiting the same topic, retrying after a clarification, parallel branches of investigation), append `--cache rw` to the fast Wave 1/2 dispatches. The wrapper keys on `sha256(model | prompt)`, so identical prompts hit cached responses for sub-cent cost. Skip `--cache` for Wave 3 (the corpus changes each run) and skip it when the repo has likely moved (compare `git rev-parse HEAD` before reusing).
+**Wrapper cache flag.** The lane wrappers accept `--cache MODE` only as a compatibility no-op for older skill bodies. Do not expect wrapper-level response reuse from recon dispatches.
 
 **Shell-safe identifiers.** Domain names in Wave 1 contain spaces and `&` ("Architecture & file map"). Map each domain to a slug-style `domain_id` before using it in a path:
 

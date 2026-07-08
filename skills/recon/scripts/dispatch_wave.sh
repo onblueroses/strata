@@ -9,8 +9,11 @@
 # Usage:
 #   bash dispatch_wave.sh \
 #     --run-dir DIR --wave WAVE_LABEL --wrapper fast|strong \
-#     [--deadline N_SECS] [--no-progress N_SECS] [--cache rw|read|write|off] \
+#     [--deadline N_SECS] [--no-progress N_SECS] [--cache MODE] \
 #     PROMPT_FILE [PROMPT_FILE ...]
+#
+# --cache is forwarded only because lane wrappers accept it as a compatibility
+# no-op; this helper does not provide response caching.
 #
 # For each PROMPT_FILE foo.prompt.md the script writes:
 #   foo.out      — stdout+stderr from the wrapper
