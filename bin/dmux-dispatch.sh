@@ -8,11 +8,8 @@ usage() {
   cat <<'EOF'
 Usage: dmux-dispatch.sh --project DIR --slug NAME --agent AGENT --brief FILE [OPTIONS]
 
-Required:
-  --project DIR          Git repository root
-  --slug NAME            Worktree name; branch is dmux/NAME
-  --agent AGENT          Agent CLI to launch (claude, codex, gemini, etc.)
-  --brief FILE           Path to .task-brief.md file
+Creates worktree DIR/.dmux/worktrees/NAME on branch dmux/NAME, copies the
+brief, and launches AGENT (claude, codex, gemini, ...) in a new tmux pane.
 
 Options:
   --branch-from BRANCH   Base branch (default: main)
@@ -139,10 +136,8 @@ run_or_print() {
 
 echo "=== dmux-dispatch: $SLUG ($AGENT) ==="
 
-# 1. Prune stale worktrees
 run_or_print "cd \"$PROJECT\" && git worktree prune 2>/dev/null || true"
 
-# 2. Create worktree
 if [[ -d "$WORKTREE_PATH" ]]; then
   echo "Worktree already exists at $WORKTREE_PATH"
 else
@@ -154,10 +149,8 @@ else
   run_or_print "cd \"$PROJECT\" && git worktree add \"$WORKTREE_PATH\" -b \"$BRANCH_NAME\" \"$BRANCH_FROM\""
 fi
 
-# 3. Copy brief into worktree
 run_or_print "cp \"$BRIEF\" \"$WORKTREE_PATH/.task-brief.md\""
 
-# 4. Ensure scratchpad directory exists and is shared across worktrees
 run_or_print "mkdir -p \"$PROJECT/.dmux/scratchpad\""
 # Symlink worktree's .dmux/scratchpad to the shared one so siblings can read each other's notes
 if [[ ! -L "$WORKTREE_PATH/.dmux/scratchpad" ]]; then
@@ -165,12 +158,11 @@ if [[ ! -L "$WORKTREE_PATH/.dmux/scratchpad" ]]; then
   run_or_print "ln -sfn \"$PROJECT/.dmux/scratchpad\" \"$WORKTREE_PATH/.dmux/scratchpad\""
 fi
 
-# 4b. Add protocol files to worktree .gitignore (prevent committing briefs/results to branches)
+# Keep protocol files (briefs/results) out of branch commits
 if ! grep -q '.task-brief.md' "$WORKTREE_PATH/.gitignore" 2>/dev/null; then
   run_or_print "printf '%s\n' '.task-brief.md' '.task-result.md' '.task-blocked.md' '.dmux/' >> \"$WORKTREE_PATH/.gitignore\""
 fi
 
-# 5. Create tmux pane and launch agent
 if $DRY_RUN; then
   echo "[dry-run] tmux split-window -t $SESSION -h -c \"$WORKTREE_PATH\" \"$AGENT_CMD\""
 else

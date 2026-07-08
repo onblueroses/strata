@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 # strata-init — first-run bootstrap for a strata install.
 #
-# Detects $SHELL and offers to append a guarded env block to the user's rc
-# file. Creates the agent venv and installs provider SDKs. Populates
-# workspace/ with PARA seed templates (areas/projects/resources/daily/inbox/
-# archives). Prints next steps: fill model-map.toml, run the lane smoke
-# check, then open the install in a Claude Code session.
-#
 # Usage: strata-init [INSTALL_DIR]
 #   INSTALL_DIR defaults to the parent of this script (resolves $STRATA_HOME).
 #
@@ -83,11 +77,7 @@ EOF
 fi
 
 # === Claude Code settings install ===
-#
-# Strata ships settings.json at the install root, but Claude Code reads from
-# $HOME/.claude/settings.json (global) and <project>/.claude/settings.json
-# (project). Offer to install the strata settings into the global location,
-# backing up any existing file first.
+# Claude Code reads $HOME/.claude/settings.json, not the install root.
 
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 STRATA_SETTINGS="$STRATA_HOME/settings.json"
@@ -113,11 +103,7 @@ else
 fi
 
 # === Claude Code surfaces (CLAUDE.md + skills/commands/agents/hooks/reference) ===
-#
-# Claude Code reads CLAUDE.md and discovers skills/commands/agents from
-# $HOME/.claude/ and the working project's .claude/. Strata installs by
-# symlinking these directories so updates to $STRATA_HOME propagate without
-# re-running this script. Existing entries get backed up first.
+# Symlinked so updates to $STRATA_HOME propagate without re-running this script.
 
 echo ""
 echo "=== Claude Code surfaces ==="
@@ -194,17 +180,13 @@ seed_readme() {
 
 seed_readme "$WS/areas/README.md" "# areas/
 
-Ongoing responsibilities you maintain over time. One directory per area.
-Each area gets a summary.md describing scope, current state, and gotchas."
+Ongoing responsibilities. One directory per area, each with a summary.md."
 
 seed_readme "$WS/projects/README.md" "# projects/
 
-One directory per project entity. Each entity directory contains:
-
-- summary.md   architecture, recent sessions, gotchas, deploy procedure
-- items.json   structured details that don't fit prose (specific values, rules)
-
-Skills like /pickup, /end, and knowledge-lookup read and write this tree."
+One directory per entity: summary.md (architecture, sessions, gotchas) +
+items.json (structured details). Read and written by /pickup, /end,
+and knowledge-lookup."
 
 seed_readme "$WS/projects/example-entity/summary.md" "# example-entity
 
@@ -212,13 +194,10 @@ seed_readme "$WS/projects/example-entity/summary.md" "# example-entity
 \`last_verified\`: YYYY-MM-DD
 
 ## Architecture
-What this entity is and how its pieces fit.
 
 ## Deploy
-How to ship changes.
 
 ## Gotchas
-Non-obvious things that bit you. Sticky.
 
 ## Recent sessions
 Reverse-chronological one-liners. Pruned by /end."
@@ -231,8 +210,7 @@ seed_readme "$WS/projects/example-entity/items.json" '{
 
 seed_readme "$WS/resources/README.md" "# resources/
 
-Reusable references not tied to a single project: design docs, vendor cheatsheets,
-shared playbooks, libraries of patterns."
+Reusable references not tied to a single project."
 
 seed_readme "$WS/daily/README.md" "# daily/
 
@@ -249,8 +227,8 @@ Deprecated entities. Moved here instead of deleted so history stays searchable."
 
 seed_readme "$WS/state/specs/README.md" "# state/specs/
 
-Active implementation specs. One file per feature. Status field controls
-visibility from /pickup and /context-resume. Specs survive context compaction."
+Active implementation specs, one file per feature. Specs survive context
+compaction; the Status field controls visibility from /pickup and /context-resume."
 
 seed_readme "$WS/state/handoffs/README.md" "# state/handoffs/
 
@@ -260,19 +238,15 @@ Session-to-session handoff notes. Written when ending mid-task, read by /pickup.
 
 echo ""
 echo "=== Next steps ==="
-echo "1. Fill in $STRATA_HOME/config/model-map.toml — replace <PICK_...> placeholders"
-echo "   with the strongest model ids you currently have access to."
-echo "2. Set API keys: write them to $STRATA_HOME/.local/.env (one KEY=VALUE per line)"
-echo "   or export them in your shell. Required vars depend on which providers you"
-echo "   bind: ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY."
+echo "1. Fill in $STRATA_HOME/config/model-map.toml (replace <PICK_...> placeholders)."
+echo "2. Set API keys in $STRATA_HOME/.local/.env (one KEY=VALUE per line) or export"
+echo "   them: ANTHROPIC_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, GEMINI_API_KEY."
 if $RC_INSTALLED; then
   echo "3. Open a new shell (or run \`source $RC_FILE\`), then verify:"
 else
-  echo "3. Source the strata env (\`source $STRATA_HOME/strata.env\`) or add"
-  echo "   \`source $STRATA_HOME/strata.env\` to your shell rc, then verify:"
+  echo "3. Run \`source $STRATA_HOME/strata.env\` (or add it to your shell rc), then verify:"
 fi
 echo "     strong --help && fast --help && grader --help && breadth --help"
-echo "4. Start a Claude Code session in any project; strata's CLAUDE.md, hooks,"
-echo "   skills, and reference docs auto-load from \$STRATA_HOME."
+echo "4. Start a Claude Code session in any project; strata auto-loads from \$STRATA_HOME."
 echo ""
 echo "=== Done ==="
