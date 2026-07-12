@@ -71,8 +71,8 @@
  },
  {
   "doc": "model-delegation.md",
-  "keywords": "delegate, delegation, dispatch, sub-model, sub-agent, lane, strong, fast, grader, breadth, orchestrator, orchestrate, hand off, handoff, offload, farm out, which model, another model, second opinion, parallel review, review panel, agentic, tool-use loop, working tree, cwd, oneshot, read-only, edit files, run commands, fallback, quota, rate limit, cache, prompt cache, exit code, wrapper, model-map, routing, background job, long-running",
-  "description": "Sub-model delegation toolkit: grader, breadth, fast, strong wrappers. Tier sketch, exit codes, fallback, caching, prompt template, bench data."
+  "keywords": "delegate, delegation, dispatch, sub-model, sub-agent, lane, strong, fast, grader, breadth, orchestrator, hand off, handoff, offload, second opinion, parallel review, review panel, tool-use loop, working directory, fallback, quota, rate limit, cache no-op, exit code, wrapper, model-map, routing, background job, long-running",
+  "description": "Sub-model delegation toolkit: grader, breadth, fast, strong wrappers. Tier sketch, implemented flags, exit codes, fallback, prompt template."
  },
  {
   "doc": "nodejs-typescript-setup.md",

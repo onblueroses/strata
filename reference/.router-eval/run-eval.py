@@ -18,6 +18,8 @@ import math
 import statistics
 from collections import defaultdict
 
+from scorer import prf
+
 EVAL = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(EVAL, "fixtures.jsonl")
 
@@ -79,29 +81,52 @@ def run_matcher(name, hookdata):
     return names, wall, out.get("error")
 
 
-def prf(predicted, expected):
-    P, E = set(predicted), set(expected)
-    if not E:
-        return (1.0, 1.0, 1.0) if not P else (0.0, 1.0, 0.0)
-    if not P:
-        return (1.0, 0.0, 0.0)
-    tp = len(P & E)
-    p = tp / len(P)
-    r = tp / len(E)
-    f = 2 * p * r / (p + r) if (p + r) else 0.0
-    return (p, r, f)
-
-
-def main():
-    if len(sys.argv) < 2:
+def parse_args(argv):
+    if len(argv) < 2:
         raise SystemExit(
             "usage: run-eval.py <matcher> [--split score|tune|all] [--verbose]"
         )
-    name = sys.argv[1]
     split = "score"
-    if "--split" in sys.argv:
-        split = sys.argv[sys.argv.index("--split") + 1]
-    verbose = "--verbose" in sys.argv
+    if "--split" in argv:
+        try:
+            split = argv[argv.index("--split") + 1]
+        except IndexError:
+            raise SystemExit("--split requires score, tune, or all")
+    if split not in {"score", "tune", "all"}:
+        raise SystemExit("--split requires score, tune, or all")
+    return argv[1], split, "--verbose" in argv
+
+
+def p95_latency(latencies):
+    if not latencies:
+        return 0.0
+    return sorted(latencies)[max(0, math.ceil(len(latencies) * 0.95) - 1)]
+
+
+def print_report(
+    name, split, fixture_count, aggregate, p95, mean, per_family, rows, verbose
+):
+    print(f"matcher={name} split={split} fixtures={fixture_count}")
+    print(
+        f"aggregate_f1={aggregate:.3f} "
+        f"p95_latency_ms={p95:.0f} mean_latency_ms={mean:.0f}"
+    )
+    print("per_family_f1:")
+    for family in sorted(per_family):
+        values = per_family[family]
+        print(f"  {family}: {statistics.mean(values):.2f} (n={len(values)})")
+    if verbose:
+        print("rows:")
+        for fid, family, f1, predicted, expected, err in rows:
+            suffix = f" error={err}" if err else ""
+            miss = " *" if f1 < 0.99 else ""
+            print(
+                f"  {fid} family={family} f1={f1:.2f} pred={predicted} exp={expected}{suffix}{miss}"
+            )
+
+
+def main():
+    name, split, verbose = parse_args(sys.argv)
 
     fixtures = load_fixtures()
     if split != "all":
@@ -128,26 +153,10 @@ def main():
         )
 
     agg = statistics.mean(f1s) if f1s else 0.0
-    # ceiling index so the p95 gate reflects the true 95th percentile for fixture
-    # counts that aren't multiples of 20 (floor under-reports latency).
-    p95 = sorted(lats)[max(0, math.ceil(len(lats) * 0.95) - 1)] if lats else 0.0
+    p95 = p95_latency(lats)
+    mean = statistics.mean(lats) if lats else 0.0
 
-    print(f"\n=== matcher: {name}  split: {split}  fixtures: {len(fixtures)} ===")
-    print(
-        f"AGGREGATE F1 (macro): {agg:.3f}   p95 latency: {p95:.0f}ms   mean: {statistics.mean(lats):.0f}ms"
-    )
-    print("per-family F1:")
-    for fam in sorted(per_family):
-        vals = per_family[fam]
-        print(f"  {fam:16s} {statistics.mean(vals):.2f}  (n={len(vals)})")
-    if verbose:
-        print("\nper-fixture:")
-        for fid, fam, f, pred, exp, err in rows:
-            flag = "" if f >= 0.99 else "  <--"
-            print(
-                f"  {fid:14s} F1={f:.2f} pred={pred} exp={exp}{(' ERR=' + err) if err else ''}{flag}"
-            )
-    # machine-readable summary on last line
+    print_report(name, split, len(fixtures), agg, p95, mean, per_family, rows, verbose)
     print(
         json.dumps(
             {

@@ -2,72 +2,150 @@
 """Rebuild the lex doc-vector cache + doc-catalog from the live reference docs.
 Run this whenever a reference doc's keywords or INDEX description changes."""
 
+import hashlib
+import json
+import math
 import os
 import re
-import json
-import subprocess
+import shutil
 import sys
-from typing import NoReturn
+import tempfile
 
-# reference/ is the parent of this script's dir (.router-eval); STRATA_HOME env overrides.
 EVAL = os.path.dirname(os.path.abspath(__file__))
 REF = os.environ.get("STRATA_REF") or os.path.dirname(EVAL)
-idx = open(os.path.join(REF, "INDEX.md")).read()
-desc = {
-    m.group(1).strip(): m.group(2).strip()
-    for m in re.finditer(r"^\|\s*`([^`]+\.md)`\s*\|\s*([^|]+)\|", idx, re.M)
-}
-cat = []
-for f in sorted(os.listdir(REF)):
-    if not f.endswith(".md") or f == "INDEX.md":
-        continue
-    head = "\n".join(open(os.path.join(REF, f)).read().splitlines()[:5])
-    km = re.search(r"<!--\s*keywords:\s*(.*?)\s*-->", head, re.S)
-    cat.append(
-        {
-            "doc": f,
-            "keywords": km.group(1).strip() if km else "",
-            "description": desc.get(f, ""),
-        }
-    )
-json.dump(cat, open(os.path.join(EVAL, "doc-catalog.json"), "w"), indent=1)
-
-# Rebuild the lex cache atomically: keep a backup, let the matcher rebuild on sig
-# change, then verify the result parses before committing. A crashed matcher (bad env,
-# missing dep) must NOT leave the hook with no cache -- the old cache is restored.
+CATALOG = os.path.join(EVAL, "doc-catalog.json")
 CACHE = os.path.join(EVAL, ".lex-cache.json")
-backup = None
-if os.path.exists(CACHE):
-    backup = CACHE + ".bak"
-    os.replace(CACHE, backup)
-proc = subprocess.run(
-    [sys.executable, os.path.join(EVAL, "matchers", "lex.py")],
-    input='{"prompt":"warm","cwd":"/tmp"}',
-    text=True,
-    capture_output=True,
-)
+sys.path.insert(0, os.path.join(EVAL, "matchers"))
+
+from _common import load_router  # noqa: E402
 
 
-def _restore_and_die(reason) -> NoReturn:
-    if backup is not None:
-        os.replace(backup, CACHE)
-        print(f"  rebuild FAILED ({reason}); restored previous cache.", file=sys.stderr)
-    else:
-        print(
-            f"  rebuild FAILED ({reason}); no prior cache to restore.", file=sys.stderr
+def build_catalog():
+    idx = open(os.path.join(REF, "INDEX.md")).read()
+    desc = {
+        m.group(1).strip(): m.group(2).strip()
+        for m in re.finditer(r"^\|\s*`([^`]+\.md)`\s*\|\s*([^|]+)\|", idx, re.M)
+    }
+    catalog = []
+    for fname in sorted(os.listdir(REF)):
+        if not fname.endswith(".md") or fname == "INDEX.md":
+            continue
+        head = "\n".join(open(os.path.join(REF, fname)).read().splitlines()[:5])
+        km = re.search(r"<!--\s*keywords:\s*(.*?)\s*-->", head, re.S)
+        catalog.append(
+            {
+                "doc": fname,
+                "keywords": km.group(1).strip() if km else "",
+                "description": desc.get(fname, ""),
+            }
         )
-    sys.exit(1)
+    return catalog
 
 
-if proc.returncode != 0:
-    _restore_and_die(f"matcher exit={proc.returncode}: {proc.stderr.strip()[:200]}")
+def is_rare_token():
+    try:
+        from wordfreq import zipf_frequency
+
+        return lambda token: zipf_frequency(token, "en") < 2.5
+    except Exception:
+        return lambda token: False
+
+
+def build_cache(catalog):
+    toks = load_router().toks
+    docs_toks = [toks(c["description"] + " " + c["keywords"]) for c in catalog]
+    df = {}
+    for dt in docs_toks:
+        for token in set(dt):
+            df[token] = df.get(token, 0) + 1
+    count = len(catalog)
+    idf = {token: math.log((1 + count) / (1 + docs)) + 1 for token, docs in df.items()}
+    vecs = {}
+    for doc, dt in zip(catalog, docs_toks):
+        tf = {}
+        for token in dt:
+            tf[token] = tf.get(token, 0) + 1
+        vec = (
+            {token: (freq / len(dt)) * idf[token] for token, freq in tf.items()}
+            if dt
+            else {}
+        )
+        norm = math.sqrt(sum(value * value for value in vec.values())) or 1.0
+        vecs[doc["doc"]] = {token: value / norm for token, value in vec.items()}
+    rare = is_rare_token()
+    solo = sorted(
+        token
+        for token, docs in df.items()
+        if docs == 1 and len(token) >= 5 and rare(token)
+    )
+    return {
+        "idf": idf,
+        "vecs": vecs,
+        "solo": solo,
+        "sig": hashlib.sha1(
+            "".join(c["doc"] + c["keywords"] for c in catalog).encode()
+        ).hexdigest(),
+    }
+
+
+def write_temp_json(path, value, indent=None):
+    fd, tmp = tempfile.mkstemp(
+        dir=EVAL, prefix=os.path.basename(path) + ".", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(value, f, indent=indent)
+        with open(tmp) as f:
+            json.load(f)
+        return tmp
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        raise
+
+
+def replace_verified(files):
+    backups = []
+    try:
+        for dest, _ in files:
+            if not os.path.exists(dest):
+                continue
+            fd, backup = tempfile.mkstemp(
+                dir=EVAL, prefix=os.path.basename(dest) + ".backup.", suffix=".tmp"
+            )
+            os.close(fd)
+            shutil.copy2(dest, backup)
+            backups.append((dest, backup))
+        for dest, tmp in files:
+            os.replace(tmp, dest)
+    except Exception:
+        for dest, backup in backups:
+            if os.path.exists(backup):
+                os.replace(backup, dest)
+        raise
+    finally:
+        for _, backup in backups:
+            if os.path.exists(backup):
+                os.unlink(backup)
+
+
+cat = build_catalog()
+cache = build_cache(cat)
+if not cache.get("vecs"):
+    raise SystemExit("rebuild FAILED (empty doc vectors)")
+
+temps = []
 try:
-    cache = json.load(open(CACHE))
-    assert cache.get("vecs"), "empty doc vectors"
-except (FileNotFoundError, ValueError, AssertionError) as e:
-    _restore_and_die(f"cache unreadable: {e}")
-if backup is not None:
-    os.remove(backup)
+    temps.append((CATALOG, write_temp_json(CATALOG, cat, indent=1)))
+    temps.append((CACHE, write_temp_json(CACHE, cache)))
+    replace_verified(temps)
+except Exception as e:
+    for _, tmp in temps:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    raise SystemExit(f"rebuild FAILED ({e})")
 
 # The solo (strong-solo single-token bypass) set is populated ONLY when wordfreq is
 # importable by THIS interpreter. Rebuilding with a bare python3 that lacks wordfreq
