@@ -205,7 +205,7 @@ codex exec \
   -c service_tier=fast \
   --model <PICK_REVIEW_MODEL> \
   "$(cat /tmp/codex-review-{session-id}-{epoch}.md)" \
-  > /tmp/codex-review-{session-id}-{epoch}.log 2>&1
+  < /dev/null > /tmp/codex-review-{session-id}-{epoch}.log 2>&1
 ```
 
 Run with `run_in_background: true`.
