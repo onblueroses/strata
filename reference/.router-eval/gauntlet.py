@@ -157,12 +157,19 @@ def clean_flags():
 
 
 # ------------------------------------------------------------------ D1/D2 fixtures
-def score_fixtures(fname, label):
+def score_fixtures(fname, label, *, split=None, family=None):
     path = os.path.join(EVAL, fname)
     if not os.path.exists(path):
-        print(f"  [skip] {fname} not found")
-        return None
+        raise SystemExit(f"missing fixtures: {fname}")
     fixtures = [json.loads(ln) for ln in open(path) if ln.strip()]
+    if split is not None:
+        fixtures = [fx for fx in fixtures if fx.get("split") == split]
+    if family is not None:
+        fixtures = [fx for fx in fixtures if fx.get("family") == family]
+    if not fixtures:
+        raise SystemExit(
+            f"no fixtures selected from {fname} (split={split!r}, family={family!r})"
+        )
     hits = misses = spurious = exact = 0
     per_doc_miss = {}
     rows = []
@@ -812,14 +819,26 @@ def battery_regression():
     finally:
         os.unlink(tpath)
 
-    # R13: this public skeleton's cache was built without wordfreq, so solo is empty.
-    # A bare corpus-unique token must degrade to no-route instead of crashing or
-    # bypassing the >=2-token precision guard.
-    r = invoke(prompt="vastai", cwd="/home/user")
+    # R13: the shipped cache has a populated solo set, so the solo-bypass is active.
+    # A bare corpus token that is not in solo must still obey the >=2-token guard.
+    try:
+        _r13_cache = json.load(open(os.path.join(EVAL, ".lex-cache.json")))
+        _r13_solo = set(_r13_cache.get("solo", []))
+        _r13_vecs = _r13_cache.get("vecs", {})
+    except Exception:
+        _r13_solo, _r13_vecs = set(), {}
+    _r13_tok, _r13_doc = "axum", "rust-ai-project-setup.md"
+    _r13_score = _r13_vecs.get(_r13_doc, {}).get(_r13_tok, 0)
+    r = invoke(prompt=_r13_tok, cwd="/home/user")
     chk(
-        "R13 empty solo cache gates bare unique token cleanly",
-        r["exit"] == 0 and not r["crashed"] and "vastai-operations.md" not in r["docs"],
-        str(r["docs"]),
+        "R13 populated solo cache gates a non-solo bare corpus token",
+        bool(_r13_solo)
+        and _r13_tok not in _r13_solo
+        and _r13_score >= R.LEX_THRESH
+        and r["exit"] == 0
+        and not r["crashed"]
+        and _r13_doc not in r["docs"],
+        f"solo={len(_r13_solo)} token_score={_r13_score:.3f} docs={r['docs']}",
     )
 
     # R14: the wordfreq oracle must keep COMMON homonyms out of solo, so a bare high-
@@ -988,16 +1007,20 @@ def battery_regression():
 
 
 DIMS = {
-    "d1": lambda: score_fixtures("fixtures-silentmiss.jsonl", "D1 silent-miss recall"),
+    "d1": lambda: score_fixtures(
+        "fixtures.jsonl", "D1 silent-miss recall", split="score"
+    ),
     "d2": lambda: score_fixtures(
-        "fixtures-negatives.jsonl", "D2 false-positive / negatives"
+        "fixtures.jsonl", "D2 false-positive / negatives", family="null"
     ),
     "d3": battery_security,
     "d4": battery_robustness,
     "d5": battery_perf,
     "d6": battery_determinism,
     "d7": battery_regression,
-    "d8": lambda: score_fixtures("fixtures-terse.jsonl", "D8 terse solo-token recall"),
+    "d8": lambda: score_fixtures(
+        "fixtures.jsonl", "D8 terse solo-token recall", split="tune"
+    ),
 }
 
 if __name__ == "__main__":
@@ -1011,4 +1034,11 @@ if __name__ == "__main__":
     clean_flags()
     print("\n=== GAUNTLET SUMMARY ===")
     for d in sel:
-        print(f"  {d}: {'findings' if summary[d] else 'clean/na'}")
+        result = summary[d]
+        if result is None:
+            status = "SKIPPED (no fixtures)"
+        elif result == []:
+            status = "clean"
+        else:
+            status = "findings"
+        print(f"  {d}: {status}")
