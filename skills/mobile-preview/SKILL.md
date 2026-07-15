@@ -71,7 +71,7 @@ If no URL given and no browser session is active, ask the user for a URL.
 For each device requested:
 
 ```bash
-browser-use python "DEVICE='<device-name>'" && browser-use python --file $HOME/$STRATA_HOME/skills/browser-use/mobile-viewport.py
+browser-use python "DEVICE='<device-name>'" && browser-use python --file $STRATA_HOME/skills/browser-use/mobile-viewport.py
 ```
 
 ### 4. Reload and Wait
@@ -114,7 +114,7 @@ If multiple devices were requested, repeat steps 3-5 for each device. Use the de
 After all screenshots are taken, reset the viewport:
 
 ```bash
-browser-use python "DEVICE='desktop'" && browser-use python --file $HOME/$STRATA_HOME/skills/browser-use/mobile-viewport.py
+browser-use python "DEVICE='desktop'" && browser-use python --file $STRATA_HOME/skills/browser-use/mobile-viewport.py
 ```
 
 ### 8. Report
@@ -165,6 +165,6 @@ After taking all screenshots and before reporting:
 ## Notes
 
 - The browser session persists after the preview. Run `browser-use close` when fully done.
-- For custom dimensions: `browser-use python "DEVICE='custom'; WIDTH=390; HEIGHT=844; DPR=3" && browser-use python --file $HOME/$STRATA_HOME/skills/browser-use/mobile-viewport.py`
+- For custom dimensions: `browser-use python "DEVICE='custom'; WIDTH=390; HEIGHT=844; DPR=3" && browser-use python --file $STRATA_HOME/skills/browser-use/mobile-viewport.py`
 - Screenshots go to `$HOME/temp/` - check that this directory exists.
 - If testing a local dev server, make sure it's running before invoking this skill.

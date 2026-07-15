@@ -27,7 +27,7 @@ Auto-detect your active projects so Phase 3 can map patterns to real work, not j
    import json, glob, os
    from datetime import datetime, timedelta
    cutoff = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
-   notes = sorted(f for f in glob.glob(os.path.expanduser('~/$KB_DIR/daily/*.json')) if os.path.basename(f)[:10] >= cutoff)
+   notes = sorted(f for f in glob.glob(os.path.expanduser('$KB_DIR/daily/*.json')) if os.path.basename(f)[:10] >= cutoff)
    for f in notes:
        try:
            d = json.load(open(f))

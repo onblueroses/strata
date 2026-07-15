@@ -53,7 +53,7 @@ Provides narrative context (Goal, Decisions, Next Actions) that the JSONL stream
 Use the skill file for **intent** (Goal/Decisions) and the hook file for **state** (git/specs/daily). If only one exists, use what you have. If neither session-specific file is found, fall back to the most recent matching files in `state/`.
 
 ### 1c. Today's Daily Note
-Find latest file matching `$HOME/$KB_DIR/daily/[today]-*.json`
+Find latest file matching `$KB_DIR/daily/[today]-*.json`
 - Parse as JSON. Key fields: `summary`, `decisions`, `outputs`, `entities_touched`, `takeaway`
 
 ### 1d. Git State
@@ -72,8 +72,8 @@ If found, read ALL of them. Specs with `Status: in-progress` are critical - they
 
 ### 1f. Entity Context
 If working in a known project, read its entity file:
-- `$HOME/$KB_DIR/projects/[name]\summary.md`
-- `$HOME/$KB_DIR/areas/[name]\summary.md`
+- `$KB_DIR/projects/[name]/summary.md`
+- `$KB_DIR/areas/[name]/summary.md`
 
 </details>
 

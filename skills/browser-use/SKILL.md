@@ -282,13 +282,13 @@ The script reads a `DEVICE` variable from the browser-use Python namespace. Set 
 
 ```bash
 # Set viewport to a device preset (must have a page open first)
-browser-use python "DEVICE='iphone-14'" && browser-use python --file $HOME/$STRATA_HOME/skills/browser-use/mobile-viewport.py
+browser-use python "DEVICE='iphone-14'" && browser-use python --file $STRATA_HOME/skills/browser-use/mobile-viewport.py
 
 # Custom dimensions
-browser-use python "DEVICE='custom'; WIDTH=390; HEIGHT=844; DPR=3" && browser-use python --file $HOME/$STRATA_HOME/skills/browser-use/mobile-viewport.py
+browser-use python "DEVICE='custom'; WIDTH=390; HEIGHT=844; DPR=3" && browser-use python --file $STRATA_HOME/skills/browser-use/mobile-viewport.py
 
 # Reset back to desktop
-browser-use python "DEVICE='desktop'" && browser-use python --file $HOME/$STRATA_HOME/skills/browser-use/mobile-viewport.py
+browser-use python "DEVICE='desktop'" && browser-use python --file $STRATA_HOME/skills/browser-use/mobile-viewport.py
 ```
 
 ### Device Presets
@@ -310,7 +310,7 @@ browser-use python "DEVICE='desktop'" && browser-use python --file $HOME/$STRATA
 browser-use open http://localhost:3000
 
 # 2. Set mobile viewport
-browser-use python "DEVICE='iphone-14'" && browser-use python --file $HOME/$STRATA_HOME/skills/browser-use/mobile-viewport.py
+browser-use python "DEVICE='iphone-14'" && browser-use python --file $STRATA_HOME/skills/browser-use/mobile-viewport.py
 
 # 3. Reload to trigger responsive layout
 browser-use eval "location.reload()"
@@ -324,7 +324,7 @@ browser-use scroll down
 browser-use screenshot $HOME/temp/mobile-below-fold.png
 
 # 6. Reset to desktop when done
-browser-use python "DEVICE='desktop'" && browser-use python --file $HOME/$STRATA_HOME/skills/browser-use/mobile-viewport.py
+browser-use python "DEVICE='desktop'" && browser-use python --file $STRATA_HOME/skills/browser-use/mobile-viewport.py
 ```
 
 ### Inline Alternative (No Script)

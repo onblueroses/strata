@@ -69,7 +69,7 @@ If not in a git repo, skip silently.
 
 ### 4. Today's Sessions
 
-Use Glob to find files matching `$HOME/$KB_DIR/daily/[today]-*.json`.
+Use Glob to find files matching `$KB_DIR/daily/[today]-*.json`.
 Count total, count named vs unnamed. Report a few named session names.
 
 ### 5. Recent Entity Activity

@@ -175,7 +175,7 @@ If any brief has `scratchpad: true`:
 
 ## Session ID
 
-Your session ID is the 8-character suffix of your daily note filename. Extract it from the SessionStart hook output or from `ls ~/$KB_DIR/daily/*$(date +%Y-%m-%d)*.json | tail -1`.
+Your session ID is the 8-character suffix of your daily note filename. Extract it from the SessionStart hook output or from `ls $KB_DIR/daily/*$(date +%Y-%m-%d)*.json | tail -1`.
 
 ---
 
