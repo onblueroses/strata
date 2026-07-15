@@ -1,4 +1,4 @@
 # Strata lane agent dependency. Installed into $STRATA_HOME/.local/agent-venv
 # by bin/strata-init.
 
-pydantic-ai>=0.0.20
+pydantic-ai>=2.0,<3

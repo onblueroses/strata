@@ -12,7 +12,7 @@ Creates worktree DIR/.dmux/worktrees/NAME on branch dmux/NAME, copies the
 brief, and launches AGENT (claude, codex, gemini, ...) in a new tmux pane.
 
 Options:
-  --branch-from BRANCH   Base branch (default: main)
+  --branch-from BRANCH   Base branch (default: current branch, fallback: main)
   --permission-mode MODE Permission mode for the agent (default: acceptEdits)
   --session NAME         tmux session name (default: auto-detect dmux session)
   --dry-run              Print commands without executing
@@ -29,7 +29,7 @@ require_operand() {
 }
 
 # Defaults
-BRANCH_FROM="main"
+BRANCH_FROM=""
 PERMISSION_MODE="acceptEdits"
 SESSION=""
 DRY_RUN=false
@@ -67,6 +67,10 @@ fi
 if [[ ! -d "$PROJECT/.git" ]] && [[ ! -f "$PROJECT/.git" ]]; then
   echo "Error: $PROJECT is not a git repository" >&2
   exit 1
+fi
+
+if [[ -z "$BRANCH_FROM" ]]; then
+  BRANCH_FROM="$(git -C "$PROJECT" symbolic-ref --short HEAD 2>/dev/null || echo main)"
 fi
 
 if [[ ! -f "$BRIEF" ]]; then

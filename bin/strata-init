@@ -81,6 +81,7 @@ fi
 
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 STRATA_SETTINGS="$STRATA_HOME/settings.json"
+STRATA_HOME_SED="$(printf '%s\n' "$STRATA_HOME" | sed 's/[\\&|]/\\&/g')"
 
 echo ""
 echo "=== Claude Code settings ==="
@@ -91,14 +92,14 @@ if [[ -f "$CLAUDE_SETTINGS" ]]; then
   if [[ "$REPLY" == "y" || "$REPLY" == "Y" ]]; then
     BACKUP="$CLAUDE_SETTINGS.pre-strata.$(date +%Y%m%d%H%M%S)"
     cp "$CLAUDE_SETTINGS" "$BACKUP"
-    cp "$STRATA_SETTINGS" "$CLAUDE_SETTINGS"
+    sed "s|\\\$STRATA_HOME|$STRATA_HOME_SED|g" "$STRATA_SETTINGS" > "$CLAUDE_SETTINGS"
     echo "  backed up to $BACKUP, installed strata settings"
   else
     echo "  left alone; merge $STRATA_SETTINGS into $CLAUDE_SETTINGS manually"
   fi
 else
   mkdir -p "$HOME/.claude"
-  cp "$STRATA_SETTINGS" "$CLAUDE_SETTINGS"
+  sed "s|\\\$STRATA_HOME|$STRATA_HOME_SED|g" "$STRATA_SETTINGS" > "$CLAUDE_SETTINGS"
   echo "Installed: $CLAUDE_SETTINGS (copied from strata)"
 fi
 
@@ -146,6 +147,11 @@ for dir in skills commands agents hooks reference; do
 done
 
 # === Agent venv ===
+
+if ! python3 -c 'import sys; sys.exit(sys.version_info < (3,10))'; then
+  echo "strata needs Python >= 3.10" >&2
+  exit 1
+fi
 
 VENV="$STRATA_HOME/.local/agent-venv"
 REQ="$STRATA_HOME/bin/lib/requirements.txt"
