@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly Strata native memory eval
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

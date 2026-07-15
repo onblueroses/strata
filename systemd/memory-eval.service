@@ -1,0 +1,12 @@
+[Unit]
+Description=Strata native memory eval
+After=network.target
+
+[Service]
+Type=oneshot
+# Adjust these two paths when STRATA_HOME is not the default ~/.strata.
+WorkingDirectory=%h/.strata
+Environment=STRATA_HOME=%h/.strata
+ExecStart=/usr/bin/env python3 -m memory.eval.probe_runner
+StandardOutput=journal
+StandardError=journal
