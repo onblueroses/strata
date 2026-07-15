@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stop hook: warn if any project repos have unpushed commits.
+# Stop hook: warn if the current project repo has unpushed commits.
 # Advisory only - exits 0 always. Output appears in session close summary.
 
 WARN_REPOS=()
@@ -18,18 +18,10 @@ check_repo() {
     fi
 }
 
-# Check Work/ repos
-for d in $HOME/Work/*/; do
-    check_repo "$d"
-done
-
-# Check home-level repos (the stale-clone risk zone)
-for d in $HOME/*/; do
-    [[ "$d" == */Work/* ]] && continue
-    [[ "$d" == */.* ]] && continue
-    [[ "$d" == */to-delete/* ]] && continue
-    check_repo "$d"
-done
+# Check only the repository containing the configured scan root (or current directory).
+scanRoot="${STRATA_REPO_SCAN_ROOT:-$PWD}"
+repoDir=$(git -C "$scanRoot" rev-parse --show-toplevel 2>/dev/null) || repoDir=""
+[ -n "$repoDir" ] && check_repo "$repoDir"
 
 if [ ${#WARN_REPOS[@]} -gt 0 ]; then
     echo ""

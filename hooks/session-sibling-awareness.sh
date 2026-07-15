@@ -45,7 +45,7 @@ while IFS= read -r editFile; do
     ageMin=$(( (now - mtime) / 60 ))
 
     # Extract primary project from most common path prefix
-    project=$(echo "$fileList" | grep -oP '(?<=/Work/)[^/]+|(?<=/$KB_DIR/projects/)[^/]+|(?<=/$KB_DIR/areas/)[^/]+' | sort | uniq -c | sort -rn | head -1 | awk '{print $2}')
+    project=$(echo "$fileList" | grep -oP "(?<=${KB_DIR}/projects/)[^/]+|(?<=${KB_DIR}/areas/)[^/]+" | sort | uniq -c | sort -rn | head -1 | awk '{print $2}')
     [ -z "$project" ] && project="(config/misc)"
 
     # Look up session name from pre-fetched daily notes

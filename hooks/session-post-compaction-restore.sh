@@ -106,10 +106,7 @@ orchOutput=""
 for orchPath in "$cwd/.dmux/orchestration.md" $HOME/Work/*/.dmux/orchestration.md; do
     if [ -f "$orchPath" ]; then
         projName=$(basename "$(dirname "$(dirname "$orchPath")")")
-        # Read last 2 waves (not the full file)
-        startLine=$(grep -n '^## Wave' "$orchPath" | tail -2 | head -1 | cut -d: -f1)
-        if [ -n "$startLine" ]; then
-            lastWaves=$(tail -n +"$startLine" "$orchPath" | head -40)
+        if grep -q '^## Wave' "$orchPath"; then
             orchOutput+="- \`$projName\`: $(grep '^## Wave' "$orchPath" | tail -1 | sed 's/## //')
 "
         fi

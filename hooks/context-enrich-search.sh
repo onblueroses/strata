@@ -60,7 +60,7 @@ if [ "$rebuild_cache" -eq 1 ]; then
         entity="${summaryFile%/summary.md}"
         entity="${entity##*/}"
         # Extract all parenthesized paths from the summary (backtick-wrapped paths like `/home/...`)
-        paths=$(grep -oP '`($HOME/[^`]+)`' "$summaryFile" | tr -d '`' | sort -u)
+        paths=$(grep -oP '`('"$HOME"'/[^`]+)`' "$summaryFile" | tr -d '`' | sort -u)
         if [ -n "$paths" ]; then
             while IFS= read -r p; do
                 printf '%s\t%s\n' "$entity" "$p" >> "$cacheFile"

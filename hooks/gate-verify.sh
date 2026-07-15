@@ -20,6 +20,10 @@ if [ -n "$jsonInput" ]; then
     fi
 fi
 
+STRATA_HOME="${STRATA_HOME:-$HOME/.strata}"
+KB_DIR="${KB_DIR:-$STRATA_HOME/workspace}"
+STATE_DIR="${STATE_DIR:-$KB_DIR/state}"
+
 stateDir="$STATE_DIR"
 editsFile="$stateDir/.session-edits-$sessionId"
 verifyFile="$stateDir/.verify-passed-$sessionId"
@@ -27,8 +31,8 @@ verifyFile="$stateDir/.verify-passed-$sessionId"
 # Resolve the actual installed kernel + workspace paths for skip-safe matching.
 # These get expanded into the regex below so the gate matches concrete edited paths
 # rather than the literal placeholder strings.
-strataHome="${STRATA_HOME:-$HOME/.strata}"
-kbDir="${KB_DIR:-$HOME/strata-workspace}"
+strataHome="$STRATA_HOME"
+kbDir="$KB_DIR"
 specsDir="${SPECS_DIR:-$stateDir/specs}"
 
 # No edits this session? Pass through silently.

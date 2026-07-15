@@ -16,7 +16,7 @@ filePath=$(echo "$data" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 
 # Skip files that are session bookkeeping, not implementation work.
 # These should never trigger re-verification.
-if echo "$filePath" | grep -qE '\.session-edits-|\.verify-passed-|autoend-state\.json|skill-runs\.jsonl|session-events-.*\.jsonl|/$KB_DIR/daily/.*\.json'; then
+if echo "$filePath" | grep -qE '\.session-edits-|\.verify-passed-|autoend-state\.json|skill-runs\.jsonl|session-events-.*\.jsonl|daily/[0-9].*\.json'; then
     exit 0
 fi
 

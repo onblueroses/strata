@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Create JSON daily note stub for this session
 
-dailyDir="${KB_DIR:-$HOME/workspace}/daily"
+STRATA_HOME="${STRATA_HOME:-$HOME/.strata}"
+KB_DIR="${KB_DIR:-$STRATA_HOME/workspace}"
+STATE_DIR="${STATE_DIR:-$KB_DIR/state}"
+
+dailyDir="$KB_DIR/daily"
 today=$(date +%Y-%m-%d)
 
 mkdir -p "$dailyDir"
