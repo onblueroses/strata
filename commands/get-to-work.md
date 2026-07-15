@@ -32,7 +32,7 @@ Arguments via `$ARGUMENTS`.
 1. Parse `$ARGUMENTS` for `--cycle`, `--dry-run` flags.
 2. Create the follow-up file at `.claude/followup-{session-id}.md` with required sections (see follow-up convention reference doc).
 3. Glob `$KB_DIR/{projects,areas}/*/summary.md` to build the entity list.
-4. Read MEMORY.md entity table for cross-reference.
+4. Read the generated `MEMORY.md` entity table (at `$STATE_DIR/memory/cards/MEMORY.md`) for cross-reference; treat it as an advisory registry snapshot, never as an edit target. When it is absent (a fresh install, or the memory store is unpopulated), skip the MEMORY.md-dependent checks (the Lens 3 untracked flag and Lens 6) and continue; memory absence is non-fatal.
 
 ### 1. Scan (7 lenses)
 

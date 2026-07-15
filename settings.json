@@ -37,7 +37,9 @@
           { "type": "command", "command": "bash $STRATA_HOME/hooks/session-cleanup-verify-markers.sh", "timeout": 2000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/session-cleanup-codex.sh", "timeout": 3000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/session-post-compaction-restore.sh", "timeout": 5000 },
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-sibling-awareness.sh", "timeout": 3000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-sibling-awareness.sh", "timeout": 3000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/memory-digest.sh", "timeout": 5000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/memory-entities.sh", "timeout": 5000 }
         ]
       }
     ],
@@ -48,6 +50,13 @@
           { "type": "command", "command": "bash $STRATA_HOME/hooks/lifecycle-auto-end-fallback.sh", "timeout": 5000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/lifecycle-sync-state.sh", "timeout": 10000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/lifecycle-warn-unpushed.sh", "timeout": 8000 }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/memory-access-log.sh", "timeout": 25000, "async": true }
         ]
       }
     ],

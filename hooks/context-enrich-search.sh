@@ -6,7 +6,8 @@
 # Max output: ~20 lines. Silent when no entity matches.
 
 KB_BASE="${KB_DIR:-$HOME/workspace}"
-MEMORY_DIR="${STRATA_HOME}/memory"
+STATE_BASE="${STATE_DIR:-$KB_BASE/state}"
+MEMORY_DIR="${STATE_BASE}/memory/cards"
 
 stdinContent=""
 if [ ! -t 0 ]; then
