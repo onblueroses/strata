@@ -43,6 +43,7 @@ PUBLIC_GROUPS = {"issue", "pr", "release", "gist", "repo"}
 PUBLIC_ACTIONS = {
     "create",
     "comment",
+    "review",
     "edit",
     "close",
     "reopen",
@@ -351,7 +352,7 @@ def status_from_command_words(command_words, depth):
     script = inline_shell_script(command_words)
     if script is not None:
         status = check_command(script, depth + 1)
-        if status == "blocked":
+        if status in {"blocked", "parse_error"}:
             return status
         if status == "allowed":
             found = True
@@ -363,13 +364,13 @@ def raw_parse_error_status(command, depth):
     found = False
     for command_words in simple_commands(loose_shell_tokens(command)):
         status = status_from_command_words(command_words, depth)
-        if status == "blocked":
+        if status in {"blocked", "parse_error"}:
             return status
         if status == "allowed":
             found = True
     for nested in nested_commands(command):
         status = check_command(nested, depth + 1)
-        if status == "blocked":
+        if status in {"blocked", "parse_error"}:
             return status
         if status == "allowed":
             found = True
@@ -382,19 +383,19 @@ def check_command(command, depth=0):
     try:
         tokens = shell_tokens(command)
     except ValueError:
-        return raw_parse_error_status(command, depth)
+        return "parse_error"
 
     found = False
     for command_words in simple_commands(tokens):
         status = status_from_command_words(command_words, depth)
-        if status == "blocked":
+        if status in {"blocked", "parse_error"}:
             return status
         if status == "allowed":
             found = True
 
     for nested in nested_commands(command):
         status = check_command(nested, depth + 1)
-        if status == "blocked":
+        if status in {"blocked", "parse_error"}:
             return status
         if status == "allowed":
             found = True
@@ -438,7 +439,7 @@ for bf in $(printf '%s' "$COMMAND" | grep -oE -- '(--body-file|-F)[=[:space:]]+[
 $(cat "$bf" 2>/dev/null)"
 done
 PUB="$PUB
-$(printf '%s' "$COMMAND" | grep -oiE -- "(--body|-b|--title|-t)[=[:space:]]+(\"[^\"]*\"|'[^']*')" || true)"
+$(printf '%s' "$COMMAND" | grep -oiE -- "(--body|-b|--title|-t)[=[:space:]]+(\"[^\"]*\"|'[^']*'|[^[:space:]]+)" || true)"
 
 # Build the denylist from gitignored token files. Format (per the .example.txt):
 # one token per line, matched as a fixed string, case-insensitive; lines that

@@ -29,6 +29,10 @@ EXTRA_TEARDOWN_PATTERNS=()
 if [ "${#EXTRA_TEARDOWN_PATTERNS[@]}" -gt 0 ]; then
   TEARDOWN_PATTERNS+=("${EXTRA_TEARDOWN_PATTERNS[@]}")
 fi
+TEARDOWN_PATTERN=""
+for pat in "${TEARDOWN_PATTERNS[@]}"; do
+  TEARDOWN_PATTERN="${TEARDOWN_PATTERN:+${TEARDOWN_PATTERN}|}${pat}"
+done
 
 deny() {
   local cmd="$1"
@@ -55,10 +59,8 @@ fi
 COMMAND="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
 [ -n "$COMMAND" ] || exit 0
 
-for pat in "${TEARDOWN_PATTERNS[@]}"; do
-  if printf '%s' "$COMMAND" | grep -qE "$pat"; then
-    deny "$COMMAND"
-  fi
-done
+if printf '%s' "$COMMAND" | grep -qE "$TEARDOWN_PATTERN"; then
+  deny "$COMMAND"
+fi
 
 exit 0

@@ -65,6 +65,28 @@ REDIRECT_OPERATORS = {
     "&>",
     "&>>",
 }
+GLOBAL_OPTIONS_WITH_VALUES = {
+    "-C",
+    "--cd",
+    "-c",
+    "--config",
+    "--enable",
+    "--disable",
+    "-i",
+    "--image",
+    "-m",
+    "--model",
+    "--local-provider",
+    "-p",
+    "--profile",
+    "-s",
+    "--sandbox",
+    "-a",
+    "--ask-for-approval",
+    "--add-dir",
+}
+SHORT_GLOBAL_OPTIONS_WITH_VALUES = {"-C", "-c", "-i", "-m", "-p", "-s", "-a"}
+TERMINAL_GLOBAL_OPTIONS = {"-h", "--help", "-V", "--version"}
 
 
 def strip_line_comments(command):
@@ -209,6 +231,31 @@ def is_codex_word(word):
     return os.path.basename(word) == "codex"
 
 
+def args_after_global_options(args):
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--" or arg in TERMINAL_GLOBAL_OPTIONS:
+            return []
+        if arg in GLOBAL_OPTIONS_WITH_VALUES:
+            index += 2
+            continue
+        if arg.startswith("--") and arg.split("=", 1)[0] in GLOBAL_OPTIONS_WITH_VALUES:
+            index += 1 if "=" in arg else 2
+            continue
+        if any(
+            arg.startswith(option) and arg != option
+            for option in SHORT_GLOBAL_OPTIONS_WITH_VALUES
+        ):
+            index += 1
+            continue
+        if arg.startswith("-") and arg != "-":
+            index += 1
+            continue
+        return args[index:]
+    return []
+
+
 def exec_flags(args):
     flags = set()
     for arg in args:
@@ -233,9 +280,12 @@ found = False
 for command_words in simple_commands(tokens):
     argv = argv_words(command_words)
     for index, token in enumerate(argv[:-1]):
-        if is_codex_word(token) and argv[index + 1] == "exec":
+        if not is_codex_word(token):
+            continue
+        args = args_after_global_options(argv[index + 1 :])
+        if args and args[0] == "exec":
             found = True
-            if {FLAG_APPROVALS, FLAG_REPO} - exec_flags(argv[index + 2 :]):
+            if {FLAG_APPROVALS, FLAG_REPO} - exec_flags(args[1:]):
                 print("blocked")
                 raise SystemExit
 
