@@ -21,7 +21,7 @@ def test_semantic_rank_can_improve_through_rrf(monkeypatch: pytest.MonkeyPatch) 
     corpus = [
         {"id": "alpha", "body": "quartz query exact"},
         {"id": "beta", "body": "quartz query"},
-        {"id": "semantic-target", "body": "conceptual equivalent"},
+        {"id": "semantic-target", "body": "conceptual equivalent quartz"},
         {"id": "zeta", "body": "other"},
     ]
     bm25 = engine.search("quartz query", corpus=corpus, use_embeddings=False)
@@ -48,3 +48,31 @@ def test_semantic_rank_can_improve_through_rrf(monkeypatch: pytest.MonkeyPatch) 
     assert fused.search_mode == "fused"
     assert all(hit["search_mode"] == "fused" for hit in fused)
     assert fused_ids.index("semantic-target") < bm25_ids.index("semantic-target")
+
+
+def test_zero_evidence_bm25_does_not_override_vector_rank(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    corpus = [
+        {"id": "alpha", "body": "apple"},
+        {"id": "zeta", "body": "banana"},
+    ]
+    bm25 = engine.search("quasar", corpus=corpus, use_embeddings=False)
+    assert [hit["id"] for hit in bm25] == ["alpha", "zeta"]
+    assert all(hit["score"] == 0.0 for hit in bm25)
+
+    def vector_rank(
+        query: str,
+        records: list[dict[str, Any]],
+        *,
+        cacheable: bool,
+        config: object,
+    ) -> tuple[list[tuple[str, float]], None]:
+        del query, records, cacheable, config
+        return [("zeta", 1.0), ("alpha", 0.5)], None
+
+    monkeypatch.setattr(engine, "_vector_rank", vector_rank)
+    fused = engine.search("quasar", corpus=corpus, use_embeddings=True)
+
+    assert fused.search_mode == "fused"
+    assert [hit["id"] for hit in fused] == ["zeta", "alpha"]

@@ -247,6 +247,11 @@ def main(argv: list[str] | None = None) -> int:
         row["verdict"] != "FAIL" for row in adversarial_rows
     ):
         raise ProbeError("adversarial monitor did not fail in every active mode")
+    # Ordinary probes are regression probes; their failure is a real signal.
+    ordinary_failed = any(
+        not row["adversarial"] and (row["verdict"] == "FAIL" or "error" in row)
+        for row in rows
+    )
     if config.telemetry_enabled and not args.dry_run:
         for row in rows:
             append_event(config.memory_eval_file, "memory_eval", row)
@@ -260,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
         f"summary: {passed}/{len(rows)} PASS; dry_run={str(args.dry_run).lower()}; "
         f"adversarial_verdicts={verdicts}"
     )
-    return 0
+    return int(ordinary_failed)
 
 
 if __name__ == "__main__":

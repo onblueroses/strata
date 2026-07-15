@@ -516,7 +516,9 @@ def search(
         )
         if vector_ranked is not None:
             vector_top_score = _top_rank_score(vector_ranked)
-            final_ranked = _rrf_fuse(bm25_ranked, vector_ranked)
+            final_ranked = _rrf_fuse(
+                [row for row in bm25_ranked if row[1] > 0.0], vector_ranked
+            )
             search_mode = "fused"
         else:
             fusion_unavailable = vector_error

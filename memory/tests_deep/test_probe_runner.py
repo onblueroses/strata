@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from memory.config import load_config
+from memory.config import MemoryConfig, load_config
 from memory.eval import probe_runner
 
 
@@ -80,6 +80,47 @@ def test_bm25_dry_run_end_to_end(capsys: pytest.CaptureFixture[str]) -> None:
     assert "adversarial_verdicts=FAIL" in output
     assert "dry_run=true" in output
     assert re.search(r"summary: \d+/\d+ PASS", output)
+
+
+@pytest.mark.parametrize(
+    ("ordinary_outcome", "expected_exit"),
+    [("pass", 0), ("fail", 1), ("error", 1)],
+)
+def test_exit_status_tracks_ordinary_probe_results(
+    monkeypatch: pytest.MonkeyPatch,
+    ordinary_outcome: str,
+    expected_exit: int,
+) -> None:
+    original_run_probe = probe_runner.run_probe
+
+    def controlled_run_probe(
+        probe: dict[str, object],
+        mode: str,
+        search_kwargs: dict[str, object],
+        fixture_hash: str,
+        grader_lane: str,
+        corpus: list[dict[str, object]],
+        config: MemoryConfig,
+        run_id: str,
+    ) -> dict[str, object]:
+        if not probe.get("adversarial") and ordinary_outcome == "error":
+            raise RuntimeError("ordinary probe error")
+        row = original_run_probe(
+            probe,
+            mode,
+            search_kwargs,
+            fixture_hash,
+            grader_lane,
+            corpus,
+            config,
+            run_id,
+        )
+        if not row["adversarial"] and ordinary_outcome == "fail":
+            row["verdict"] = "FAIL"
+        return row
+
+    monkeypatch.setattr(probe_runner, "run_probe", controlled_run_probe)
+    assert probe_runner.main(["--dry-run", "--mode", "bm25"]) == expected_exit
 
 
 def test_eval_query_telemetry_isolated_from_live_sink(
