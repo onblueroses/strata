@@ -1,0 +1,44 @@
+[
+  {
+    "id": "queue-backpressure",
+    "title": "Queue Backpressure",
+    "description": "Bound producers when consumers fall behind",
+    "body": "Use a bounded queue, explicit admission control, and measured retry delays to prevent overload collapse.",
+    "source": "fixture"
+  },
+  {
+    "id": "schema-migration",
+    "title": "Safe Schema Migration",
+    "description": "Expand and contract database changes",
+    "body": "Add compatible columns first, deploy readers and writers, verify the data, then remove the obsolete schema.",
+    "source": "fixture"
+  },
+  {
+    "id": "cache-invalidation",
+    "title": "Cache Invalidation",
+    "description": "Version cached data from source fingerprints",
+    "body": "Include content hashes and source modification metadata in cache keys so edits, additions, and removals rebuild stale entries.",
+    "source": "fixture"
+  },
+  {
+    "id": "structured-observability",
+    "title": "Structured Observability",
+    "description": "Emit bounded machine-readable events",
+    "body": "Record compact JSON events with timestamps, stable identifiers, latency, and outcome fields while bounding free-form text.",
+    "source": "fixture"
+  },
+  {
+    "id": "deterministic-builds",
+    "title": "Deterministic Builds",
+    "description": "Pin inputs and sort generated outputs",
+    "body": "Reproducible builds use explicit inputs, stable ordering, hermetic tools, and content-addressed artifacts.",
+    "source": "fixture"
+  },
+  {
+    "id": "api-timeouts",
+    "title": "API Timeouts",
+    "description": "Bound external calls and surface failures",
+    "body": "Set connection and response deadlines, propagate cancellation, and return a visible error when a dependency exceeds its budget.",
+    "source": "fixture"
+  }
+]

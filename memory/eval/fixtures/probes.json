@@ -1,0 +1,49 @@
+{
+  "version": 2,
+  "grader_lane": "grader",
+  "probes": [
+    {
+      "probe_id": "queue-hit",
+      "capability": "lexical-retrieval",
+      "query": "bounded queue admission control",
+      "expect": "hit",
+      "item_id": "queue-backpressure"
+    },
+    {
+      "probe_id": "schema-hit",
+      "capability": "lexical-retrieval",
+      "query": "expand contract schema columns",
+      "expect": "hit",
+      "item_id": "schema-migration"
+    },
+    {
+      "probe_id": "cache-hit",
+      "capability": "cache-coherence",
+      "query": "content fingerprints invalidate stale entries",
+      "expect": "hit",
+      "item_id": "cache-invalidation"
+    },
+    {
+      "probe_id": "telemetry-hit",
+      "capability": "bounded-observability",
+      "query": "bounded JSON latency outcome events",
+      "expect": "hit",
+      "item_id": "structured-observability"
+    },
+    {
+      "probe_id": "unknown-abstain",
+      "capability": "abstention",
+      "query": "xylophone nebula orchard",
+      "expect": "abstain",
+      "item_id": null
+    },
+    {
+      "probe_id": "adversarial-sentinel",
+      "capability": "monitor-self-test",
+      "query": "stable ordering hermetic build",
+      "expect": "hit",
+      "item_id": "absent-monitor-sentinel",
+      "adversarial": true
+    }
+  ]
+}

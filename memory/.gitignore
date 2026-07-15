@@ -1,0 +1,14 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+/cards/
+/cache/
+/session-state/
+/backups/
+/telemetry/
+vectors*.npy
+ids.json
+access-log*.json
+*.lock
+report_*.json

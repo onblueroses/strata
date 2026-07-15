@@ -1,0 +1,27 @@
+[
+  {
+    "query": "bounded queue admission control overload",
+    "query_set": "direct-lexical",
+    "relevant_ids": ["queue-backpressure"]
+  },
+  {
+    "query": "expand contract compatible columns migration",
+    "query_set": "direct-lexical",
+    "relevant_ids": ["schema-migration"]
+  },
+  {
+    "query": "content hash modification metadata stale cache",
+    "query_set": "multi-anchor",
+    "relevant_ids": ["cache-invalidation"]
+  },
+  {
+    "query": "compact JSON latency outcome bounded text",
+    "query_set": "multi-anchor",
+    "relevant_ids": ["structured-observability"]
+  },
+  {
+    "query": "stable ordering hermetic reproducible build",
+    "query_set": "multi-anchor",
+    "relevant_ids": ["deterministic-builds"]
+  }
+]
