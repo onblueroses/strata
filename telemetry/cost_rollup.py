@@ -121,15 +121,18 @@ def open_jsonl(path):
 def iter_jsonl(path):
     for jsonl_path in jsonl_paths(path):
         try:
-            fh = open_jsonl(jsonl_path)
-        except Exception:
+            with open_jsonl(jsonl_path) as fh:
+                for line in fh:
+                    try:
+                        yield json.loads(line)
+                    except Exception:
+                        continue  # basis: skip one malformed JSONL line; a read-time tool never aborts
+        except Exception as exc:
+            print(
+                f"cost_rollup.py: skipping unreadable telemetry stream {jsonl_path}: {exc}",
+                file=sys.stderr,
+            )
             continue
-        with fh:
-            for line in fh:
-                try:
-                    yield json.loads(line)
-                except Exception:
-                    continue  # basis: skip one malformed JSONL line; a read-time tool never aborts
 
 
 def _cost_split(t, r):
@@ -153,18 +156,18 @@ def cost_by_model(by_model, rates):
     return notional, real
 
 
-def cost_delegations(sid, rates):
+def cost_delegations(sid, rates, delegations_by_sid=None):
     """Delegation-lane cost for this sid from events.jsonl. An event carrying a full token-split
     dict (.tokens) is costed exactly; an event carrying only a total (.tokens_total) is estimated
     at the output rate and flagged."""
     if not sid:
         return 0.0, 0.0, 0, False
+    if delegations_by_sid is None:
+        delegations_by_sid = load_delegations()
     notional = real = 0.0
     n = 0
     estimated = False
-    for ev in iter_jsonl(EVENTS):
-        if ev.get("kind") != "delegation" or ev.get("sid") != sid:
-            continue
+    for ev in delegations_by_sid.get(sid, ()):
         r = rate_for(ev.get("model"), rates)
         tk = ev.get("tokens")
         if isinstance(tk, dict):  # full token split -> exact cost
@@ -186,12 +189,12 @@ def round_cost(value, enabled):
     return round(value, 4) if enabled else value
 
 
-def ledger_for(rec, rates, round_costs=True):
+def ledger_for(rec, rates, round_costs=True, delegations_by_sid=None):
     sid = rec.get("sid")
     main_n, main_r = cost_by_model(rec.get("tok_by_model"), rates)
     sub = rec.get("subagents") or {}
     sub_n, sub_r = cost_by_model(sub.get("tok_by_model"), rates)
-    dl_n, dl_r, dl_count, dl_est = cost_delegations(sid, rates)
+    dl_n, dl_r, dl_count, dl_est = cost_delegations(sid, rates, delegations_by_sid)
     total_n = main_n + sub_n + dl_n
     return {
         "sid": sid,
@@ -230,12 +233,15 @@ def load_metrics():
     return recs
 
 
-def load_delegation_sids():
-    return {
-        ev.get("sid")
-        for ev in iter_jsonl(EVENTS)
-        if ev.get("kind") == "delegation" and ev.get("sid")
-    }
+def load_delegations():
+    delegations_by_sid = {}
+    for ev in iter_jsonl(EVENTS):
+        if ev.get("kind") != "delegation":
+            continue
+        sid = ev.get("sid")
+        if sid:
+            delegations_by_sid.setdefault(sid, []).append(ev)
+    return delegations_by_sid
 
 
 def main(argv):
@@ -244,12 +250,15 @@ def main(argv):
         return 1
     rates = load_rates()
     recs = load_metrics()
-    delegation_sids = load_delegation_sids()
+    delegations_by_sid = load_delegations()
+    delegation_sids = set(delegations_by_sid)
     if argv[0] == "--aggregate":
         agg = {"main": 0.0, "sub": 0.0, "deleg": 0.0, "real": 0.0, "n": 0}
         for sid in sorted(set(recs) | delegation_sids):
             rec = recs.get(sid) or {"sid": sid}
-            led = ledger_for(rec, rates, round_costs=False)
+            led = ledger_for(
+                rec, rates, round_costs=False, delegations_by_sid=delegations_by_sid
+            )
             agg["main"] += led["channels"]["main_loop"]["cost_notional"]
             agg["sub"] += led["channels"]["subagents"]["cost_notional"]
             agg["deleg"] += led["channels"]["delegations"]["cost_notional"]
@@ -281,7 +290,11 @@ def main(argv):
     if not rec:
         sys.stderr.write(f"no session_metrics for sid {sid}\n")
         return 1
-    print(json.dumps(ledger_for(rec, rates), indent=2))
+    print(
+        json.dumps(
+            ledger_for(rec, rates, delegations_by_sid=delegations_by_sid), indent=2
+        )
+    )
     return 0
 
 

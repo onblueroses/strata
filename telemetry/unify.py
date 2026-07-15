@@ -224,8 +224,8 @@ def main():
 
         kinds, sources = Counter(), Counter()
         for e in events:
-            kinds[e["kind"]] += 1
-            sources[e["source"]] += 1
+            kinds[e.get("kind", "?")] += 1
+            sources[e.get("source", "?")] += 1
         print(
             f"\n[unify] {len(events)} events from {len(sources)} sources",
             file=sys.stderr,
