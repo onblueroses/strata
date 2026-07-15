@@ -8,8 +8,10 @@ for a set of queries. Outputs results as JSON.
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -253,23 +255,27 @@ def run_eval(
     skill_path: str | None = None,
 ) -> dict:
     """Run the full eval set and return results."""
-    # Temporarily hide the real SKILL.md so the test command is the only
-    # skill with this name visible to claude -p workers.
-    real_skill_md = Path(skill_path) / "SKILL.md" if skill_path else None
-    real_skill_bak = Path(skill_path) / "SKILL.md.eval-bak" if skill_path else None
-    hid_real_skill = False
-    if real_skill_md and real_skill_md.exists():
-        real_skill_md.rename(real_skill_bak)
-        hid_real_skill = True
-
-    try:
+    if not skill_path:
         return _run_eval_inner(
             eval_set, skill_name, description, num_workers, timeout,
             project_root, runs_per_query, trigger_threshold, model, skill_path,
         )
+
+    # Work in a disposable tree so concurrent sessions always retain the live skill.
+    isolated_root = Path(tempfile.mkdtemp(prefix="skill-eval-"))
+    copied_skill_path = isolated_root / Path(skill_path).name
+    try:
+        shutil.copytree(skill_path, copied_skill_path)
+        copied_skill_md = copied_skill_path / "SKILL.md"
+        if copied_skill_md.exists():
+            copied_skill_md.rename(copied_skill_path / "SKILL.md.eval-bak")
+        return _run_eval_inner(
+            eval_set, skill_name, description, num_workers, timeout,
+            copied_skill_path, runs_per_query, trigger_threshold, model,
+            str(copied_skill_path),
+        )
     finally:
-        if hid_real_skill and real_skill_bak and real_skill_bak.exists():
-            real_skill_bak.rename(real_skill_md)
+        shutil.rmtree(isolated_root, ignore_errors=True)
 
 
 def _run_eval_inner(
@@ -284,7 +290,7 @@ def _run_eval_inner(
     model: str | None,
     skill_path: str | None,
 ) -> dict:
-    """Inner eval logic, called with SKILL.md already hidden."""
+    """Inner eval logic, called with SKILL.md hidden in the evaluation tree."""
     results = []
 
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
