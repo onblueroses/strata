@@ -158,31 +158,6 @@ def read_json_file(path: Path) -> tuple[Any | None, str | None]:
         return None, f"could not read {path}: {exc.__class__.__name__}: {exc}"
 
 
-def read_jsonl_file(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
-    rows: list[dict[str, Any]] = []
-    notes: list[str] = []
-    try:
-        with path.open(encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    notes.append(f"skipped malformed line in {path}")
-                    continue
-                if isinstance(obj, dict):
-                    rows.append(obj)
-                else:
-                    notes.append(f"skipped non-object line in {path}")
-    except FileNotFoundError:
-        notes.append(f"missing file: {path}")
-    except (OSError, UnicodeError) as exc:
-        notes.append(f"could not read {path}: {exc.__class__.__name__}: {exc}")
-    return rows, notes
-
-
 def load_events(since_days: int | None) -> tuple[list[dict[str, Any]], list[str]]:
     """Read the one public event surface by invoking telemetry/unify.py."""
     notes: list[str] = []
