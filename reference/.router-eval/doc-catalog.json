@@ -26,8 +26,13 @@
  },
  {
   "doc": "code-quality-principles.md",
-  "keywords": "code quality, code review, elegance, testing philosophy, comment discipline, slop, clean code, non-defensive, parse dont validate",
+  "keywords": "code quality, code review, elegance, testing philosophy, comment discipline, slop, clean code, non-defensive, defensive coding, try except, bare except, swallowed exception, error handling, parse dont validate, over-engineering, refactor, maintainability, readability, fowler code smell",
   "description": "Code elegance, comment discipline, testing philosophy. Language-agnostic."
+ },
+ {
+  "doc": "code-smell-baseline.md",
+  "keywords": "fowler, code smell, maintainability, refactoring, feature envy, shotgun surgery, refused bequest, long method, long function, duplicated code, data clumps, primitive obsession, repeated switches, divergent change, speculative generality, message chain, middle man, mysterious name",
+  "description": "Compact Fowler maintainability lens with hunk-level and codebase-level smells, confirmation gates, and fix directions."
  },
  {
   "doc": "codex-framings.md",
@@ -88,6 +93,11 @@
   "doc": "resource-sizing.md",
   "keywords": "num_workers, worker count, single worker, batch size, batch_size, concurrency, parallelism, max_tokens, learning rate, prefetch, dataloader, conservative defaults, conservative configuration, silent defaults, floor value, throughput, serial loop, too slow, ineffective config, right-size, pessimal, hyperparameter, try/except, defensive, swallowed exception, PYTHONUNBUFFERED, unbuffered monitor, saturate",
   "description": "Right-sizing performance scalars instead of defaulting them: why a floor value (workers=1, batch=1, a serial loop) is the fingerprint of an unmade decision, reading the substrate before picking a number, leaning by cost-of-failure, making the choice legible. Cross-refs non-defensive coding + fixed-vs-adaptive tuning."
+ },
+ {
+  "doc": "review-fanout.md",
+  "keywords": "review fan-out, specialist review, bucket categorization, parallel review panel, sequential fallback, large diff review, grader lane, breadth lane, deduplicate findings",
+  "description": "Large-diff specialist review protocol with ordered file buckets, `grader`-lane perspectives, parallel execution, sequential fallback, and deterministic merge rules."
  },
  {
   "doc": "review-public-repo-audit.md",

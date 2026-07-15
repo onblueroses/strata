@@ -28,7 +28,7 @@ Run one of:
 /verify --deep    # Force Deep tier (thorough review, spec-driven work)
 ```
 
-Accept only these two invocation forms. Read the edit list from `$STATE_DIR/.session-edits-{sessionId}` automatically.
+Accept only these two invocation forms. Derive `{sessionId}` from the first 8 characters of the current session id, then read `$STATE_DIR/.session-edits-{sessionId}` automatically.
 
 ## Skip Conditions
 
@@ -36,9 +36,11 @@ Classify as Skip when either condition is true:
 - zero files were edited this session (`.session-edits-{sessionId}` is absent from `$STATE_DIR/` or is empty)
 - the only edits were to verify infrastructure files (`.session-edits-*`, `.verify-passed-*`, this skill file) during a meta-session
 
+**Receipt freshness guard:** When `$STATE_DIR/.verify-passed-{sessionId}` exists and neither `$STATE_DIR/.session-edits-{sessionId}` nor `$STATE_DIR/.session-edits-{sessionId}.jsonl` is newer, report `VERIFY: already passed at [receipt timestamp]` and stop. Use the JSONL event log to catch repeat edits because `observe-track-edits.sh` appends to it on every edit; retain the plain-text list as a fallback when event logging is absent.
+
 ## Risk Classifier
 
-Read `$STATE_DIR/.session-edits-{sessionId}` and classify every path using the **Verify Risk** system in `$STRATA_HOME/reference/tier-classification.md`. The **highest risk file** determines the tier for the whole session.
+Read `$STATE_DIR/.session-edits-{sessionId}` and classify every path with the canonical patterns below. `$STRATA_HOME/reference/tier-classification.md` summarizes the tiers and points here for the live pattern list. The **highest risk file** determines the tier for the whole session.
 
 ### Tier: Skip
 
@@ -54,8 +56,8 @@ Classify as Skip when all edited files match these patterns (every file matches 
 - `**/CLAUDE.md` - project instructions
 - `$STRATA_HOME/reference/**/*.md` - reference docs
 
-**Excludes** (these are NOT skip-safe even if they match .claude/):
-- `.claude/settings.json` - affects runtime behavior
+**Excludes** (these are NOT skip-safe even if they match a safe parent path):
+- `$STRATA_HOME/settings.json` or `.claude/settings.json` - affects runtime behavior
 - `$STRATA_HOME/hooks/**` - executable scripts
 - Any `.ps1`, `.sh`, `.js`, `.ts`, `.py`, `.rs` file regardless of location (including inside `$STRATA_HOME/skills/*/scripts/` or `$STRATA_HOME/skills/*/references/`)
 
@@ -99,6 +101,8 @@ Run these checks directly; keep the process inline for 1-3 files in a single pro
 
 **L1. Fresh re-read.** Read every edited file using the Read tool. Read from disk through the tool.
 
+**L1b. Fowler smell baseline (code edits only).** For non-trivial code edits, read `$STRATA_HOME/reference/code-smell-baseline.md` and apply its hunk-level smells as judgement calls under documented repo standards. Confirm codebase-level smells with surrounding-code searches or mark them for whole-repo confirmation. Skip this lens for config, markdown, and trivial edits.
+
 **L2. Debris scan.** Grep all edited files for:
 - `TODO` or `FIXME` without a description after it
 - `console.log(` or `console.debug(` in non-test files (test files: `*.test.*`, `*.spec.*`, `__tests__/`)
@@ -117,7 +121,7 @@ Run these checks directly; keep the process inline for 1-3 files in a single pro
 VERIFY: [N files] LIGHT
 ========================================
 
-[PASS] Re-read N files, debris clean, tests pass
+[PASS] Re-read N files, smell lens applied where relevant, debris clean, tests pass
 --- or ---
 [FAIL] N issues found
 
@@ -155,6 +159,8 @@ Run once per repo when files span multiple repos. Capture its full output. Use `
 
 **F1. Fresh re-read.** Read every edited file with the Read tool. Read from disk through the tool.
 
+**F1b. Fowler smell baseline (maintainability lens).** Read `$STRATA_HOME/reference/code-smell-baseline.md` and apply it to edited code as contextual heuristics. Confirm Feature Envy, Repeated Switches, Shotgun Surgery, Divergent Change, and Refused Bequest with surrounding-code searches or mark them for whole-repo confirmation. Deduplicate smells already reported by F0.
+
 **F2. Cross-file consistency.** For files that reference each other:
 - Imports/requires: verify each imported path resolves to a real file and each exported symbol exists.
 - Config references: verify each referenced path/module/class exists.
@@ -190,6 +196,7 @@ INLINE CHECKS
 [PASS] All checks passed
   - F0: Codex [pass/N findings/skipped]
   - F1: Re-read N files
+  - F1b: Smell baseline [clean/N findings/N need confirmation]
   - F2: Cross-refs valid
   - F3: No debris
   - F4: Tests pass / No tests
@@ -234,9 +241,10 @@ Use the marker file exactly as the Stop hook expects.
 
 **Path:** `$STATE_DIR/.verify-passed-{sessionId}`
 **Content:** ISO timestamp on a single line (e.g., `2026-03-25T14:30:00`)
-**Purpose:** Stop hook checks this file. Treat missing or stale marker files as blocked.
+**Session key:** `{sessionId}` is the first 8 characters of the current session id.
+**Purpose:** `gate-verify.sh`, `/review`, and `gate-pre-push.sh` consume this receipt. Treat a missing receipt or one older than either edit tracker as stale.
 
-Use the Stop hook (`gate-verify.sh`) auto-written marker for Skip-tier sessions; knowledge-base-only work passes without explicit /verify.
+Write the receipt exactly once per real PASS, including Skip, and never write it on FAIL. `session-cleanup-verify-markers.sh` removes this session's prior receipt at SessionStart; `gate-verify.sh` may write it for a Skip-tier session. The session-keyed path keeps concurrent sessions isolated.
 
 ---
 

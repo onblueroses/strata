@@ -1,4 +1,4 @@
-<!-- keywords: code quality, code review, elegance, testing philosophy, comment discipline, slop, clean code, non-defensive, parse dont validate -->
+<!-- keywords: code quality, code review, elegance, testing philosophy, comment discipline, slop, clean code, non-defensive, defensive coding, try except, bare except, swallowed exception, error handling, parse dont validate, over-engineering, refactor, maintainability, readability, fowler code smell -->
 # Code Quality Principles
 
 Universal principles for all code the user writes with AI agents. Language-agnostic. Read this when starting any project, not just Rust. For Rust-specific applications, see `rust-ai-project-setup.md`.
@@ -20,6 +20,7 @@ Evidence base: OX Security (300+ repos), CodeRabbit AI vs Human report, arXiv in
 | Write tests correctly | 5. Testing Philosophy |
 | Follow agent workflow patterns | 6. Agent Workflow |
 | Design CLAUDE.md rules that stick | 7. CLAUDE.md Design |
+| Spot named Fowler code smells in a diff | `code-smell-baseline.md` (review-time maintainability lens) |
 
 ---
 
@@ -29,6 +30,8 @@ Evidence base: OX Security (300+ repos), CodeRabbit AI vs Human report, arXiv in
 <summary>1. The Elegance Standard</summary>
 
 Beautiful code is not clever code. It is code where the types carry meaning, the reader never wonders what a function does because its name and signature tell them, and there is nothing left to remove.
+
+During review, apply `code-smell-baseline.md` as the named maintainability lens; treat its smells as contextual heuristics under these principles.
 
 **Parse, don't validate.** Convert raw input into typed values at system boundaries. A function receiving a validated type does not re-check it. This eliminates defensive code at the source.
 

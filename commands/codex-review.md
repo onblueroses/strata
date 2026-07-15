@@ -9,6 +9,15 @@ when_to_use: Before executing a non-trivial plan, debugging hypothesis, or archi
 
 # /codex-review
 
+Goal: Return an independent adversarial review of a plan, debugging hypothesis, or architecture decision from a frozen artifact.
+
+Success means:
+  - Each selected framing runs from the same artifact and criteria with session reasoning excluded.
+  - The merged report contains AGREE notes, severity-tagged findings, and exactly one `PROCEED`, `PROCEED_WITH_CONCERNS`, or `BLOCK` verdict.
+  - Parallel panels launch every framing before any result is read; sequential single-framing calls retain the same output contract.
+
+Stop when: The one-shot report is delivered and its findings are triaged; iterative correction escalates to `/harness`.
+
 One-shot adversarial review by Codex. Hands the artifact, criteria, and minimal context to Codex via direct CLI - never the chat history, never your reasoning chain. This codifies the "Codex plan review" procedure documented in CLAUDE.md so you don't reconstruct it from prose every time.
 
 ## When to use this vs other Codex paths
@@ -45,7 +54,7 @@ Codex SHOULD see:
 - Acceptance criteria as binary PASS/FAIL gates where derivable
 - Relevant existing files - by path, Codex reads them itself
 - Project standing rules from CLAUDE.md (constraints, not bias)
-- One adversarial framing (rotated per call against the same artifact)
+- One adversarial framing per call; a panel dispatches several calls against the same frozen artifact
 
 This asymmetry is the entire mechanism. If Codex inherits Claude's reasoning, it starts predisposed to agree (positivity bias from priming). Cutting that forces independent ground-up evaluation.
 
@@ -55,7 +64,7 @@ This asymmetry is the entire mechanism. If Codex inherits Claude's reasoning, it
 
 For new specs from /spec, design docs, or implementation plans.
 
-**Default framing rotation:** specification-lawyer → contrarian-architect → failure-mode-analyst (cycles per repeat call against the same artifact).
+**Default framing:** `specification-lawyer-plan`. Add `contrarian-architect` and `failure-mode-analyst` as panel members when the artifact warrants multiple lenses.
 
 **Inputs Codex sees:** plan text + file paths it will touch (Codex reads them) + extracted goal + framing.
 
@@ -67,7 +76,7 @@ For new specs from /spec, design docs, or implementation plans.
 
 For debugging theories about what's causing a bug, before you act on them.
 
-**Default framing rotation:** alternative-cause-finder → counterexample-finder.
+**Default framing:** `alternative-cause-finder`. Add `counterexample-finder` as a panel member when a second independent causal lens is warranted.
 
 **Inputs:** hypothesis text + evidence files (logs, error output, repro steps) + suspected code files.
 
@@ -79,7 +88,7 @@ The frame asks: "What other cause fits this evidence equally well?" and "What wo
 
 For design decisions where alternatives exist.
 
-**Default framing rotation:** tradeoff-analyst → contrarian-architect.
+**Default framing:** `tradeoff-analyst`. Add `contrarian-architect` as a panel member for high-stakes or difficult-to-reverse decisions.
 
 **Inputs:** the decision + the alternatives considered + the constraints driving it + relevant current-architecture files.
 
@@ -102,6 +111,10 @@ Framings are defined in `$STRATA_HOME/reference/codex-framings.md` (single sourc
 
 Read the reference doc to load the full preamble for the chosen framing into the Codex prompt at Step 1 of the invocation. Do not paraphrase - copy verbatim. The wording is calibrated to counter specific bias classes.
 
+**Parallel panel:** When the artifact is high-stakes, spans several characteristics, or previously produced structural findings, run one call per warranted framing in parallel. Build prompt files that differ only in framing, launch every call before reading any report, and merge after all calls exit. Deduplicate overlaps at the highest severity. See `$STRATA_HOME/reference/load-bearing-iteration.md`, "Adversarial Lenses Run in Parallel".
+
+**Re-review:** Freeze the revised artifact as a new one-shot input, verify that prior BLOCKING findings were addressed, prefer framings not yet used, and keep prior reports out of each new prompt. Record the framing history in the report and, for spec reviews, in the spec Decisions table.
+
 For implementation/code-quality framings used by `/harness` (security-audit, production-load, maintainability, adversarial-user, dependency-skeptic, reality-declaration), see `$STRATA_HOME/skills/harness/references/evaluator-framings.md`. Those target code that exists; the codex-framings doc targets plans/theories/decisions.
 
 ## Codex Invocation
@@ -111,7 +124,7 @@ For implementation/code-quality framings used by `/harness` (security-audit, pro
 
 Per CLAUDE.md: direct `codex` CLI via Bash with `run_in_background: true`. xhigh reasoning + fast service tier can take 5-15 minutes - longer than Bash's 10-minute foreground cap.
 
-**Step 1: Build the prompt file** at `/tmp/codex-review-{session-id}-{epoch}.md`:
+**Step 1: Build the prompt file** at `$STATE_DIR/codex-review-{session-id}-{epoch}-{framing}.md`, one file per framing. Keep every panel prompt identical except for its framing preamble:
 
 ```
 {framing preamble}
@@ -197,6 +210,8 @@ Code logic remains intact; only identifiers change.
 Use the canonical Codex flag set (see CLAUDE.md `Codex Invocation Standard` for flag rationale):
 
 ```bash
+PROMPT="$STATE_DIR/codex-review-{session-id}-{epoch}-{framing}.md"
+LOG="$STATE_DIR/codex-review-{session-id}-{epoch}-{framing}.log"
 codex exec \
   --dangerously-bypass-approvals-and-sandbox \
   --skip-git-repo-check \
@@ -204,16 +219,16 @@ codex exec \
   -c model_reasoning_effort=xhigh \
   -c service_tier=fast \
   --model <PICK_REVIEW_MODEL> \
-  "$(cat /tmp/codex-review-{session-id}-{epoch}.md)" \
+  "$(cat "$PROMPT")" \
   < /dev/null \
-  > /tmp/codex-review-{session-id}-{epoch}.log 2>&1
+  > "$LOG" 2>&1
 ```
 
-Run with `run_in_background: true`. The `< /dev/null` is mandatory for backgrounded `codex exec`: an unclosed stdin socket hangs codex forever at 0 CPU on "Reading additional input from stdin".
+Run with `run_in_background: true`. The `< /dev/null` is mandatory for backgrounded `codex exec`: an unclosed stdin socket hangs codex forever at 0 CPU on "Reading additional input from stdin". For a panel, launch every framing before reading any log; each launched process must have its own prompt and log under `$STATE_DIR`.
 
-**Step 4: Monitor progress.** Use the Monitor tool on the log file. If no new output for 5+ minutes or repeated errors, kill the process and fall back per Failure Modes.
+**Step 4: Monitor progress.** Use the Monitor tool on every log file. If a process produces no new output for 5+ minutes or repeats errors, kill that process and fall back per Failure Modes.
 
-**Step 5: Read the result.** Once Codex exits, read the full log file. Parse AGREE notes, severity-tagged issues, and the final VERDICT line.
+**Step 5: Read the result.** Once every call exits, read each full log. Parse AGREE notes, severity-tagged issues, and final verdicts, then merge panel findings into one deduplicated brief. Resolve the final report to exactly one allowed verdict and verify that severity counts match.
 
 </details>
 
@@ -223,7 +238,7 @@ Present to the user in this fixed format:
 
 ```
 CODEX REVIEW: <plan|hypothesis|arch> review of <artifact-name>
-Framing: <framing-used>
+Framing(s): <framing used, or panel list>
 ========================================
 
 AGREE (Codex confirmed):
@@ -295,11 +310,11 @@ Sequence the edits: PROTECT first (mark inviolate), then DIAGNOSE (smallest inte
 
 Before reporting verdict to user:
 
-1. **Codex prompt file exists** at `/tmp/` with all required sections (framing, artifact, criteria, files, constraints, output format)
+1. **Codex prompt file exists** under `$STATE_DIR` with all required sections (one file per panel framing: framing, artifact, criteria, files, constraints, output format)
 2. **Privacy preprocessing applied** - grep the prompt file for known private patterns; should find none
 3. **Codex was actually invoked** with xhigh + fast tier, in background
 4. **Log file fully captured** before parsing - check Codex's exit status
-5. **Severity counts match** the parsed findings
+5. **Severity counts match** the parsed findings after panel deduplication
 6. **AGREE notes present** if any aspects were confirmed (anti-bias requirement)
 7. **VERDICT line parsed** correctly - one of three values, no improvisation
 8. **No conversation context leaked** into the prompt file (re-read; should contain only artifact + criteria + framing)

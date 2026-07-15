@@ -29,11 +29,13 @@ Formal agent definitions live in `$STRATA_HOME/agents/`. Each has YAML frontmatt
 |-------|-------|-------|------------|----------|
 | `knowledge-lookup` | small | Read, Grep, Glob | Any command needing entity data | Fast lookup in the `$KB_DIR/` knowledge base: entity summaries, items.json, daily notes, PARA structure. Not for analysis. |
 | `quick-research` | small | WebSearch, WebFetch, Read | `/research` Simple tier, any quick lookup | Simple factual web lookups: docs, versions, definitions. Not for multi-step reasoning. |
-| `code-reviewer` | mid | Read, Grep, Glob, Bash | `/verify` Full tier, code review tasks | Review code for correctness, style, edge cases. Reads files, runs tests. Not security-focused (use `/harness` for that). |
+| `code-reviewer` | mid | Read, Grep, Glob | Manual-only maintainability review | Apply the Fowler code-smell lens in `code-smell-baseline.md` with read/grep context. Complements the independent `breadth` review; correctness, security, and tests stay with `/review` and `/verify` F0. |
 
 <!-- deep-researcher and pattern-extractor retired: zero dispatch callers. Web lookups route through quick-research; pattern extraction runs inline (an Explorer subagent plus an inline /evaluate phase); heavy research and analysis route to the external sub-model lanes. -->
 
 `dmux-pane` is not a subagent; see the dmux Dispatch Panes entry under Ad-Hoc Patterns.
+
+Large-diff specialist routing lives in `review-fanout.md`: `grader`-lane specialists cover file buckets while the independent `breadth` pass sees the whole diff.
 
 ### Model Selection Guide
 

@@ -1,0 +1,181 @@
+{
+ "summary": {
+  "catch_on": 1,
+  "catch_off": 0.86,
+  "catch_on_hunk": 1,
+  "catch_off_hunk": 0.95,
+  "catch_on_codebase": 1,
+  "catch_off_codebase": 0.73,
+  "fp_on": 0.22,
+  "fp_off": 0.28,
+  "delta_catch": 0.14,
+  "delta_fp": -0.06,
+  "K": 3,
+  "n_positive": 12,
+  "n_control": 6
+ },
+ "rows": [
+  {
+   "id": "p01-mysterious-name",
+   "kind": "positive",
+   "level": "hunk",
+   "target": "Mysterious Name",
+   "on": 1,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "p02-duplicated-code",
+   "kind": "positive",
+   "level": "hunk",
+   "target": "Duplicated Code",
+   "on": 1,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "p03-data-clumps",
+   "kind": "positive",
+   "level": "hunk",
+   "target": "Data Clumps",
+   "on": 1,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "p04-primitive-obsession",
+   "kind": "positive",
+   "level": "hunk",
+   "target": "Primitive Obsession",
+   "on": 1,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "p05-speculative-generality",
+   "kind": "positive",
+   "level": "hunk",
+   "target": "Speculative Generality",
+   "on": 1,
+   "off": 0.6666666666666666,
+   "samples": 6
+  },
+  {
+   "id": "p06-message-chains",
+   "kind": "positive",
+   "level": "hunk",
+   "target": "Message Chains",
+   "on": 1,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "p07-middle-man",
+   "kind": "positive",
+   "level": "hunk",
+   "target": "Middle Man",
+   "on": 1,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "p08-feature-envy",
+   "kind": "positive",
+   "level": "codebase",
+   "target": "Feature Envy",
+   "on": 1,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "p09-repeated-switches",
+   "kind": "positive",
+   "level": "codebase",
+   "target": "Repeated Switches",
+   "on": 1,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "p10-shotgun-surgery",
+   "kind": "positive",
+   "level": "codebase",
+   "target": "Shotgun Surgery",
+   "on": 1,
+   "off": 0,
+   "samples": 6
+  },
+  {
+   "id": "p11-divergent-change",
+   "kind": "positive",
+   "level": "codebase",
+   "target": "Divergent Change",
+   "on": 1,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "p12-refused-bequest",
+   "kind": "positive",
+   "level": "codebase",
+   "target": "Refused Bequest",
+   "on": 1,
+   "off": 0.6666666666666666,
+   "samples": 6
+  },
+  {
+   "id": "c01-clean",
+   "kind": "control",
+   "level": "hunk",
+   "target": "any",
+   "on": 0,
+   "off": 0.3333333333333333,
+   "samples": 6
+  },
+  {
+   "id": "c02-legit-dup-two-copies",
+   "kind": "control",
+   "level": "hunk",
+   "target": "Duplicated Code",
+   "on": 0,
+   "off": 1,
+   "samples": 6
+  },
+  {
+   "id": "c03-boundary-primitive",
+   "kind": "control",
+   "level": "hunk",
+   "target": "Primitive Obsession",
+   "on": 1,
+   "off": 0,
+   "samples": 6
+  },
+  {
+   "id": "c04-real-seam-one-impl",
+   "kind": "control",
+   "level": "codebase",
+   "target": "Speculative Generality",
+   "on": 0,
+   "off": 0,
+   "samples": 6
+  },
+  {
+   "id": "c05-single-switch",
+   "kind": "control",
+   "level": "hunk",
+   "target": "Repeated Switches",
+   "on": 0,
+   "off": 0.3333333333333333,
+   "samples": 6
+  },
+  {
+   "id": "c06-brief-access",
+   "kind": "control",
+   "level": "codebase",
+   "target": "Feature Envy",
+   "on": 0.3333333333333333,
+   "off": 0,
+   "samples": 6
+  }
+ ]
+}

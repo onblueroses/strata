@@ -43,7 +43,7 @@ Arguments via `$ARGUMENTS`.
 Follow the pre-commit sequence from prerequisite check through final recommendation.
 ### 0. Check /verify prerequisite
 
-Check whether `/verify` has passed this session before running `/review`. Look for `$STATE_DIR/.verify-passed-{sessionId}`. When that marker is absent and `$STATE_DIR/.session-edits-{sessionId}` has entries, tell Claude to run `/verify` first. For Skip-tier sessions (only knowledge-base files edited), the Stop hook auto-writes the marker and completes the prerequisite. /verify checks code correctness and consistency; /review checks commit readiness. They are complementary.
+Derive `{sessionId}` from the first 8 characters of the current session id and read `$STATE_DIR/.verify-passed-{sessionId}`. Treat the receipt as current only when neither `$STATE_DIR/.session-edits-{sessionId}` nor `$STATE_DIR/.session-edits-{sessionId}.jsonl` is newer. The JSONL log advances on every edit, including repeat edits to an already-listed file; the plain list remains the fallback when event logging is absent. When the receipt is missing or stale and the plain edit list has entries, tell Claude to run `/verify` first. For Skip-tier sessions, the Stop hook writes the same receipt and completes the prerequisite. `/verify` checks correctness and consistency; `/review` checks commit readiness.
 
 ### 1. Get the diff
 
@@ -96,7 +96,7 @@ Store the categorization as a map: `{bucket: [filepath, ...]}`. Count total file
 
 **Threshold gate (zero LLM cost):**
 - If total files < 10 AND total lines changed < 500: **single reviewer** - proceed with Steps 2-6 as normal.
-- If total files >= 10 OR total lines changed >= 500: **fan-out mode** - proceed with Steps 2-4d as normal, AND also run Fan-Out Review (Step 4e) in parallel. Merge all findings.
+- If total files >= 10 OR total lines changed >= 500: **fan-out mode** - read `$STRATA_HOME/reference/review-fanout.md`, proceed with Steps 2-4d, and run Step 4e through its parallel path or documented sequential fallback. Merge all findings.
 
 Record the routing decision silently. The report header will show `[FAN-OUT]` when fan-out activates.
 
@@ -115,7 +115,7 @@ Keep this detection silent. Apply the right checks based on the result.
 
 ### 3. Read constraints
 
-Read `.claude/CLAUDE.md` from the repo root (fall back to `$HOME/.claude/CLAUDE.md`).
+Read the project-local `CLAUDE.md` from the repo root (fall back to `$STRATA_HOME/CLAUDE.md`).
 Extract constraints, style rules, and the pre-ship review checklist.
 
 ### 4. Check against constraints
@@ -151,6 +151,8 @@ Read the full file for each changed file, using the diff plus surrounding contex
 *Python lies:* `.push()` / `.size()` / `.length` on Python objects; mutable default args `def f(items=[])`; bare `pass` with missing docstring.
 
 *TypeScript drift:* `as any` casts; non-null assertions `!` on uncertain values; `@ts-ignore` added.
+
+**Fowler smell baseline (maintainability lens):** Read `$STRATA_HOME/reference/code-smell-baseline.md` and apply it to the full changed files already in context. Treat each smell as a judgement call under documented repo standards and leave tool-enforced rules to tooling. Confirm codebase-level smells with surrounding-code searches, or mark them for whole-repo confirmation. Deduplicate any smell already reported by the independent Step 1a review.
 
 **Concrete mechanical tests:**
 - **Secret test:** any added line with `sk-`, `ghp_`, `AKIA`, `Bearer `, or 32+ char hex/base64 near a key-like var name?
@@ -259,9 +261,11 @@ Run fan-out review when the threshold gate selects specialist review.
 <details>
 <summary>Fan-out review (threshold exceeded only)</summary>
 
+Use `$STRATA_HOME/reference/review-fanout.md` as the specialist execution, fallback, and merge protocol; the inline table and prompt below remain the command-local checklist.
+
 Run only when Step 1b's threshold gate triggered fan-out (>= 10 files OR >= 500 lines changed). For smaller diffs, use the single-reviewer path entirely.
 
-**Specialist reviewers:** Spawn subagents in parallel (Agent-tool review panel), one per non-empty bucket from Step 1b's categorization. Each specialist gets only the files in its bucket.
+**Specialist reviewers:** Dispatch one configured `grader`-lane reviewer per non-empty bucket from Step 1b's categorization. Use a parallel review panel when available and the reference protocol's sequential fallback otherwise. Each specialist gets only the files in its bucket.
 
 | Bucket | Specialist perspective | Focus |
 |--------|----------------------|-------|
@@ -376,6 +380,8 @@ Verify these checks before reporting:
 7. Fan-out: specialist findings deduplicated by file:line:description?
 8. Fan-out: noisy specialists truncated to 10 highest-severity findings?
 
+In fan-out mode, also apply the sequential-fallback and frozen-diff self-checks in `$STRATA_HOME/reference/review-fanout.md`.
+
 **Optional final step (non-blocking).** Before signing off, name what this change leaves comfortably unaddressed: the risk the diff satisfies on paper but not in reality. Name the error path it never added, the assumption it left unstated, the test the green checkmark made feel unnecessary. A clean review confirms the present code is sound; this asks what a sound-looking change quietly leaves out. Skip it for trivial, low-stakes, or purely mechanical diffs (renames, formatting, dependency bumps) where there is no design surface to hide an absence. It adds an author-facing note only and never changes the PASS/FAIL verdict.
 
 ### Review Boundaries
@@ -455,6 +461,8 @@ Run only the design/correctness critique in this mode. Keep normal pre-commit ch
 ---
 
 ## Public Repo Audit (`--public-repos`)
+
+Read `$STRATA_HOME/reference/review-public-repo-audit.md` and use it as the canonical audit protocol; the detailed steps below remain an inline execution checklist.
 
 Run the capped public-repository audit workflow for current-state and history exposure checks.
 Run a periodic deep audit that scans full git history across all public repos. Use this when making a repo public for the first time, or every few months as a sanity check. The pre-commit privacy checks (Step 4a above) catch new leaks on every commit; this catches anything that was already there.

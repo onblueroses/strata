@@ -1,0 +1,182 @@
+[
+ {
+  "id": "p01-mysterious-name",
+  "kind": "positive",
+  "level": "hunk",
+  "target": "Mysterious Name",
+  "target_desc": "function/variable names (proc, d, f, r) do not reveal what they hold or do",
+  "lang": "python",
+  "change_note": "new function added",
+  "code": "def proc(d, f):\n    r = []\n    for x in d:\n        if x[f] > 0:\n            r.append(x[f] * 1.2)\n    return r"
+ },
+ {
+  "id": "p02-duplicated-code",
+  "kind": "positive",
+  "level": "hunk",
+  "target": "Duplicated Code",
+  "target_desc": "the same subtotal loop appears in three functions, same reason to change",
+  "lang": "python",
+  "change_note": "three tax helpers added",
+  "code": "def total_with_tax_us(items):\n    s = 0\n    for it in items:\n        s += it.price * it.qty\n    return s * 1.07\n\ndef total_with_tax_eu(items):\n    s = 0\n    for it in items:\n        s += it.price * it.qty\n    return s * 1.19\n\ndef total_with_tax_ca(items):\n    s = 0\n    for it in items:\n        s += it.price * it.qty\n    return s * 1.05"
+ },
+ {
+  "id": "p03-data-clumps",
+  "kind": "positive",
+  "level": "hunk",
+  "target": "Data Clumps",
+  "target_desc": "x, y, width, height always travel together across functions; they want to be a Rectangle type",
+  "lang": "python",
+  "change_note": "geometry helpers added",
+  "code": "def draw_rect(x, y, width, height, color): ...\ndef rect_area(x, y, width, height): ...\ndef move_rect(x, y, width, height, dx, dy): ...\ndef contains(x, y, width, height, px, py): ..."
+ },
+ {
+  "id": "p04-primitive-obsession",
+  "kind": "positive",
+  "level": "hunk",
+  "target": "Primitive Obsession",
+  "target_desc": "status and currency are raw strings compared by value; they are domain concepts that deserve enums",
+  "lang": "python",
+  "change_note": "charge function added",
+  "code": "def charge(amount_cents, currency, status):\n    if status == \"pending\" or status == \"authorized\":\n        if currency == \"USD\" or currency == \"EUR\" or currency == \"GBP\":\n            return gateway.submit(amount_cents, currency)\n    return None"
+ },
+ {
+  "id": "p05-speculative-generality",
+  "kind": "positive",
+  "level": "hunk",
+  "target": "Speculative Generality",
+  "target_desc": "an abstract base with one impl and an unused **options hook, added for hypothetical future formats",
+  "lang": "python",
+  "change_note": "exporter scaffolding added",
+  "code": "class ExporterBase(ABC):\n    @abstractmethod\n    def export(self, data, **options): ...\n\nclass CsvExporter(ExporterBase):\n    def export(self, data, **options):\n        return \",\".join(str(d) for d in data)\n\n# only caller:\ndef write_report(rows):\n    return CsvExporter().export(rows)"
+ },
+ {
+  "id": "p06-message-chains",
+  "kind": "positive",
+  "level": "hunk",
+  "target": "Message Chains",
+  "target_desc": "long getCustomer().getAddress().getCountry().getIsoCode() navigation chain",
+  "lang": "typescript",
+  "change_note": "shipping helper added",
+  "code": "function shippingCode(order: Order): string {\n  return order.getCustomer().getAddress().getCountry().getIsoCode();\n}"
+ },
+ {
+  "id": "p07-middle-man",
+  "kind": "positive",
+  "level": "hunk",
+  "target": "Middle Man",
+  "target_desc": "every UserService method just delegates to repo with no added behavior",
+  "lang": "typescript",
+  "change_note": "service class added",
+  "code": "class UserService {\n  constructor(private repo: UserRepo) {}\n  find(id: string) { return this.repo.find(id); }\n  save(u: User) { return this.repo.save(u); }\n  remove(id: string) { return this.repo.remove(id); }\n  all() { return this.repo.all(); }\n}"
+ },
+ {
+  "id": "p08-feature-envy",
+  "kind": "positive",
+  "level": "codebase",
+  "target": "Feature Envy",
+  "target_desc": "InvoiceFormatter.format reaches into Order data (lines, tax_rate, discount_rate, id) far more than its own; the method belongs on Order",
+  "lang": "python",
+  "change_note": "formatter added next to existing Order",
+  "code": "# order.py (existing)\nclass Order:\n    def __init__(self, id, lines, tax_rate, discount_rate):\n        self.id = id\n        self.lines = lines\n        self.tax_rate = tax_rate\n        self.discount_rate = discount_rate\n\n# invoice.py (new)\nclass InvoiceFormatter:\n    def format(self, order):\n        net = sum(l.price * l.qty for l in order.lines)\n        tax = net * order.tax_rate\n        disc = net * order.discount_rate\n        return f\"{order.id}: net={net} tax={tax} disc={disc} total={net + tax - disc}\""
+ },
+ {
+  "id": "p09-repeated-switches",
+  "kind": "positive",
+  "level": "codebase",
+  "target": "Repeated Switches",
+  "target_desc": "the same switch on shape.kind recurs in three separate functions; should be polymorphism",
+  "lang": "typescript",
+  "change_note": "three shape helpers across the module",
+  "code": "// area.ts\nfunction area(s: Shape) {\n  switch (s.kind) { case 'circle': return Math.PI * s.r * s.r; case 'square': return s.side * s.side; }\n}\n// perimeter.ts\nfunction perimeter(s: Shape) {\n  switch (s.kind) { case 'circle': return 2 * Math.PI * s.r; case 'square': return 4 * s.side; }\n}\n// label.ts\nfunction label(s: Shape) {\n  switch (s.kind) { case 'circle': return 'circle'; case 'square': return 'square'; }\n}"
+ },
+ {
+  "id": "p10-shotgun-surgery",
+  "kind": "positive",
+  "level": "codebase",
+  "target": "Shotgun Surgery",
+  "target_desc": "one logical change (add currency) forces small scattered edits across four files; the concept is not localized",
+  "lang": "python",
+  "change_note": "this single commit adds currency support across four files",
+  "code": "# model.py\nclass Order:\n    def __init__(self, total, currency):   # + currency\n        self.total = total\n        self.currency = currency\n\n# serializer.py\ndef to_json(o):\n    return {\"total\": o.total, \"currency\": o.currency}   # + currency\n\n# validator.py\ndef validate(o):\n    assert o.currency in (\"USD\", \"EUR\")   # + currency\n\n# formatter.py\ndef display(o):\n    return f\"{o.total} {o.currency}\"   # + currency"
+ },
+ {
+  "id": "p11-divergent-change",
+  "kind": "positive",
+  "level": "codebase",
+  "target": "Divergent Change",
+  "target_desc": "UserService changes for three unrelated reasons (auth, email templating, CSV export); it should be split",
+  "lang": "python",
+  "change_note": "UserService grew three unrelated responsibilities",
+  "code": "class UserService:\n    def authenticate(self, username, password):\n        return self.hasher.verify(password, self.repo.get(username).pw_hash)\n\n    def format_welcome_email(self, user):\n        return f\"Hi {user.name}, welcome! Confirm at /verify/{user.token}\"\n\n    def export_users_csv(self, users):\n        return \"\\n\".join(f\"{u.id},{u.name},{u.email}\" for u in users)"
+ },
+ {
+  "id": "p12-refused-bequest",
+  "kind": "positive",
+  "level": "codebase",
+  "target": "Refused Bequest",
+  "target_desc": "ReadOnlyList subclasses list but rejects most inherited mutators; inheritance is the wrong tool, prefer composition",
+  "lang": "python",
+  "change_note": "subclass added",
+  "code": "class ReadOnlyList(list):\n    def append(self, x): raise NotImplementedError(\"read only\")\n    def extend(self, xs): raise NotImplementedError(\"read only\")\n    def insert(self, i, x): raise NotImplementedError(\"read only\")\n    def pop(self, *a): raise NotImplementedError(\"read only\")\n    def __setitem__(self, i, v): raise NotImplementedError(\"read only\")"
+ },
+ {
+  "id": "c01-clean",
+  "kind": "control",
+  "level": "hunk",
+  "resembles": "any",
+  "target_desc": "a small, well-named, single-purpose function with no smell; flagging anything here is a false positive",
+  "lang": "python",
+  "change_note": "helper added",
+  "code": "def is_overdue(invoice, today):\n    return invoice.due_date < today and not invoice.paid"
+ },
+ {
+  "id": "c02-legit-dup-two-copies",
+  "kind": "control",
+  "level": "hunk",
+  "resembles": "Duplicated Code",
+  "target_desc": "only TWO near-identical copies exist; the rule-of-three says do not abstract yet, so Duplicated Code must NOT fire",
+  "lang": "python",
+  "change_note": "two small parsers added",
+  "code": "def parse_us_phone(s):\n    digits = \"\".join(ch for ch in s if ch.isdigit())\n    return digits if len(digits) == 10 else None\n\ndef parse_ca_phone(s):\n    digits = \"\".join(ch for ch in s if ch.isdigit())\n    return digits if len(digits) == 10 else None"
+ },
+ {
+  "id": "c03-boundary-primitive",
+  "kind": "control",
+  "level": "hunk",
+  "resembles": "Primitive Obsession",
+  "target_desc": "the raw string arrives at a system boundary and is parsed into a type immediately (parse-dont-validate); Primitive Obsession must NOT fire",
+  "lang": "typescript",
+  "change_note": "http handler added",
+  "code": "function handleSignup(req: Request) {\n  const email = Email.parse(req.body.email);   // raw string -> typed at the boundary\n  const age = Number.parseInt(req.body.age, 10);\n  return createUser(email, age);\n}"
+ },
+ {
+  "id": "c04-real-seam-one-impl",
+  "kind": "control",
+  "level": "codebase",
+  "resembles": "Speculative Generality",
+  "target_desc": "the interface has one impl today but the seam is genuinely needed: a test mocks it and a provider swap is planned; Speculative Generality must NOT fire",
+  "lang": "typescript",
+  "change_note": "gateway interface + impl + its test",
+  "code": "// gateway.ts\ninterface PaymentGateway { charge(cents: number): Promise<Result>; }\nclass StripeGateway implements PaymentGateway {\n  async charge(cents: number) { return stripe.charges.create({ amount: cents }); }\n}\n// gateway.test.ts\nconst fake: PaymentGateway = { charge: async () => ok() };   // the seam is what makes this test possible\ntest('checkout uses the gateway', () => checkout(fake));"
+ },
+ {
+  "id": "c05-single-switch",
+  "kind": "control",
+  "level": "hunk",
+  "resembles": "Repeated Switches",
+  "target_desc": "exactly ONE switch in ONE place; Repeated Switches requires the same switch recurring across sites, so it must NOT fire",
+  "lang": "typescript",
+  "change_note": "label helper added",
+  "code": "function statusLabel(s: OrderStatus): string {\n  switch (s) {\n    case 'pending': return 'Pending';\n    case 'shipped': return 'Shipped';\n    case 'delivered': return 'Delivered';\n  }\n}"
+ },
+ {
+  "id": "c06-brief-access",
+  "kind": "control",
+  "level": "codebase",
+  "resembles": "Feature Envy",
+  "target_desc": "notify_shipped touches order.customer_email once and works mainly with its own collaborator (mailer); a single brief access is not Feature Envy",
+  "lang": "python",
+  "change_note": "notification method added",
+  "code": "class OrderService:\n    def __init__(self, mailer):\n        self.mailer = mailer\n\n    def notify_shipped(self, order):\n        self.mailer.send(order.customer_email, \"Your order has shipped\")"
+ }
+]

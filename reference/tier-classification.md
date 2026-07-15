@@ -72,7 +72,7 @@ Classifies a codebase by file count for familiarization effort. Used by `/deep-u
 | Type | Marker files |
 |------|-------------|
 | Code | `package.json`, `Cargo.toml`, `pyproject.toml`, `go.mod`, `*.sln`, `Makefile`, `src/` |
-| Vault/content | `.obsidian/`, majority `.md` files |
+| Vault/content | Hidden note-workspace metadata, majority `.md` files |
 | Mixed | Both code markers and significant `.md` content |
 | Concept | Argument doesn't resolve to a path - search across whole project |
 
@@ -86,27 +86,14 @@ Highest-risk file determines the tier for the whole session.
 
 | Tier | Criteria | Action |
 |------|----------|--------|
-| **Skip** | ALL files match safe patterns (see below) | Auto-pass. No checks. |
+| **Skip** | ALL files match safe patterns (see Patterns) | Auto-pass. No checks; a session-scoped receipt is still written. |
 | **Light** | 1-3 files, same project, no cross-references, no skip-excludes | Inline checks (no subagent) |
-| **Full** | 4+ files, multi-project, cross-references, settings.json/hooks edited, or files in src/lib/app/pages with siblings also edited | Opus subagent review |
-| **Deep** | `--deep` flag explicitly passed | Opus subagent with extended checklist |
+| **Full** | 4+ files, multi-project, cross-references, settings.json/hooks edited, or files in src/lib/app/pages with siblings also edited | Independent Codex review (`codex review --uncommitted`) + inline checks |
+| **Deep** | `--deep` flag explicitly passed | Independent Codex review (`codex review --uncommitted`) + extended inline checks |
 
-### Skip-Safe Patterns
+### Patterns
 
-All of these auto-pass (every file must match, one mismatch escalates):
-- `$KB_DIR/**/*.md` - knowledge base markdown
-- `$KB_DIR/**/*.json` - knowledge base data
-- `$SPECS_DIR/**` - spec files
-- `$STRATA_HOME/commands/**/*.md` - skill definitions
-- `.claude/memory/**` - memory files
-- `**/CLAUDE.md` - project instructions
-- `$STRATA_HOME/reference/**/*.md` - reference docs
-
-### Skip-Excludes (NOT safe even if in .claude/)
-
-- `.claude/settings.json` - affects runtime behavior
-- `$STRATA_HOME/hooks/**` - executable scripts
-- Any `.ps1`, `.sh`, `.js`, `.ts`, `.py`, `.rs` file regardless of location
+The canonical Skip-safe patterns and Skip-excludes live in `$STRATA_HOME/commands/verify.md` (Risk Classifier). `/verify` reads that list on every invocation and is the single source of truth. Executable hooks, executable file types, and `settings.json` always escalate beyond Skip.
 
 ### Light Tier Checks
 
