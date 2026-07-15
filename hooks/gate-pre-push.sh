@@ -67,8 +67,75 @@ fi
 # Nothing to push (e.g. delete/tags-only) -> nothing to gate.
 [ -z "$(git log "$RANGE" --oneline 2>/dev/null | head -1)" ] && exit 0
 
-# Added lines only (new content being introduced).
-ADDED="$(git diff "$RANGE" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+# Keep a location map beside the matcher input so findings can identify a source line
+# without repeating the sensitive content that triggered the match.
+added_context() {
+    awk '
+        /^\+\+\+ / {
+            path = substr($0, 5)
+            sub(/^b\//, "", path)
+            next
+        }
+        /^@@ / {
+            if (match($0, /\+[0-9]+(,[0-9]+)?/)) {
+                next_line = substr($0, RSTART + 1, RLENGTH - 1)
+                sub(/,.*/, "", next_line)
+            }
+            next
+        }
+        /^\+/ && $0 !~ /^\+\+\+/ {
+            shown_path = (path == "" || path == "/dev/null") ? "<outgoing diff>" : path
+            printf "%s:%d\n", shown_path, next_line
+            next_line++
+            next
+        }
+        /^\+/ { next_line++; next }
+        /^ / { next_line++; next }
+    '
+}
+
+# The endpoint diff is the fail-open fallback if history enumeration cannot be completed.
+CUMULATIVE_PATCH="$(git diff "$RANGE" 2>/dev/null || true)"
+CUMULATIVE_ADDED="$(printf '%s\n' "$CUMULATIVE_PATCH" | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+CUMULATIVE_CONTEXT="$(printf '%s\n' "$CUMULATIVE_PATCH" | added_context || true)"
+CUMULATIVE_FILES="$(git diff --name-only "$RANGE" 2>/dev/null || true)"
+ADDED="$CUMULATIVE_ADDED"
+ADDED_CONTEXT="$CUMULATIVE_CONTEXT"
+ADDED_FILES="$CUMULATIVE_FILES"
+
+# Endpoint diffs hide content added and removed in separate outgoing commits. Build the
+# scan input from every commit, but publish it only when the complete walk succeeds.
+if COMMITS="$(git rev-list "$RANGE" 2>/dev/null)" && [ -n "$COMMITS" ]; then
+    PER_COMMIT_ADDED=""
+    PER_COMMIT_CONTEXT=""
+    PER_COMMIT_FILES=""
+    per_commit_ok=1
+    while IFS= read -r sha; do
+        [ -n "$sha" ] || continue
+        if ! PATCH="$(git show -U0 --format= "$sha" 2>/dev/null)"; then
+            per_commit_ok=0
+            break
+        fi
+        if ! COMMIT_FILES="$(git show --format= --name-only "$sha" 2>/dev/null)"; then
+            per_commit_ok=0
+            break
+        fi
+
+        COMMIT_ADDED="$(printf '%s\n' "$PATCH" | grep -E '^\+' | grep -vE '^\+\+\+' || true)"
+        COMMIT_CONTEXT="$(printf '%s\n' "$PATCH" | added_context || true)"
+        if [ -n "$COMMIT_ADDED" ]; then
+            PER_COMMIT_ADDED+="${PER_COMMIT_ADDED:+$'\n'}$COMMIT_ADDED"
+            PER_COMMIT_CONTEXT+="${PER_COMMIT_CONTEXT:+$'\n'}$COMMIT_CONTEXT"
+        fi
+        [ -n "$COMMIT_FILES" ] && PER_COMMIT_FILES+="${PER_COMMIT_FILES:+$'\n'}$COMMIT_FILES"
+    done <<< "$COMMITS"
+
+    if [ "$per_commit_ok" -eq 1 ]; then
+        ADDED="$PER_COMMIT_ADDED"
+        ADDED_CONTEXT="$PER_COMMIT_CONTEXT"
+        ADDED_FILES="$(printf '%s\n' "$PER_COMMIT_FILES" | sed '/^$/d' | sort -u)"
+    fi
+fi
 
 # ============================================================================
 # 1. PRIVACY SAFETY NET
@@ -120,17 +187,36 @@ GENERIC_SECRET_RE="(secret|token|passwd|password|api[_-]?key|access[_-]?key|clie
 
 FINDINGS=""
 
+# Render only source context plus a one-way fingerprint of the full matched line. The
+# fingerprint distinguishes repeated findings without disclosing usable secret material.
+mask_hits() {
+    local hits="$1" hit lineno content context fp
+    while IFS= read -r hit; do
+        [ -n "$hit" ] || continue
+        lineno="${hit%%:*}"
+        content="${hit#*:}"
+        context="$(printf '%s\n' "$ADDED_CONTEXT" | awk -v wanted="$lineno" 'NR == wanted { print; exit }')"
+        [ -n "$context" ] || context="<outgoing added line>"
+        fp="$(printf '%s' "$content" | git hash-object --stdin 2>/dev/null | cut -c1-8)"
+        [ -n "$fp" ] || fp="unavailable"
+        printf '%s: %s [redacted: sha8:%s; length:%d]\n' "$lineno" "$context" "$fp" "${#content}"
+    done <<< "$hits"
+}
+
 HITS="$(grepadd "$SECRET_RE" | head -6 || true)"
+[ -n "$HITS" ] && HITS="$(mask_hits "$HITS")"
 [ -n "$HITS" ] && FINDINGS+=$'[SECRET] credential-shaped string in outgoing diff:\n'"$HITS"$'\n'
 
 UHITS="$(grepadd "$SECRET_URL_RE" | drop_url_placeholder | head -6 || true)"
+[ -n "$UHITS" ] && UHITS="$(mask_hits "$UHITS")"
 [ -n "$UHITS" ] && FINDINGS+=$'[SECRET] credential inside a URL / webhook / DSN / auth header:\n'"$UHITS"$'\n'
 
 GHITS="$(grepadd "$GENERIC_SECRET_RE" | drop_placeholder | head -6 || true)"
+[ -n "$GHITS" ] && GHITS="$(mask_hits "$GHITS")"
 [ -n "$GHITS" ] && FINDINGS+=$'[SECRET?] secret-named var assigned an opaque value (confirm not a real key):\n'"$GHITS"$'\n'
 
 # A real .env file being committed (filename-level; .env.example/.sample/.template are safe).
-ENVF="$(git diff --name-only "$RANGE" 2>/dev/null | grep -E '(^|/)\.env($|\.[a-z]+$)' | grep -vE '\.(example|sample|template|dist|md|txt)$' | head -4 || true)"
+ENVF="$(printf '%s\n' "$ADDED_FILES" | grep -E '(^|/)\.env($|\.[a-z]+$)' | grep -vE '\.(example|sample|template|dist|md|txt)$' | head -4 || true)"
 [ -n "$ENVF" ] && FINDINGS+=$'[SECRET?] a real .env file is being committed (use .env.example for shareable keys):\n'"$ENVF"$'\n'
 
 # --- Private identifiers: only meaningful when the destination is a PUBLIC repo. ---
@@ -157,6 +243,7 @@ if [ "$IS_PUBLIC" -eq 1 ]; then
     # An unconfigured denylist is a clean no-op; universal secret checks still apply.
     if [ -n "$DENY_TOKENS" ]; then
         PHITS="$(printf '%s\n' "$ADDED" | grep -iniF -f <(printf '%s' "$DENY_TOKENS") 2>/dev/null | head -8 || true)"
+        [ -n "$PHITS" ] && PHITS="$(mask_hits "$PHITS")"
         [ -n "$PHITS" ] && FINDINGS+=$'[PRIVATE] private identifier from the local denylist in diff to a PUBLIC repo:\n'"$PHITS"$'\n'
     fi
 fi
