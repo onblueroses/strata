@@ -8,6 +8,7 @@ overfitting.
 
 import argparse
 import json
+import os
 import random
 import sys
 import tempfile
@@ -21,6 +22,29 @@ from scripts.generate_report import generate_html
 from scripts.improve_description import improve_description
 from scripts.run_eval import find_project_root, run_eval
 from scripts.utils import parse_skill_md
+
+
+def load_strata_env() -> None:
+    """Load unset values from $STRATA_HOME/.local/.env when available."""
+    strata_home = os.environ.get("STRATA_HOME")
+    if not strata_home:
+        return
+
+    env_path = Path(strata_home) / ".local" / ".env"
+    try:
+        lines = env_path.read_text().splitlines()
+    except OSError:
+        return
+
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
 
 
 def split_eval_set(eval_set: list[dict], holdout: float, seed: int = 42) -> tuple[list[dict], list[dict]]:
@@ -56,8 +80,9 @@ def run_loop(
     runs_per_query: int,
     trigger_threshold: float,
     holdout: float,
-    model: str,
+    trigger_model: str,
     verbose: bool,
+    improve_model: str | None = None,
     live_report_path: Path | None = None,
     log_dir: Path | None = None,
 ) -> dict:
@@ -75,7 +100,9 @@ def run_loop(
         train_set = eval_set
         test_set = []
 
+    load_strata_env()
     client = anthropic.Anthropic()
+    improve_model = improve_model or trigger_model
     history = []
     exit_reason = "unknown"
 
@@ -98,7 +125,7 @@ def run_loop(
             project_root=project_root,
             runs_per_query=runs_per_query,
             trigger_threshold=trigger_threshold,
-            model=model,
+            model=trigger_model,
             skill_path=str(skill_path),
         )
         eval_elapsed = time.time() - t0
@@ -207,7 +234,7 @@ def run_loop(
             current_description=current_description,
             eval_results=train_results,
             history=blinded_history,
-            model=model,
+            model=improve_model,
             log_dir=log_dir,
             iteration=iteration,
         )
@@ -257,7 +284,8 @@ def main():
     parser.add_argument("--runs-per-query", type=int, default=3, help="Number of runs per query")
     parser.add_argument("--trigger-threshold", type=float, default=0.5, help="Trigger rate threshold")
     parser.add_argument("--holdout", type=float, default=0.4, help="Fraction of eval set to hold out for testing (0 to disable)")
-    parser.add_argument("--model", required=True, help="Model for improvement")
+    parser.add_argument("--trigger-model", required=True, help="Model for claude -p trigger evaluation")
+    parser.add_argument("--improve-model", default=None, help="Anthropic API model for description improvement (default: trigger model)")
     parser.add_argument("--verbose", action="store_true", help="Print progress to stderr")
     parser.add_argument("--report", default="auto", help="Generate HTML report at this path (default: 'auto' for temp file, 'none' to disable)")
     parser.add_argument("--results-dir", default=None, help="Save all outputs (results.json, report.html, log.txt) to a timestamped subdirectory here")
@@ -305,7 +333,8 @@ def main():
         runs_per_query=args.runs_per_query,
         trigger_threshold=args.trigger_threshold,
         holdout=args.holdout,
-        model=args.model,
+        trigger_model=args.trigger_model,
+        improve_model=args.improve_model,
         verbose=args.verbose,
         live_report_path=live_report_path,
         log_dir=log_dir,

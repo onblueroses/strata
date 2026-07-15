@@ -7,6 +7,7 @@ using Claude with extended thinking.
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -14,6 +15,29 @@ from pathlib import Path
 import anthropic
 
 from scripts.utils import parse_skill_md
+
+
+def load_strata_env() -> None:
+    """Load unset values from $STRATA_HOME/.local/.env when available."""
+    strata_home = os.environ.get("STRATA_HOME")
+    if not strata_home:
+        return
+
+    env_path = Path(strata_home) / ".local" / ".env"
+    try:
+        lines = env_path.read_text().splitlines()
+    except OSError:
+        return
+
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
 
 
 def improve_description(
@@ -216,6 +240,7 @@ def main():
         print(f"Current: {current_description}", file=sys.stderr)
         print(f"Score: {eval_results['summary']['passed']}/{eval_results['summary']['total']}", file=sys.stderr)
 
+    load_strata_env()
     client = anthropic.Anthropic()
     new_description = improve_description(
         client=client,

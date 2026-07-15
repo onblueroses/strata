@@ -7,7 +7,7 @@ a tiny HTTP server. Feedback auto-saves to feedback.json in the workspace.
 
 Usage:
     python generate_review.py <workspace-path> [--port PORT] [--skill-name NAME]
-    python generate_review.py <workspace-path> --previous-feedback /path/to/old/feedback.json
+    python generate_review.py <workspace-path> --previous-workspace /path/to/old/workspace
 
 No dependencies beyond the Python stdlib are required.
 """
@@ -61,7 +61,10 @@ def find_runs(workspace: Path) -> list[dict]:
     """Recursively find directories that contain an outputs/ subdirectory."""
     runs: list[dict] = []
     _find_runs_recursive(workspace, workspace, runs)
-    runs.sort(key=lambda r: (r.get("eval_id", float("inf")), r["id"]))
+    runs.sort(key=lambda r: (
+        (0, r["eval_id"]) if isinstance(r.get("eval_id"), int) else (1, 0),
+        r["id"],
+    ))
     return runs
 
 

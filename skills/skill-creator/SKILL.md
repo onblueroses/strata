@@ -408,18 +408,27 @@ This step matters — bad eval queries lead to bad descriptions.
 
 Tell the user: "This will take some time — I'll run the optimization loop in the background and check on it periodically."
 
+Install the bundled script dependencies once before running the optimization loop or the packaging step:
+
+```bash
+python -m pip install -r <skill-creator-path>/requirements.txt
+```
+
+Export `ANTHROPIC_API_KEY` or set it in `$STRATA_HOME/.local/.env` before the optimization loop constructs the API client.
+
 Save the eval set to the workspace, then run in the background:
 
 ```bash
 python -m scripts.run_loop \
   --eval-set <path-to-trigger-eval.json> \
   --skill-path <path-to-skill> \
-  --model <model-id-powering-this-session> \
+  --trigger-model <cli-model-id-powering-this-session> \
+  --improve-model <api-model-id-for-description-improvement> \
   --max-iterations 5 \
   --verbose
 ```
 
-Use the model ID from your system prompt (the one powering the current session) so the triggering test matches what the user actually experiences.
+Resolve model identifiers at runtime from the appropriate symbolic lane (`strong`, `fast`, `grader`, or `breadth`) so the skill stays portable. `--trigger-model` is passed to `claude -p`, while `--improve-model` is passed to the Anthropic API. Omit `--improve-model` when both interfaces accept the same model ID; it defaults to `--trigger-model`.
 
 While it runs, periodically tail the output to give the user updates on which iteration it's on and what the scores look like.
 

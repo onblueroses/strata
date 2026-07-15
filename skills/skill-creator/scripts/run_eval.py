@@ -45,7 +45,6 @@ def run_single_query(
     timeout: int,
     project_root: str,
     model: str | None = None,
-    skill_path: str | None = None,
 ) -> bool:
     """Run a single query and return whether the skill was triggered.
 
@@ -300,7 +299,6 @@ def _run_eval_inner(
                     timeout,
                     str(project_root),
                     model,
-                    skill_path,
                 )
                 future_to_info[future] = (item, run_idx)
 
@@ -387,6 +385,7 @@ def main():
         runs_per_query=args.runs_per_query,
         trigger_threshold=args.trigger_threshold,
         model=args.model,
+        skill_path=str(skill_path),
     )
 
     if args.verbose:
