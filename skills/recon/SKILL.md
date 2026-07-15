@@ -37,7 +37,7 @@ This skill dispatches every reconnaissance wave through codex tiers exclusively.
 **Scope of the codex-only rule.** The rule covers wave dispatches — the reconnaissance signal must come from codex so the synthesis sees a coherent voice. Use Claude's native tools (Read, Glob, Grep, Bash, Write) freely for orchestration: composing the corpus, writing prompt files, validating citations, merging the brief. The next planner downstream consumes the brief under its own model policy (Opus, codex, whatever `/spec` or `/hammock` chooses) — recon's job ends at the brief.
 
 **Throttle fallback — codex-only chain.** On exit 3 (quota):
-- `strong` → retry the same prompt on `fast` and tag the brief `Wave 3 ran on Spark due to quota`
+- `strong` → retry the same prompt on `fast` and tag the brief `Wave 3 ran on fast due to quota`
 - `fast` → surface to user and stop; a degraded brief is worse than no brief
 
 Skip breadth, grader, and Claude subagent fallbacks — mixing models defeats the consistency this protocol depends on.
@@ -389,7 +389,7 @@ SUMMARY: holds | leaks: <describe> | contradicts: <describe>
 ## SPOT_CHECK_COUNT: N
 ```
 
-**Escalation rule.** When a seam touches authentication, concurrency, data integrity, schema migration, or a cross-language boundary, dispatch that specific probe to `strong` instead of `fast`. The xhigh depth earns its latency on these classes; everywhere else, Spark is the right tier.
+**Escalation rule.** When a seam touches authentication, concurrency, data integrity, schema migration, or a cross-language boundary, dispatch that specific probe to `strong` instead of `fast`. The xhigh depth earns its latency on these classes; everywhere else, the fast lane is the right tier.
 
 ## Wave 3 — Synthesis review (2 parallel strong instances)
 
@@ -562,7 +562,7 @@ Outcome:
 Pass the **exact session-scoped merged brief path returned by recon** (`/tmp/recon-{slug}-{sid}.md`) to the next consumer. The contract differs slightly per target:
 
 - **/spec**: pass the path as the recon input to `/spec`'s Step 2; `/spec` reads it, derives the file list and constraints, and feeds the Plan model. `/spec` runs its own Codex plan review on the resulting plan — recon stops before that.
-- **/hammock**: pass the path as the starting context; `/hammock` enters Lotus-Wisdom reasoning with the confirmed facts and contradictions as the seed corpus.
+- **/hammock**: pass the path as the starting context; `/hammock` enters Lotus Wisdom contemplation with the confirmed facts and contradictions as the seed corpus.
 - **/codex-review --hypothesis**: when the recon's purpose was a debugging hypothesis, the `Top riskiest assumptions` list is the input to the hypothesis review.
 - **/best-of-n**: when the recon precedes a design-space exploration, the `Confirmed facts` plus `Top must-knows` go into the candidate-generation brief.
 - **Architecture decision (human-driven)**: read the brief yourself, decide. The brief's job is to make the decision tractable.
@@ -573,9 +573,9 @@ The downstream consumer chooses its own model tier; recon's codex-only rule appl
 
 - **Hallucinated citations.** Sampled in the validation gate. Downgrade all claims from the offending spark to unverified; document in `Provenance`.
 - **Wave 2 contradicts Wave 1.** The point of Wave 2. Surface in `Contradictions surfaced` for the planner.
-- **`strong` exit 3 (quota).** Retry the same prompt on `fast`. Tag the brief `Wave 3 ran on Spark due to quota — synthesis depth reduced; treat ranked items as suggestive`.
+- **`strong` exit 3 (quota).** Retry the same prompt on `fast`. Tag the brief `Wave 3 ran on fast due to quota — synthesis depth reduced; treat ranked items as suggestive`.
 - **`fast` exit 3.** Surface to user and stop. Recon cannot continue degraded.
-- **`codex-*` exit non-zero non-3.** Re-dispatch the specific spark once. On second failure, mark the domain "wave failed" in `Provenance` and continue with reduced coverage; flag the gap in the brief.
+- **A lane wrapper exit non-zero non-3.** Re-dispatch the specific spark once. On second failure, mark the domain "wave failed" in `Provenance` and continue with reduced coverage; flag the gap in the brief.
 - **Empty output despite exit 0.** Treat as a failed spark; re-dispatch once, then mark unverified.
 - **Wrapper missing or unauthenticated.** Surface to user; the skill cannot proceed.
 - **Wave 3 corpus exceeds practical context (>200KB).** Trim Wave 1 reports to bullets-only before concatenating. When still too large, partition Wave 3 per-domain-cluster and merge the per-cluster syntheses.
