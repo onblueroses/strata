@@ -112,7 +112,7 @@ Create each spec through recon, plan review, methodological review when needed, 
 
 2. **Run recon before planning.** Planning quality is bounded by information quality. Invoke `/recon {feature-slug}` and pass the merged brief path into Step 3.
    - **If you just exited plan mode:** use the exploration already in context; skip the `/recon` invocation.
-   - **If `/spec` was invoked directly and scope is Full-weight (3+ files, multi-phase):** invoke `/recon {feature-slug}` and wait for the validated brief at `/tmp/recon-{slug}.md`. Pass that path to the strong-lane planner in Step 3.
+   - **If `/spec` was invoked directly and scope is Full-weight (3+ files, multi-phase):** invoke `/recon {feature-slug}` and wait for the validated brief at the exact session-scoped path recon reports (`/tmp/recon-{slug}-{sid}.md`). Pass that path to the strong-lane planner in Step 3.
    - **Skip recon entirely** for Light-weight specs (single-phase, 3-5 files, obvious scope) — direct Glob/Grep/Read is faster. The recon protocol earns its latency on Full-weight specs.
 
    `/recon` runs the canonical three-wave reconnaissance — Wave 1 fans fast sparks across architecture/constraints/prior-art/gotchas/tests; Wave 2 verifies load-bearing claims and tests seams via fast (or strong for auth/concurrency/data-integrity seams); Wave 3 syntheses two strong instances under "name what's missing" and "name what's wrong" framings; merges deterministically; runs a citation-spot-check validation gate before returning the path. Full protocol details, escalation rules, output schema, and failure modes live in `$STRATA_HOME/skills/recon/SKILL.md`. Treat that file as the single source of truth — update it there, not here.

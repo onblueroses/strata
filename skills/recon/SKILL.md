@@ -57,7 +57,7 @@ Spot checks are how recon stays honest against an LLM's natural drift toward pla
 
 Each level operates on a smaller, more important set than the one below: every spark bullet (hundreds across the protocol) → load-bearing Wave 1 claims (2-3) → merged confirmed facts (10-30) → sampled citations (3-5). The cost compounds at the right end of the distribution.
 
-The `SPOT_CHECK_COUNT: N` trailer on every Wave 1 and Wave 2 spark output is a self-attestation, not a verifiable check. The validation gate (L4) is what actually verifies. The trailer is still useful: when a spark reports `SPOT_CHECK_COUNT: 0` or `SPOT_CHECK_COUNT: 1`, the orchestrator should re-dispatch with stronger spot-check emphasis. When a spark consistently reports `N == bullet_count`, the prompt is landing correctly.
+The `SPOT_CHECK_COUNT: N` trailer on every Wave 1 spark and Wave 2 seam probe is a self-attestation, not a verifiable check. Wave 2 premise probes use the `STATUS` / `EVIDENCE` / `NOTE` shape and carry no trailer. The validation gate (L4) is what actually verifies. The trailer is still useful: when a spark reports `SPOT_CHECK_COUNT: 0` or `SPOT_CHECK_COUNT: 1`, the orchestrator should re-dispatch with stronger spot-check emphasis. When a spark consistently reports `N == bullet_count`, the prompt is landing correctly.
 
 ## Customization seams
 
@@ -84,10 +84,14 @@ Every recon creates one isolated run directory. Two sessions reconing the same t
 
 ```bash
 SLUG="<derived-from-topic>"        # e.g. SLUG="auth-service-split"
+SID="${CLAUDE_SESSION_ID:0:8}"     # use the current 8-character session ID
 RUN_DIR=$(mktemp -d -t "recon-${SLUG}-XXXXXX")
+BRIEF_PATH="/tmp/recon-${SLUG}-${SID}.md"
 ```
 
-All wave prompts, outputs, sentinels, corpus, and the final brief live under `$RUN_DIR`. The final brief gets symlinked or copied to `/tmp/recon-${SLUG}.md` for caller convenience; the run dir stays as the audit trail.
+All wave prompts, outputs, sentinels, corpus, and the final brief live under `$RUN_DIR`. Symlink or copy the final brief to `$BRIEF_PATH` for caller convenience; the session suffix prevents parallel recons of the same slug from replacing each other's handoff. The run dir stays as the audit trail.
+
+**Resume guard.** Record `$RUN_DIR`, `$BRIEF_PATH`, `$SID`, and the starting commit in `$RUN_DIR/scope.md` and the current `$KB_DIR/daily/` session note during Wave 0. Resume only a run whose recorded slug and session ID match; re-dispatch missing outputs and continue from the first incomplete wave.
 
 **Note on placeholders.** Curly-brace tokens in this skill's code snippets (e.g. `{slug}`, `{domain}`, `{topic}`) are template placeholders to substitute before executing — `$SLUG`, `$RUN_DIR`, and concrete domain ids should appear in the actual command. Read them as `${VAR}` in your head.
 
@@ -234,7 +238,7 @@ Before firing any sparks, run a quick orientation pass to lock the scope **and a
 
 Glob, Read, and Bash freely to assemble these. Skip inputs that aren't relevant — bundling everything bloats the spark context for no value. The bundle is for orienting the spark, not feeding it the answer.
 
-**Output of Wave 0:** `$RUN_DIR/context.md` (the bundle), `$RUN_DIR/scope.md` (slug, topic statement, selected domains, clarifying-question result), and a clean `$RUN_DIR` ready for Wave 1.
+**Output of Wave 0:** `$RUN_DIR/context.md` (the bundle), `$RUN_DIR/scope.md` (slug, session ID, run directory, brief path, starting commit, topic statement, selected domains, clarifying-question result), and a clean `$RUN_DIR` ready for Wave 1.
 
 Wave 0 is Claude's native work — Read, Glob, Bash, git. No codex call. Wave 0 typically takes 1-3 minutes; that latency is the price of every spark getting an oriented briefing instead of a blank slate.
 
@@ -511,7 +515,7 @@ Treat validation as the final gate before returning the path. Run these checks:
 4. **Load-bearing coverage.** Every "Top must-know" item should trace to a confirmed fact or an explicitly-flagged unverified premise. A must-know with no citation chain is a synthesis hallucination — drop it and add a stand-in note "Wave 3 produced an ungrounded must-know; planner should treat this slot as missing".
 
 Outcome:
-- **All four pass** → set Validation to `PASS`, write the path-symlink at `/tmp/recon-${SLUG}.md`, return the path.
+- **All four pass** → set Validation to `PASS`, write the path-symlink at `$BRIEF_PATH`, return that exact path.
 - **One or more fail** → set Validation to `PARTIAL`, list the failed checks at the top of the brief, return the path with that header. PARTIAL means "the brief is degraded and the planner should treat it as such" — the planner reads the failed-checks list before using anything in the brief. The brief is still returned; the planner decides whether to proceed, re-run, or escalate.
 
 ## Output schema
@@ -550,12 +554,12 @@ Outcome:
 - Wave 2 probes: <premise list, seam list, status codes>
 - Wave 3 framings: missing, wrong (status codes)
 - All wave outputs preserved at $RUN_DIR/
-- Symlink: /tmp/recon-{slug}.md → $RUN_DIR/brief.md
+- Symlink: /tmp/recon-{slug}-{sid}.md → $RUN_DIR/brief.md
 ```
 
 ## Handoff contracts
 
-Pass the **merged brief path** to the next consumer. The contract differs slightly per target:
+Pass the **exact session-scoped merged brief path returned by recon** (`/tmp/recon-{slug}-{sid}.md`) to the next consumer. The contract differs slightly per target:
 
 - **/spec**: pass the path as the recon input to `/spec`'s Step 2; `/spec` reads it, derives the file list and constraints, and feeds the Plan model. `/spec` runs its own Codex plan review on the resulting plan — recon stops before that.
 - **/hammock**: pass the path as the starting context; `/hammock` enters Lotus-Wisdom reasoning with the confirmed facts and contradictions as the seed corpus.
@@ -588,7 +592,7 @@ You:  <Wave 0: slug=rate-limit-retries, 5 domains, $RUN_DIR created>
       <Wave 1: 5 sparks in parallel via sentinel-file dispatch>
       <Wave 2: 2 premise probes, 2 seam probes; one seam touches concurrency → escalate to strong>
       <Wave 3: 2 strong syntheses; merge; validate>
-You:  Brief written to /tmp/recon-rate-limit-retries.md (run dir $RUN_DIR).
+You:  Brief written to /tmp/recon-rate-limit-retries-3fa9c2d1.md (run dir $RUN_DIR).
       Top issue: Wave 2 found the retry middleware referenced in Gotchas
       isn't wired up at scraper/middleware.ts:47. /hammock should start there.
 ```
@@ -602,7 +606,7 @@ You:  <Wave 1: architecture, constraints, prior-art, gotchas, external-deps>
       <Wave 2: 2 premise probes on shared session storage, 2 seam probes incl. one on
        concurrency between web and mobile sessions (strong)>
       <Wave 3: synthesis, validate>
-You:  Brief at /tmp/recon-auth-service-split.md. Top risk: session-storage write
+You:  Brief at /tmp/recon-auth-service-split-3fa9c2d1.md. Top risk: session-storage write
       contention assumes Redis transactions, but Wave 2 found we're using SETEX
       without a transaction at session/store.ts:104. Architecture decision should
       address concurrency model before service boundary.
@@ -616,7 +620,7 @@ You:  <Wave 0: slug=oauth-state-drop, 4 domains>
       <Wave 2 verifies "state param is read at auth/callback.ts:88" and
        probes the seam between session middleware and callback handler>
       <Wave 3 synthesizes>
-You:  Brief at /tmp/recon-oauth-state-drop.md. State param IS read at
+You:  Brief at /tmp/recon-oauth-state-drop-3fa9c2d1.md. State param IS read at
       auth/callback.ts:88 (confirmed). Contradiction: session middleware order
       differs between dev and prod configs. Hypothesis likely belongs at the
       middleware ordering, not the callback. Suggest pivoting before
