@@ -390,7 +390,7 @@ After synthesis, run Phase 4 (Persist) as normal. Skip Phase 3 and Phase 5 - the
 
 ## Anti-patterns
 
-These are the specific ways this skill fails. Each one has blown past sessions.
+These are the specific ways this skill fails.
 
 | Failure | Why it's bad | What to do instead |
 |---------|-------------|-------------------|

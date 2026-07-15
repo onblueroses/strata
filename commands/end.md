@@ -58,7 +58,7 @@ Schema:
 - `summary`: 400-600 chars. Use an action-complications-resolution arc with specifics (numbers, paths). No "In this session" opening - lead with what happened.
 - `decisions`: Record choices where alternatives existed. Formats: "Chose X over Y because Z" / "Left X unchanged because Y" / "Deferred X because Z". Exclude methods ("used subagents for speed", "ran tests in parallel") - those are process details outside the decision list.
 - `outputs`: List paths + parentheticals. 10+: summarize by area. End with `"Git: repo-name abc1234"`. `[]` ok for research.
-- `entities_touched`: Map modified paths to entities via the Entities table in MEMORY.md (in context) - match the `Local` column to files changed. Cross-check: Deployed to VPS? +`$KB_DIR/areas/infrastructure`. Changed `.claude/`? +`$KB_DIR/areas/claude-code-setup`.
+- `entities_touched`: Map modified paths to entities via the Entities table in MEMORY.md (in context) - match the `Local` column to files changed. Cross-check: Deployed to VPS? +`$KB_DIR/areas/infrastructure`. Changed `.claude/`? +`$KB_DIR/areas/agent-config`.
 - `tags`: Free-form (3-7 tags). Suggested vocab: deploy, security, frontend, skill, infrastructure, content, knowledge-system, git, design, research, automation.`
 - `takeaway`: **Test:** cover the summary with your hand and read the takeaway alone - does it teach something useful on its own? When it reads as a compressed restatement, rewrite it. Routine sessions: state the main outcome.
 

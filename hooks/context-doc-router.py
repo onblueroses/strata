@@ -73,7 +73,7 @@ def _lex_thresh():
 def _lex_solo_thresh():
     # A solo (corpus-unique, rare-in-English, len>=5) token has already passed the
     # precision filter that the >=2-token rule enforces for everyone else, so it may
-    # fire at a lower cosine. A bare "vitest"/"waybar" prompt scores ~0.12-0.15 against
+    # fire at a lower cosine. A bare "vitest"/"pyright" prompt scores ~0.12-0.15 against
     # its big home doc (one rare keyword among many), just under LEX_THRESH; this
     # recovers those. Applies ONLY to the solo-bypass path, so it never weakens
     # multi-token routing. Same import-safe guard as _lex_thresh.
@@ -88,7 +88,7 @@ LEX_SOLO_THRESH = _lex_solo_thresh()
 LEX_TOPK = 2
 # A lex candidate must match at least this many DISTINCT query tokens to fire.
 # Single-token matches are irreducibly ambiguous (homonyms: "prime rib" vs "prime
-# intellect", "node on my network" vs node.js) and let one rare high-IDF token
+# number", "node on my network" vs node.js) and let one rare high-IDF token
 # dominate the cosine. The deterministic cwd/recent-edit signals carry the legit
 # single-strong-keyword cases, so demanding corroboration costs ~0 recall.
 LEX_MIN_TOK = 2
@@ -439,7 +439,7 @@ def lex_docs(prompt, cwd):
     for name, dv in vecs.items():
         matched = [t for t in dv if qv.get(t, 0) > 0]
         # fire on >=2 corroborating tokens (reject single-token homonyms) OR a single
-        # strong-solo token (corpus-unique non-dictionary term, e.g. "hyprland")
+        # strong-solo token (corpus-unique non-dictionary term, e.g. "dmux")
         solo_only = len(matched) < LEX_MIN_TOK and any(t in solo for t in matched)
         if len(matched) < LEX_MIN_TOK and not solo_only:
             continue

@@ -281,7 +281,7 @@ Maintain consistency, but adjust intensity:
 ## German Copy Notes
 
 When writing German marketing copy:
-- Use "Sie" (formal) for financial/real estate audiences (Denkmal-AfA, Pflegeimmobilien)
+- Use "Sie" (formal) for financial and professional audiences
 - Avoid "-orientiert/-basiert" compound adjectives (kundenorientiert → für unsere Kunden)
 - Replace "ermöglichen/gewährleisten/optimieren" with concrete verbs
 - Skip opening formulas: "In der heutigen Welt..." → start with the benefit

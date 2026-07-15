@@ -120,9 +120,9 @@ Background-launched codex calls lose their exit code by default. To preserve it,
 ) &
 ```
 
-Repeat per spark. After dispatching the wave, wait on `.status` files using the Monitor tool (preferred) or a bounded sentinel-poll loop. Wait via Monitor or `wait $!` against tracked PIDs; the naked `pgrep -f PATTERN` busy-loops because the polling shell matches itself (see `feedback_pgrep_self_match`).
+Repeat per spark. After dispatching the wave, wait on `.status` files using the Monitor tool (preferred) or a bounded sentinel-poll loop. Wait via Monitor or `wait $!` against tracked PIDs; the naked `pgrep -f PATTERN` busy-loops because the polling shell matches itself.
 
-**Bundled helper — prefer this over assembling the inline pattern from scratch.** The skill ships `scripts/dispatch_wave.sh` at `$STRATA_HOME/skills/recon/scripts/dispatch_wave.sh`. It encodes the sentinel-file pattern with the deadline checks below and was tested end-to-end against fast and strong wrappers (see `examples-e2e-saa-agent-api/`). Invoke it as:
+**Bundled helper — prefer this over assembling the inline pattern from scratch.** The skill ships `scripts/dispatch_wave.sh` at `$STRATA_HOME/skills/recon/scripts/dispatch_wave.sh`. It encodes the sentinel-file pattern with the deadline checks below and was tested end-to-end against fast and strong wrappers (see `examples/`). Invoke it as:
 
 ```bash
 bash $STRATA_HOME/skills/recon/scripts/dispatch_wave.sh \
@@ -269,7 +269,7 @@ Worked examples of topic-specific domain sets:
 
 Naming guidance for custom domains: keep them shell-safe `domain_id` (lowercase-hyphenated), keep the human-readable name in the spark's CONTEXT block. Each domain must have *enough content to fill 5-15 bullets* — if a candidate domain would produce 2 bullets, fold it into a neighbor instead.
 
-**Spark prompt template** (one per domain, written to `$RUN_DIR/w1-{domain_id}.prompt.md`). Every clause is load-bearing — these were tuned against real fast runs (see `examples/` section for the E2E that produced them).
+**Spark prompt template** (one per domain, written to `$RUN_DIR/w1-{domain_id}.prompt.md`). Every clause is load-bearing; see the `examples/` section for the E2E that produced them.
 
 ```
 Goal: Surface every fact relevant to {topic} for the {domain} domain in this repo.

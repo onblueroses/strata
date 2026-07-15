@@ -29,6 +29,6 @@ assert_blocked() {
     fi
 }
 
-assert_blocked 'rm -rf /home/onblueroses/Work/strata/important /tmp/scratch'
+assert_blocked 'rm -rf /home/user/project/important /tmp/scratch'
 assert_blocked "rm \$HOME/.ssh/id_rsa"
 assert_allowed 'rm -rf /tmp/scratch'

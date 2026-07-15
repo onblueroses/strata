@@ -109,11 +109,11 @@ Git: [branch] - [N uncommitted changes]
 Sessions today: [count]
   session-name (ended/open) - summary
 Recent entities:
-  2026-02-12 - $KB_DIR/areas/claude-code-setup
+  2026-02-12 - $KB_DIR/areas/agent-config
   ...
 Entity Health:
   infrastructure: verified 2026-02-13 (0d ago) OK
-  claude-code-setup: verified 2026-02-13 (0d ago) OK
+  agent-config: verified 2026-02-13 (0d ago) OK
 
 [Any warnings about thresholds or stale entities]
 ```
