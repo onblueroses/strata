@@ -58,6 +58,5 @@ Review takes 5-15 minutes on substantial diffs (xhigh + agentic exploration). Al
 - `/codex-review` — uses `codex exec` (the full-flag form above).
 - `/verify` (Full/Deep tier) — uses `codex review --uncommitted`.
 - `/review` — uses `codex review --uncommitted`.
-- `gate-codex-pre-push.sh` — PreToolUse hook; runs `codex review` before `git push`.
 
 When updating any of these, use the per-subcommand form above — do not paste the `exec` flag set into a `review` invocation.

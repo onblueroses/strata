@@ -97,7 +97,7 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-codex-pre-push.sh", "if": "Bash(git push*)", "timeout": 1800000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-pre-push.sh", "if": "Bash(git push*)", "timeout": 10000 }
         ]
       },
       {

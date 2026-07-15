@@ -10,7 +10,7 @@ Event-driven shell scripts wired by `settings.json`. Each hook does one job and 
 | `Stop` | Session closing | `gate-verify` (blocking), `lifecycle-auto-end-fallback`, `lifecycle-sync-state`, `lifecycle-warn-unpushed` |
 | `UserPromptSubmit` | After each user prompt, before model sees it | `context-nudge`, `context-doc-router` |
 | `PreCompact` | Before the runtime compresses prior turns | `context-pre-compaction-save` |
-| `PreToolUse` | Before a tool call executes | `allow-claude-dir-edits`, `warn-file-ownership`, `gate-codex-pre-push` (blocking), `gate-nested-clone`, `gate-gh-public-actions`, `gate-rm-guard`, `gate-codex-exec`, `gate-paid-compute-destroy` |
+| `PreToolUse` | Before a tool call executes | `allow-claude-dir-edits`, `warn-file-ownership`, `gate-pre-push` (blocking), `gate-nested-clone`, `gate-gh-public-actions`, `gate-rm-guard`, `gate-codex-exec`, `gate-paid-compute-destroy` |
 | `PostToolUse` | After a tool call returns | `context-suggest-compact`, `observe-track-skill-runs`, `quality-lint-on-write` (blocking), `observe-track-edits`, `observe-track-session-events`, `context-enrich-search` |
 
 ## Blocking vs advisory
