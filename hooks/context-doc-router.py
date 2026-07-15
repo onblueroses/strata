@@ -8,6 +8,10 @@ Winner of the .router-eval bake-off (aggregate F1 0.792 vs 0.10 for the old keyw
 Contract: reads hookData JSON on stdin, prints a `REFERENCE DOCS:` block on stdout when docs
 match, exits 0 silently otherwise. NEVER crashes, never writes stderr, never exceeds the
 2000ms hook budget (combo is ~75ms). All failure paths degrade to a clean exit 0.
+
+Owns the lex cache. It re-reads doc heads + INDEX.md on each prompt and atomically rebuilds
+`.lex-cache.json` when their signature changes, so newly added or edited docs route without a
+manual cache refresh.
 """
 
 import sys
@@ -25,7 +29,7 @@ import tempfile
 STRATA_HOME = os.environ.get("STRATA_HOME") or os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))
 )
-REF = os.path.join(STRATA_HOME, "reference")
+REF = os.environ.get("STRATA_REF") or os.path.join(STRATA_HOME, "reference")
 EVAL = os.path.join(REF, ".router-eval")
 LEX_CACHE = os.path.join(EVAL, ".lex-cache.json")
 # Env overrides exist for the gauntlet only: hermetic runs point both at scratch files
@@ -210,15 +214,210 @@ def toks(text):
     ]
 
 
-def lex_docs(prompt, cwd):
-    if not os.path.exists(LEX_CACHE):
-        return {}
+def catalog_sig(catalog):
+    # Doc vectors include descriptions as well as keywords, so the signature must cover
+    # both. NUL separators prevent adjacent field boundaries from hashing ambiguously.
+    return hashlib.sha1(
+        "".join(
+            c["doc"] + "\0" + c["keywords"] + "\0" + c["description"] for c in catalog
+        ).encode()
+    ).hexdigest()
+
+
+def load_catalog():
+    """Read the current routable corpus from doc heads and INDEX.md descriptions."""
+    with open(os.path.join(REF, "INDEX.md")) as fh:
+        idx = fh.read()
+    desc = {
+        match.group(1).strip(): match.group(2).strip()
+        for match in re.finditer(r"^\|\s*`([^`]+\.md)`\s*\|\s*([^|]+)\|", idx, re.M)
+    }
+    catalog = []
+    for fname in sorted(os.listdir(REF)):
+        if not fname.endswith(".md") or fname == "INDEX.md":
+            continue
+        # Keywords live in the first five lines. The byte bound keeps this per-prompt
+        # freshness read cheap even when a reference document is very large.
+        with open(os.path.join(REF, fname)) as fh:
+            head = "\n".join(fh.read(4096).splitlines()[:5])
+        match = re.search(r"<!--\s*keywords:\s*(.*?)\s*-->", head, re.S)
+        catalog.append(
+            {
+                "doc": fname,
+                "keywords": match.group(1).strip() if match else "",
+                "description": desc.get(fname, ""),
+            }
+        )
+    return catalog
+
+
+# A token may bypass the two-token precision guard only when it is corpus-unique and
+# rare in general English. The cache stores the measurement, not this verdict, so the
+# threshold can be retuned without requiring wordfreq in the hook interpreter.
+SOLO_ZIPF_MAX = 2.0
+UNJUDGED = 99.0
+
+
+def _rarity_oracle():
+    """Return the optional wordfreq measurement function for this interpreter."""
     try:
-        cache = json.load(open(LEX_CACHE))
-        idf, vecs = cache["idf"], cache["vecs"]
-        solo = set(cache.get("solo", []))
+        from wordfreq import zipf_frequency  # pyright: ignore[reportMissingImports]
+
+        return lambda token: float(zipf_frequency(token, "en"))
     except Exception:
+        return None
+
+
+def build_cache(catalog, prev=None):
+    """Build TF-IDF vectors and derive solo tokens from persisted Zipf measurements.
+
+    The live hook commonly runs without wordfreq. Persisting measurements lets an
+    oracle-less self-heal preserve terse single-token routing; unseen tokens remain
+    ineligible until the standalone builder measures them.
+    """
+    docs_toks = [toks(c["description"] + " " + c["keywords"]) for c in catalog]
+    df = {}
+    for doc_toks in docs_toks:
+        for token in set(doc_toks):
+            df[token] = df.get(token, 0) + 1
+    count = len(catalog)
+    idf = {token: math.log((1 + count) / (1 + docs)) + 1 for token, docs in df.items()}
+    vecs = {}
+    for doc, doc_toks in zip(catalog, docs_toks):
+        tf = {}
+        for token in doc_toks:
+            tf[token] = tf.get(token, 0) + 1
+        vec = (
+            {
+                token: (frequency / len(doc_toks)) * idf[token]
+                for token, frequency in tf.items()
+            }
+            if doc_toks
+            else {}
+        )
+        norm = math.sqrt(sum(value * value for value in vec.values())) or 1.0
+        vecs[doc["doc"]] = {token: value / norm for token, value in vec.items()}
+
+    prev = prev if isinstance(prev, dict) else {}
+    prior_zipf = prev.get("zipf")
+    zipf = (
+        {
+            token: float(value)
+            for token, value in prior_zipf.items()
+            if isinstance(token, str) and isinstance(value, (int, float))
+        }
+        if isinstance(prior_zipf, dict)
+        else {}
+    )
+    measure = _rarity_oracle()
+    if measure:
+        # Fresh measurements are authoritative. Retain measurements for temporarily
+        # absent tokens so a later returning document can still self-heal without the
+        # optional dependency.
+        absent = {token: value for token, value in zipf.items() if token not in df}
+        zipf = {token: measure(token) for token in df}
+        zipf.update(absent)
+    elif not zipf:
+        # Migrate the legacy idf/vecs/solo schema without emptying its measured solo
+        # result. A future wordfreq builder run replaces these sentinels with real values.
+        prior_solo = prev.get("solo")
+        zipf = (
+            {token: 0.0 for token in prior_solo if isinstance(token, str)}
+            if isinstance(prior_solo, list)
+            else {}
+        )
+    solo = sorted(
+        token
+        for token, docs in df.items()
+        if docs == 1 and len(token) >= 5 and zipf.get(token, UNJUDGED) < SOLO_ZIPF_MAX
+    )
+    return {
+        "idf": idf,
+        "vecs": vecs,
+        "solo": solo,
+        "zipf": zipf,
+        "sig": catalog_sig(catalog),
+    }
+
+
+def _read_cache():
+    try:
+        with open(LEX_CACHE) as fh:
+            cache = json.load(fh)
+    except Exception:
+        # Missing and unreadable caches are normal self-heal inputs, not fatal states.
+        return None
+    usable = (
+        isinstance(cache, dict)
+        and isinstance(cache.get("idf"), dict)
+        and isinstance(cache.get("vecs"), dict)
+        and isinstance(cache.get("solo", []), list)
+        and isinstance(cache.get("zipf", {}), dict)
+    )
+    return cache if usable else None
+
+
+def _salvage_zipf():
+    """Rescue valid measurements from a cache whose other fields are unusable."""
+    try:
+        with open(LEX_CACHE) as fh:
+            cache = json.load(fh)
+        prior_zipf = cache.get("zipf") if isinstance(cache, dict) else None
+        if isinstance(prior_zipf, dict):
+            return {
+                "zipf": {
+                    token: float(value)
+                    for token, value in prior_zipf.items()
+                    if isinstance(token, str) and isinstance(value, (int, float))
+                }
+            }
+    except Exception:
+        pass
+    return {}
+
+
+def _write_cache(cache):
+    """Publish one verified JSON cache with an atomic same-directory replace."""
+    tmp = None
+    try:
+        fd, tmp = tempfile.mkstemp(
+            dir=os.path.dirname(LEX_CACHE), prefix=".lex-cache.", suffix=".tmp"
+        )
+        with os.fdopen(fd, "w") as fh:
+            json.dump(cache, fh)
+        with open(tmp) as fh:
+            json.load(fh)
+        os.replace(tmp, LEX_CACHE)
+        tmp = None
+    except Exception:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except Exception:
+                pass
+
+
+def lex_cache():
+    """Return the cache, rebuilding it when disk state and signature disagree."""
+    cached = _read_cache()
+    try:
+        catalog = load_catalog()
+    except Exception:
+        # An unreadable reference tree should not discard an otherwise usable cache.
+        return cached
+    if cached and cached.get("sig") == catalog_sig(catalog):
+        return cached
+    fresh = build_cache(catalog, prev=cached or _salvage_zipf())
+    _write_cache(fresh)
+    return fresh
+
+
+def lex_docs(prompt, cwd):
+    cache = lex_cache()
+    if not cache:
         return {}
+    idf, vecs = cache["idf"], cache["vecs"]
+    solo = set(cache.get("solo") or [])
     # Bound the tokenized prompt: routing signal saturates well before 50k chars, and
     # this keeps a huge prompt from blowing the 2000ms budget at tokenize time (the
     # deterministic cwd/recent-edit signals do not depend on prompt size at all).

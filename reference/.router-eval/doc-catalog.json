@@ -90,6 +90,11 @@
   "description": "Right-sizing performance scalars instead of defaulting them: why a floor value (workers=1, batch=1, a serial loop) is the fingerprint of an unmade decision, reading the substrate before picking a number, leaning by cost-of-failure, making the choice legible. Cross-refs non-defensive coding + fixed-vs-adaptive tuning."
  },
  {
+  "doc": "review-public-repo-audit.md",
+  "keywords": "public repo audit, privacy audit, git history scan, public-repos, secrets in history, review audit mode",
+  "description": "Public-repository audit for exposed credentials, private identifiers, informal artifacts, and misleading metadata in current content and history."
+ },
+ {
   "doc": "rust-ai-project-setup.md",
   "keywords": "rust, cargo, clippy, tokio, workspace, crate, pre-commit, rustfmt, actix, axum, rust project, cargo.toml, lints",
   "description": "**MANDATORY** for Rust. 1487 lines - use Quick Nav."

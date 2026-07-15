@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
-"""Rebuild the lex doc-vector cache + doc-catalog from the live reference docs.
-Run this whenever a reference doc's keywords or INDEX description changes."""
+"""Refresh the catalog and lex cache, measuring token rarity when wordfreq is present.
+
+The live hook self-heals vectors whenever reference content changes. This builder remains
+the authoritative way to measure new tokens for terse single-token routing because the hook
+interpreter commonly lacks the optional wordfreq dependency.
+"""
 
 import hashlib
 import json
@@ -11,17 +15,19 @@ import shutil
 import sys
 import tempfile
 
-EVAL = os.path.dirname(os.path.abspath(__file__))
-REF = os.environ.get("STRATA_REF") or os.path.dirname(EVAL)
+SCRIPT_EVAL = os.path.dirname(os.path.abspath(__file__))
+REF = os.environ.get("STRATA_REF") or os.path.dirname(SCRIPT_EVAL)
+EVAL = os.path.join(REF, ".router-eval")
 CATALOG = os.path.join(EVAL, "doc-catalog.json")
 CACHE = os.path.join(EVAL, ".lex-cache.json")
-sys.path.insert(0, os.path.join(EVAL, "matchers"))
+sys.path.insert(0, os.path.join(SCRIPT_EVAL, "matchers"))
 
 from _common import load_router  # noqa: E402
 
 
 def build_catalog():
-    idx = open(os.path.join(REF, "INDEX.md")).read()
+    with open(os.path.join(REF, "INDEX.md")) as fh:
+        idx = fh.read()
     desc = {
         m.group(1).strip(): m.group(2).strip()
         for m in re.finditer(r"^\|\s*`([^`]+\.md)`\s*\|\s*([^|]+)\|", idx, re.M)
@@ -30,7 +36,8 @@ def build_catalog():
     for fname in sorted(os.listdir(REF)):
         if not fname.endswith(".md") or fname == "INDEX.md":
             continue
-        head = "\n".join(open(os.path.join(REF, fname)).read().splitlines()[:5])
+        with open(os.path.join(REF, fname)) as fh:
+            head = "\n".join(fh.read(4096).splitlines()[:5])
         km = re.search(r"<!--\s*keywords:\s*(.*?)\s*-->", head, re.S)
         catalog.append(
             {
@@ -42,16 +49,30 @@ def build_catalog():
     return catalog
 
 
-def is_rare_token():
+def catalog_sig(catalog):
+    # Keep byte-for-byte parity with the hook: vectors include both text fields, and
+    # NUL separators make every field boundary unambiguous.
+    return hashlib.sha1(
+        "".join(
+            c["doc"] + "\0" + c["keywords"] + "\0" + c["description"] for c in catalog
+        ).encode()
+    ).hexdigest()
+
+
+SOLO_ZIPF_MAX = 2.0
+UNJUDGED = 99.0
+
+
+def _rarity_oracle():
     try:
         from wordfreq import zipf_frequency
 
-        return lambda token: zipf_frequency(token, "en") < 2.5
+        return lambda token: float(zipf_frequency(token, "en"))
     except Exception:
-        return lambda token: False
+        return None
 
 
-def build_cache(catalog):
+def build_cache(catalog, prev=None):
     toks = load_router().toks
     docs_toks = [toks(c["description"] + " " + c["keywords"]) for c in catalog]
     df = {}
@@ -72,20 +93,51 @@ def build_cache(catalog):
         )
         norm = math.sqrt(sum(value * value for value in vec.values())) or 1.0
         vecs[doc["doc"]] = {token: value / norm for token, value in vec.items()}
-    rare = is_rare_token()
+
+    prev = prev if isinstance(prev, dict) else {}
+    prior_zipf = prev.get("zipf")
+    zipf = (
+        {
+            token: float(value)
+            for token, value in prior_zipf.items()
+            if isinstance(token, str) and isinstance(value, (int, float))
+        }
+        if isinstance(prior_zipf, dict)
+        else {}
+    )
+    measure = _rarity_oracle()
+    if measure:
+        absent = {token: value for token, value in zipf.items() if token not in df}
+        zipf = {token: measure(token) for token in df}
+        zipf.update(absent)
+    elif not zipf:
+        prior_solo = prev.get("solo")
+        zipf = (
+            {token: 0.0 for token in prior_solo if isinstance(token, str)}
+            if isinstance(prior_solo, list)
+            else {}
+        )
     solo = sorted(
         token
         for token, docs in df.items()
-        if docs == 1 and len(token) >= 5 and rare(token)
+        if docs == 1 and len(token) >= 5 and zipf.get(token, UNJUDGED) < SOLO_ZIPF_MAX
     )
     return {
         "idf": idf,
         "vecs": vecs,
         "solo": solo,
-        "sig": hashlib.sha1(
-            "".join(c["doc"] + c["keywords"] for c in catalog).encode()
-        ).hexdigest(),
+        "zipf": zipf,
+        "sig": catalog_sig(catalog),
     }
+
+
+def load_previous_cache():
+    try:
+        with open(CACHE) as fh:
+            cache = json.load(fh)
+        return cache if isinstance(cache, dict) else {}
+    except Exception:
+        return {}
 
 
 def write_temp_json(path, value, indent=None):
@@ -132,7 +184,9 @@ def replace_verified(files):
 
 
 cat = build_catalog()
-cache = build_cache(cat)
+previous = load_previous_cache()
+before = len(previous.get("zipf")) if isinstance(previous.get("zipf"), dict) else 0
+cache = build_cache(cat, prev=previous)
 if not cache.get("vecs"):
     raise SystemExit("rebuild FAILED (empty doc vectors)")
 
@@ -147,24 +201,22 @@ except Exception as e:
             os.unlink(tmp)
     raise SystemExit(f"rebuild FAILED ({e})")
 
-# The solo (strong-solo single-token bypass) set is populated ONLY when wordfreq is
-# importable by THIS interpreter. Rebuilding with a bare python3 that lacks wordfreq
-# silently empties solo -> the router degrades to clean >=2-token routing and loses
-# terse "hyprland"/"vitest" recall (correct, but weaker). Surface it loudly so a
-# rebuild never quietly reverts the solo win. Rebuild via:
+# wordfreq refreshes every live token measurement when importable by THIS interpreter.
+# Without it, prior measurements survive and new tokens remain out of solo until a
+# wordfreq-backed run. Rebuild via:
 #   .local/venv/bin/python build-lex-cache.py
 nsolo = len(cache.get("solo", []))
-try:
-    import wordfreq  # noqa: F401
-
-    wf = "present"
-except Exception:
-    wf = "MISSING"
+wf = "present" if _rarity_oracle() is not None else "MISSING"
+measured = len(cache["zipf"])
+new_measured = measured - before
 print(
-    f"rebuilt catalog ({len(cat)} docs) + lex cache; solo={nsolo} tokens (wordfreq {wf})"
+    f"rebuilt catalog ({len(cat)} docs) + lex cache; solo={nsolo} tokens "
+    f"(zipf < {SOLO_ZIPF_MAX}; wordfreq {wf}); "
+    f"zipf={measured} measurements ({new_measured:+d} this run)"
 )
-if nsolo == 0:
+unmeasured = [token for token in cache["idf"] if token not in cache["zipf"]]
+if wf == "MISSING" and unmeasured:
     print(
-        "  WARNING: solo set is EMPTY. If you want terse single-token routing, rebuild "
-        "with the wordfreq venv:  .local/venv/bin/python build-lex-cache.py"
+        f"  NOTE: wordfreq is absent, so {len(unmeasured)} token(s) remain unmeasured. "
+        "Measure them with:  .local/venv/bin/python build-lex-cache.py"
     )

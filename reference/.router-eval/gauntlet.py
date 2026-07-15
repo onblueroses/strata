@@ -24,12 +24,14 @@ import re
 import time
 import tempfile
 import glob
+import shutil
 
 EVAL = os.path.dirname(os.path.abspath(__file__))
 STRATA_HOME = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 HOOK = os.path.join(STRATA_HOME, "hooks", "context-doc-router.py")
+BUILD = os.path.join(EVAL, "build-lex-cache.py")
 DOC_LINE = re.compile(r"^=== (.+?) ===")
 _seq = [0]
 
@@ -408,8 +410,8 @@ def battery_robustness():
     os.close(fd)
     run("binary/NUL transcript", prompt="x", transcript_path=bpath)
     os.unlink(bpath)
-    # corrupt lex-cache simulated via env override pointing nowhere is not possible
-    # (LEX_CACHE is hardcoded); covered by static analysis + missing-cache live test below.
+    # Missing and corrupt lex-cache recovery is exercised against a scratch tree in
+    # the hermetic R17/R18 regression cases below.
     crashes = [c for c in cases if c[1] == "CRASH"]
     print(f"  -> {len(crashes)}/{len(cases)} crashed")
     return crashes
@@ -842,7 +844,7 @@ def battery_regression():
     )
 
     # R14: the wordfreq oracle must keep COMMON homonyms out of solo, so a bare high-
-    # frequency token (Zipf>=2.5: "cargo", "node") stays gated by the >=2-token rule and
+    # frequency token (Zipf>=2.0: "cargo", "node") stays gated by the >=2-token rule and
     # does NOT fire alone. This is the precision guard the cracklib oracle failed.
     # Guard against a VACUOUS pass (token absent from the cache entirely): first assert
     # each token IS a live lexical candidate for its doc yet ABSENT from solo, then that
@@ -1001,6 +1003,176 @@ def battery_regression():
         r["exit"] == 0 and not r["crashed"] and "rust-ai-project-setup.md" in r["docs"],
         f"exit={r['exit']} crashed={r['crashed']} docs={r['docs']}",
     )
+
+    # R17-R21 use a complete scratch reference tree and scratch cache. The real builder
+    # creates the baseline through STRATA_REF, and the real hook heals it through the
+    # same override, so these cases exercise production entrypoints without touching the
+    # checked-in catalog/cache or depending on the host's reference contents.
+    sandbox = tempfile.mkdtemp(prefix="gauntlet-self-heal-")
+    ref = os.path.join(sandbox, "reference")
+    eval_dir = os.path.join(ref, ".router-eval")
+    os.makedirs(eval_dir)
+    index_path = os.path.join(ref, "INDEX.md")
+    alpha_path = os.path.join(ref, "alpha-routing.md")
+    beta_path = os.path.join(ref, "beta-routing.md")
+    cache_path = os.path.join(eval_dir, ".lex-cache.json")
+    catalog_path = os.path.join(eval_dir, "doc-catalog.json")
+    original_index = (
+        "# Reference Index\n\n"
+        "| Doc | What | Jump to | Read when |\n"
+        "|-----|------|---------|-----------|\n"
+        "| `alpha-routing.md` | Alpha cache routing. | Alpha | Testing alpha routing |\n"
+        "| `beta-routing.md` | Beta cache routing. | Beta | Testing beta routing |\n"
+    )
+    original_alpha = (
+        "<!-- keywords: zorbium routing, florvane cache -->\n# Alpha routing\n"
+    )
+    original_beta = "<!-- keywords: nebulan widget, cobalt parser -->\n# Beta routing\n"
+    with open(index_path, "w") as fh:
+        fh.write(original_index)
+    with open(alpha_path, "w") as fh:
+        fh.write(original_alpha)
+    with open(beta_path, "w") as fh:
+        fh.write(original_beta)
+    # Seed measurements so the baseline has a real solo set even when the gauntlet's
+    # interpreter lacks wordfreq. The builder must preserve them while constructing the
+    # first valid scratch cache.
+    with open(cache_path, "w") as fh:
+        json.dump({"zipf": {"zorbium": 1.0, "florvane": 1.0}}, fh)
+    build_env = dict(os.environ)
+    build_env["STRATA_REF"] = ref
+    built = subprocess.run(
+        [sys.executable, BUILD],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        env=build_env,
+    )
+    try:
+        with open(cache_path) as fh:
+            baseline = json.load(fh)
+    except Exception:
+        baseline = {}
+    sb_env = {"STRATA_REF": ref}
+
+    live_ref, live_eval, live_cache = R.REF, R.EVAL, R.LEX_CACHE
+    real_oracle = R._rarity_oracle
+    R.REF, R.EVAL, R.LEX_CACHE = ref, eval_dir, cache_path  # pyright: ignore[reportAttributeAccessIssue]
+    try:
+        chk(
+            "self-heal scratch builder creates a measured baseline",
+            built.returncode == 0
+            and os.path.isfile(catalog_path)
+            and bool(baseline.get("vecs"))
+            and bool(baseline.get("solo"))
+            and bool(baseline.get("zipf"))
+            and baseline.get("sig") == R.catalog_sig(R.load_catalog()),
+            f"exit={built.returncode} solo={len(baseline.get('solo', []))} stdout={built.stdout.strip()!r}",
+        )
+
+        # R17: a missing cache is a normal first-run state. The hook rebuilds it from
+        # disk, publishes valid JSON, and routes from the newly built vectors immediately.
+        os.unlink(cache_path)
+        r = invoke(prompt="zorbium florvane", cwd=sandbox, env=sb_env)
+        with open(cache_path) as fh:
+            healed_missing = json.load(fh)
+        chk(
+            "R17 missing cache rebuilds and routes on the same prompt",
+            "alpha-routing.md" in r["docs"]
+            and bool(healed_missing.get("vecs"))
+            and healed_missing.get("idf") == baseline.get("idf")
+            and healed_missing.get("vecs") == baseline.get("vecs")
+            and healed_missing.get("sig") == R.catalog_sig(R.load_catalog()),
+            f"docs={r['docs']} cache={sorted(healed_missing)}",
+        )
+
+        # R18: structural corruption invalidates the whole cache, but an intact zipf
+        # map remains salvageable. Force the hook's usual oracle-less environment and
+        # prove the rebuild recovers both vectors and the prior solo behavior.
+        with open(cache_path, "w") as fh:
+            json.dump({**baseline, "solo": 7}, fh)
+        R._rarity_oracle = lambda: None  # pyright: ignore[reportAttributeAccessIssue]
+        healed_corrupt = R.lex_cache()
+        chk(
+            "R18 corrupt cache rebuilds and salvages zipf measurements",
+            isinstance(healed_corrupt.get("solo"), list)
+            and healed_corrupt.get("zipf") == baseline.get("zipf")
+            and set(healed_corrupt.get("solo", [])) == set(baseline.get("solo", [])),
+            f"zipf={len(healed_corrupt.get('zipf', {}))} solo={len(healed_corrupt.get('solo', []))}",
+        )
+
+        # R19: keyword edits and newly added docs both change the live signature. Each
+        # must become routable on the first prompt after the filesystem change.
+        with open(cache_path, "w") as fh:
+            json.dump(baseline, fh)
+        with open(alpha_path, "w") as fh:
+            fh.write(
+                "<!-- keywords: zorbium mutation, saffron compiler -->\n# Alpha routing\n"
+            )
+        keyword_route = invoke(prompt="saffron compiler", cwd=sandbox, env=sb_env)
+        gamma_path = os.path.join(ref, "gamma-routing.md")
+        with open(gamma_path, "w") as fh:
+            fh.write(
+                "<!-- keywords: quasar spindle, topaz resolver -->\n# Gamma routing\n"
+            )
+        added_route = invoke(prompt="quasar spindle", cwd=sandbox, env=sb_env)
+        with open(cache_path) as fh:
+            healed_keywords = json.load(fh)
+        chk(
+            "R19 stale keyword/doc signature self-heals on the next prompt",
+            "alpha-routing.md" in keyword_route["docs"]
+            and "gamma-routing.md" in added_route["docs"]
+            and "gamma-routing.md" in healed_keywords.get("vecs", {}),
+            f"edited={keyword_route['docs']} added={added_route['docs']}",
+        )
+        os.unlink(gamma_path)
+
+        # R20: descriptions feed vectors, so an INDEX-only edit must invalidate the
+        # cache even when every document keyword line is unchanged.
+        with open(alpha_path, "w") as fh:
+            fh.write(original_alpha)
+        with open(cache_path, "w") as fh:
+            json.dump(baseline, fh)
+        description_index = original_index.replace(
+            "Alpha cache routing.", "Saffron lattice handbook."
+        )
+        with open(index_path, "w") as fh:
+            fh.write(description_index)
+        description_route = invoke(prompt="saffron lattice", cwd=sandbox, env=sb_env)
+        with open(cache_path) as fh:
+            healed_description = json.load(fh)
+        chk(
+            "R20 INDEX description edit invalidates and rebuilds the cache",
+            "alpha-routing.md" in description_route["docs"]
+            and healed_description.get("sig") != baseline.get("sig")
+            and healed_description.get("sig") == R.catalog_sig(R.load_catalog()),
+            f"docs={description_route['docs']} sig_changed={healed_description.get('sig') != baseline.get('sig')}",
+        )
+
+        # R21: a stale rebuild without wordfreq must carry measurements forward and
+        # re-derive the solo list. A known rare token must still route by itself.
+        with open(index_path, "w") as fh:
+            fh.write(original_index)
+        with open(alpha_path, "w") as fh:
+            fh.write(
+                "<!-- keywords: zorbium routing, florvane cache, unmeasured token -->\n"
+                "# Alpha routing\n"
+            )
+        with open(cache_path, "w") as fh:
+            json.dump(baseline, fh)
+        rebuilt_no_oracle = R.lex_cache()
+        solo_route = R.lex_docs("zorbium", sandbox)
+        chk(
+            "R21 wordfreq-absent rebuild preserves measured solo routing",
+            rebuilt_no_oracle.get("zipf") == baseline.get("zipf")
+            and set(rebuilt_no_oracle.get("solo", [])) == set(baseline.get("solo", []))
+            and "alpha-routing.md" in solo_route,
+            f"solo={len(rebuilt_no_oracle.get('solo', []))} route={solo_route}",
+        )
+    finally:
+        R._rarity_oracle = real_oracle  # pyright: ignore[reportAttributeAccessIssue]
+        R.REF, R.EVAL, R.LEX_CACHE = live_ref, live_eval, live_cache  # pyright: ignore[reportAttributeAccessIssue]
+        shutil.rmtree(sandbox, ignore_errors=True)
 
     print(f"  -> {len(fails)} regression failures: {fails or 'none'}")
     return fails
