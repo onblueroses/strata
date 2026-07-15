@@ -18,7 +18,9 @@ Save current session state before compaction or at a milestone.
 
 **Guard:** Save files are session-specific: `$STATE_DIR/auto-context-save-{session-id}.md` (session ID = 8-char suffix of daily note filename). Read your session's existing save file first. If it has more detail than what you're about to write (e.g., from a previous manual save this session), merge: keep the more detailed Goal and Critical Context, union the Decisions and Key Files tables, update Status checkboxes to current state.
 
-**Note:** The PreCompact hook writes to a separate path (`auto-context-save-{session-id}-hook.md`) holding fresh mechanical state (Git/Specs/Daily Notes). It will NOT clobber this skill's file. Both files survive and `/context-resume` reads both.
+**Save coordination:** Write the semantic save only to `$STATE_DIR/auto-context-save-{session-id}.md`. The PreCompact hook exclusively owns `$STATE_DIR/auto-context-save-{session-id}-hook.md` and its per-window copies, which hold fresh mechanical state (Git/Specs/Daily Notes). Both files survive and `/context-resume` reads them together. Keep the `## Goal`, `## Decisions`, and `## Critical Context` headings byte-intact because the post-compaction restore extracts them by name.
+
+When remaining context is scarce, persist in recoverability order: (1) update the active spec's `>> Current Step`, (2) append new JSONL semantic events, (3) merge Goal, Next Actions, and Critical Context into the semantic save, then (4) fill the remaining tables. The hook independently preserves fresh mechanical state.
 
 **Avoid these - they cause real problems:**
 - **Don't overwrite with less detail** - a previous manual save this session may have richer context than the current state. Merging preserves information; overwriting destroys it.
@@ -36,6 +38,17 @@ Save current session state before compaction or at a milestone.
 - What decisions were made and why?
 - What files were created/modified?
 - What's the current task status?
+
+### Classify Session Type (pick 1-2)
+
+| Type | Signal |
+|------|--------|
+| **debugging** | Hunting a bug, running tests repeatedly, narrowing a hypothesis |
+| **implementing** | Working through a spec, building a feature, refactoring |
+| **exploring** | Open-ended research, surveying code, weighing approaches |
+| **writing** | Drafting prose where voice or register matters across revisions |
+| **experimenting** | Comparing data or ML runs across configurations |
+| **dispatching** | Orchestrating lanes, workers, or panes with results pending |
 
 ### Git State
 ```bash
@@ -67,6 +80,10 @@ If found, read them. For each spec with `Status: in-progress`:
 <summary>Step 2: Write Save File</summary>
 
 Create/update `$STATE_DIR/auto-context-save-{session-id}.md`:
+
+The save has two layers in this order: **Core** (always) and **Conditional** (one or two blocks matching the classified session type).
+
+### Core blocks (always include)
 
 ```markdown
 # Context Save - [DATE TIME]
@@ -108,6 +125,10 @@ Create/update `$STATE_DIR/auto-context-save-{session-id}.md`:
 [Non-obvious things that would be bad to forget]
 ```
 
+### Conditional blocks
+
+Read `references/session-type-blocks.md`, copy one or two templates matching the classified session type after the Core blocks, and fill every field.
+
 ### Append JSONL Semantic Events
 
 After writing the markdown save, append semantic events to `$STATE_DIR/session-events-{session-id}.jsonl`. These capture agent-level understanding that the PostToolUse hook cannot detect:
@@ -132,6 +153,7 @@ After writing the save file, verify:
 3. **Critical Context captured** - any non-obvious state that would be lost in compaction?
 4. **Spec files listed** - if any exist, are they referenced with progress counts?
 5. **JSONL events appended** - did you write goal + decisions + milestone to the event log?
+6. **Conditional blocks match session type** - are one or two applicable templates filled with current state?
 
 </details>
 
