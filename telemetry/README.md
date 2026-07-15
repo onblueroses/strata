@@ -15,9 +15,9 @@ Telemetry is OFF unless the environment sets `STRATA_TELEMETRY=1`.
 - **Wiring lives in setup/config docs, not in default `settings.json`.** Shipping the variable
   enabled would make collection the default; an operator turns it on deliberately (export it in
   the shell profile or the harness env).
-- **Readers run on demand and need no gate.** `unify.py` and `cost_rollup.py` are read-time tools;
-  they never assume telemetry is enabled. An empty or missing sink yields an empty stream and an
-  empty ledger rather than an error.
+- **Readers run on demand and need no gate.** `unify.py`, `digest.py`, and `cost_rollup.py` are
+  read-time tools; they never assume telemetry is enabled. An empty or missing sink yields an empty
+  stream, digest, or ledger rather than an error.
 
 ## Runtime paths (the contract)
 
@@ -93,6 +93,21 @@ ancestor** as safe; inside a work tree, allows it only when `git check-ignore` r
 gitignored, and refuses other paths. It **fails closed**: any git error or indeterminate status
 inside a metadata ancestor refuses the write and falls back to stdout.
 
+### `digest.py`
+
+Read-only public telemetry synthesis. It invokes `unify.py` directly and renders router precision
+(worst/best-served docs, never-surfaced docs, router score calibration, and zero-routes), delegation
+summary, friction/rework signals, and serial-wait diagnostics. Inputs resolve under `$STATE_DIR`
+and `$STRATA_HOME` through the shared runtime path contract; the router catalog and lexical cache
+live under `$STRATA_HOME/reference/.router-eval/`.
+
+- `python3 digest.py` writes the Markdown digest to stdout; `--json` emits the same findings as JSON.
+- `--since DAYS` limits unified events to a recent window.
+- `--out PATH` refuses a git-tracked destination and falls back to stdout.
+
+A SessionEnd distiller is optional and is not shipped. The digest reads `unify.py` directly and does
+not depend on a distilled metrics stream.
+
 ### `rotate_telemetry.sh`
 
 Size rotation for the unbounded sinks. `events.jsonl` (many appends per session) and
@@ -127,9 +142,10 @@ to a built-in default rate, so a ledger is always producible.
 - `cost_rollup.py <sid>` prints the per-channel ledger for one session.
 - `cost_rollup.py --aggregate` prints lifetime notional/real totals across all recorded sessions.
 
-Producing `session-metrics.jsonl` (the per-session token rollup) is the install's responsibility —
-typically a SessionEnd distiller. With no metrics file, the delegated-lane channel still reports
-from `events.jsonl` and the main/subagent channels read as zero.
+Producing `session-metrics.jsonl` (the per-session token rollup) is the install's responsibility.
+An optional SessionEnd distiller can produce it, but no such distiller is shipped. With no metrics
+file, the delegated-lane channel still reports from `events.jsonl` and the main/subagent channels
+read as zero.
 
 ### `model_rates.json`
 
@@ -167,7 +183,7 @@ capture is added to the payload.
 
 The native memory engine emits one `kb_query` event per search when telemetry is enabled, so
 retrieval quality stays observable. `/recall` searches set `origin: "recall"`; the SessionStart
-digest path sets `origin: "digest"`. Payload as shipped:
+memory-index path sets `origin: "digest"`. Payload as shipped:
 ```json
 {"corpus":"cards","query":"<char-capped>","n_hits":3,"top_score":0.0,"rank_top_score":0.0,"bm25_top_score":0.0,"vector_top_score":0.0,"low_confidence":false,"is_miss":false,"miss_reason":null,"scores":[],"latency_ms":0.0,"search_mode":"fused","returned_ids":[],"origin":"recall"}
 ```
@@ -177,8 +193,9 @@ the sink. Emission is gated on `STRATA_TELEMETRY`; the sink is gitignored runtim
 
 The SessionEnd `memory-access-log.sh` hook consumes these events: `reconcile.py --access-log` tails
 the new `kb_query` rows and folds which cards were returned into
-`$STATE_DIR/memory/session-state/access-log.json`, which feeds the digest's recency-and-usage
-ranking. It is O(new-tail), bounded by a 20s wrapper timeout, and fail-open.
+`$STATE_DIR/memory/session-state/access-log.json` for the separate memory subsystem. This data is
+not an input to `telemetry/digest.py`. The hook is O(new-tail), bounded by a 20s wrapper timeout,
+and fail-open.
 
 ## Adding a new event kind
 
@@ -193,6 +210,7 @@ the emit.
 python3 unify.py                    # all sources -> one normalized time-sorted JSONL on stdout
 python3 unify.py --counts           # + a kind/source tally to stderr
 python3 unify.py --out PATH         # write to PATH (refused if tracked and not gitignored)
+python3 digest.py                   # public router/delegation/friction/serial-wait digest
 python3 cost_rollup.py <sid>        # per-channel true-cost ledger for one session
 python3 cost_rollup.py --aggregate  # lifetime notional/real totals across sessions
 bash    rotate_telemetry.sh         # rotate sinks over threshold (call from a SessionEnd hook)
