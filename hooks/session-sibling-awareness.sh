@@ -46,6 +46,25 @@ while IFS= read -r editFile; do
 
     # Extract primary project from most common path prefix
     project=$(echo "$fileList" | grep -oP "(?<=${KB_DIR}/projects/)[^/]+|(?<=${KB_DIR}/areas/)[^/]+" | sort | uniq -c | sort -rn | head -1 | awk '{print $2}')
+    if [ -z "$project" ]; then
+        declare -A gitRootCounts=()
+        dominantGitRoot=""
+        dominantGitCount=0
+        while IFS= read -r editedPath; do
+            [ -n "$editedPath" ] || continue
+            editedDir="$editedPath"
+            [ -d "$editedDir" ] || editedDir=$(dirname -- "$editedPath" 2>/dev/null) || continue
+            gitRoot=$(git -C "$editedDir" rev-parse --show-toplevel 2>/dev/null) || continue
+            rootCount=${gitRootCounts["$gitRoot"]:-0}
+            rootCount=$((rootCount + 1))
+            gitRootCounts["$gitRoot"]=$rootCount
+            if [ "$rootCount" -gt "$dominantGitCount" ]; then
+                dominantGitRoot="$gitRoot"
+                dominantGitCount=$rootCount
+            fi
+        done <<< "$fileList"
+        [ -n "$dominantGitRoot" ] && project=$(basename -- "$dominantGitRoot" 2>/dev/null)
+    fi
     [ -z "$project" ] && project="(config/misc)"
 
     # Look up session name from pre-fetched daily notes
