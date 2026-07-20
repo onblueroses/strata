@@ -35,8 +35,10 @@ target/
 cli/target/
 
 # This repo's own dev scratch (build-time specs, verify markers, local settings).
-# Not part of the shipped skeleton; kept out of the public tree.
-.claude/
+# Not part of the shipped skeleton; kept out of the public tree. Repo-local
+# developer commands under .claude/commands/ are the exception and ship.
+.claude/*
+!.claude/commands/
 
 # Runtime state never belongs in the install tree; workspace/ has its own state dirs
 *.log
