@@ -7,7 +7,7 @@ description: "Deep on-demand memory PULL over the user's memory cards and entity
 
 `/recall <query>` is the query-time retrieval path for the native memory system. It reaches cards the SessionStart digest does not list, including cards that share no distinctive keyword with the query.
 
-The ambient per-prompt router was retired as measured noise. Memory is now PULL-only, and nothing is pushed into a prompt except the SessionStart digest.
+Memory is pull-only: `/recall` performs query-time retrieval, while the SessionStart digest is the only ambient memory context.
 
 **Goal:** Return the memory cards that genuinely answer `<query>`, surfaced by reformulating intent into the cards' vocabulary and confirmed against the card bodies.
 

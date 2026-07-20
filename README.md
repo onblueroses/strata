@@ -10,13 +10,15 @@ skills/     procedural knowledge the agent loads on demand (spec, recon, harness
 commands/   user-invoked slash commands (verify, review, end, best-of-n, commit, pickup)
 agents/     subagent definitions (orchestrator, planner, quick-research, code-reviewer, knowledge-lookup)
 hooks/      event-driven scripts (Stop, PreToolUse, PostToolUse, SessionStart, ...)
-reference/  long-form docs the agent reads on the right prompt (router + INDEX)
+reference/  long-form docs with a complete INDEX and per-doc Quick Navs
 config/     model-map.toml (symbolic-lane bindings) + private-tokens.example.txt
 telemetry/  opt-in delegation/cost telemetry (off by default; STRATA_TELEMETRY=1)
 workspace/  PARA-flavored knowledge-base tree (areas | projects | resources | daily | inbox | archives)
 ```
 
 CLAUDE.md at the repo root is the operating doctrine the agent reads first.
+
+Reference docs use a pull model: the complete [reference index](reference/INDEX.md) lists every shipped doc, each doc carries a Quick Nav, and the agent's own intelligence decides what to read on demand.
 
 ## Install
 

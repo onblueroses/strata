@@ -25,9 +25,6 @@ TEL_DIR = os.environ.get("STRATA_TELEMETRY_DIR") or f"{STATE_DIR}/telemetry"
 
 THIS_DIR = Path(_SCRIPT_DIR)
 UNIFY = THIS_DIR / "unify.py"
-ROUTER_EVAL_DIR = Path(STRATA_HOME) / "reference" / ".router-eval"
-DOC_CATALOG = ROUTER_EVAL_DIR / "doc-catalog.json"
-LEX_CACHE = ROUTER_EVAL_DIR / ".lex-cache.json"
 
 
 def sid8(value: Any) -> str:
@@ -36,16 +33,6 @@ def sid8(value: Any) -> str:
         return ""
     text = str(value).strip()
     return text[:8] if text else ""
-
-
-def doc_key(value: Any) -> str:
-    """Normalize routed document names for joins and catalog comparisons."""
-    if not isinstance(value, str):
-        return ""
-    name = os.path.basename(value.strip()).lower()
-    if name.endswith(".md"):
-        name = name[:-3]
-    return name
 
 
 def skill_key(value: Any) -> str:
@@ -59,10 +46,6 @@ def skill_key(value: Any) -> str:
     if text.endswith(".md"):
         text = text[:-3]
     return text
-
-
-def display_doc(key: str) -> str:
-    return f"{key}.md" if key else "(unknown)"
 
 
 def parse_ts(value: Any) -> datetime | None:
@@ -136,28 +119,6 @@ def to_float(value: Any) -> float | None:
     return out
 
 
-def percentile(values: list[float], q: float) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    if q <= 0:
-        return ordered[0]
-    if q >= 1:
-        return ordered[-1]
-    index = math.ceil(q * len(ordered)) - 1
-    return ordered[max(0, min(len(ordered) - 1, index))]
-
-
-def read_json_file(path: Path) -> tuple[Any | None, str | None]:
-    try:
-        with path.open(encoding="utf-8") as fh:
-            return json.load(fh), None
-    except FileNotFoundError:
-        return None, f"missing file: {path}"
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        return None, f"could not read {path}: {exc.__class__.__name__}: {exc}"
-
-
 def load_events(since_days: int | None) -> tuple[list[dict[str, Any]], list[str]]:
     """Read the one public event surface by invoking telemetry/unify.py."""
     notes: list[str] = []
@@ -219,184 +180,6 @@ def load_events(since_days: int | None) -> tuple[list[dict[str, Any]], list[str]
     return events, notes
 
 
-def load_doc_universe() -> tuple[set[str], list[str]]:
-    """Load routable docs from the public catalog and its lexical cache."""
-    docs: set[str] = set()
-    notes: list[str] = []
-
-    catalog, note = read_json_file(DOC_CATALOG)
-    if note:
-        notes.append(note)
-    elif isinstance(catalog, list):
-        docs.update(
-            doc_key(item.get("doc"))
-            for item in catalog
-            if isinstance(item, dict) and doc_key(item.get("doc"))
-        )
-    else:
-        notes.append("router doc catalog was not a JSON list")
-
-    cache, note = read_json_file(LEX_CACHE)
-    if note:
-        notes.append(note)
-    elif isinstance(cache, dict) and isinstance(cache.get("vecs"), dict):
-        docs.update(doc_key(key) for key in cache["vecs"] if doc_key(key))
-    else:
-        notes.append("router lex cache has no object-valued vecs key")
-
-    return docs, notes
-
-
-def rank_values(values: list[float]) -> list[float]:
-    order = sorted(enumerate(values), key=lambda pair: pair[1])
-    ranks = [0.0] * len(values)
-    i = 0
-    while i < len(order):
-        j = i + 1
-        while j < len(order) and order[j][1] == order[i][1]:
-            j += 1
-        avg_rank = (i + 1 + j) / 2.0
-        for k in range(i, j):
-            ranks[order[k][0]] = avg_rank
-        i = j
-    return ranks
-
-
-def pearson(xs: list[float], ys: list[float]) -> float | None:
-    if len(xs) != len(ys) or len(xs) < 2:
-        return None
-    mx = sum(xs) / len(xs)
-    my = sum(ys) / len(ys)
-    dx = [x - mx for x in xs]
-    dy = [y - my for y in ys]
-    sx = sum(x * x for x in dx)
-    sy = sum(y * y for y in dy)
-    if sx <= 0 or sy <= 0:
-        return None
-    return sum(x * y for x, y in zip(dx, dy, strict=True)) / math.sqrt(sx * sy)
-
-
-def spearman(xs: list[float], ys: list[float]) -> float | None:
-    if len(xs) < 3 or len(set(xs)) < 2 or len(set(ys)) < 2:
-        return None
-    return pearson(rank_values(xs), rank_values(ys))
-
-
-def percentile_bins(rows: list[dict[str, Any]], bins: int = 4) -> list[dict[str, Any]]:
-    if not rows:
-        return []
-    ordered = sorted(rows, key=lambda row: (row["score"], row["index"]))
-    out: list[dict[str, Any]] = []
-    n = len(ordered)
-    for i in range(bins):
-        start = (i * n) // bins
-        end = ((i + 1) * n) // bins
-        chunk = ordered[start:end]
-        if not chunk:
-            continue
-        used = sum(1 for row in chunk if row["used"])
-        out.append(
-            {
-                "bin": f"Q{i + 1}",
-                "n": len(chunk),
-                "used": used,
-                "hit_rate": used / len(chunk),
-                "score_min": chunk[0]["score"],
-                "score_max": chunk[-1]["score"],
-            }
-        )
-    return out
-
-
-def build_doc_labels(
-    events: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    used_index: dict[tuple[str, str], list[datetime | None]] = collections.defaultdict(
-        list
-    )
-    used_events = 0
-    for event in events:
-        if event.get("kind") != "doc_used":
-            continue
-        key = doc_key(event.get("item"))
-        session = sid8(event.get("sid"))
-        if not key or not session:
-            continue
-        used_events += 1
-        used_index[(session, key)].append(parse_ts(event.get("ts")))
-
-    for values in used_index.values():
-        values.sort(key=lambda dt: dt or datetime.max.replace(tzinfo=timezone.utc))
-
-    labels: list[dict[str, Any]] = []
-    fallback_matches = 0
-    parsed_join_checks = 0
-    for index, event in enumerate(events):
-        if event.get("kind") != "doc_inject":
-            continue
-        key = doc_key(event.get("doc"))
-        session = sid8(event.get("sid"))
-        inject_ts = parse_ts(event.get("ts"))
-        used = False
-        used_ts: datetime | None = None
-        if key and session:
-            candidates = used_index.get((session, key), [])
-            for candidate_ts in candidates:
-                if inject_ts is not None and candidate_ts is not None:
-                    parsed_join_checks += 1
-                    if candidate_ts >= inject_ts:
-                        used = True
-                        used_ts = candidate_ts
-                        break
-                else:
-                    used = True
-                    used_ts = candidate_ts
-                    fallback_matches += 1
-                    break
-        labels.append(
-            {
-                "index": index,
-                "sid8": session,
-                "ts": event.get("ts"),
-                "ts_parsed": inject_ts.isoformat() if inject_ts else None,
-                "doc": event.get("doc"),
-                "doc_key": key,
-                "score": to_float(event.get("score")),
-                "signal": event.get("signal"),
-                "used": used,
-                "used_ts": used_ts.isoformat() if used_ts else None,
-            }
-        )
-
-    meta = {
-        "doc_used_events": used_events,
-        "time_aware": True,
-        "fallback_matches": fallback_matches,
-        "parsed_join_checks": parsed_join_checks,
-        "join": (
-            "sid first 8 chars; lowercase basename with trailing .md stripped; "
-            "doc_used must be at or after doc_inject when both timestamps parse"
-        ),
-    }
-    return labels, meta
-
-
-def stats_by_key(labels: list[dict[str, Any]], key_name: str) -> list[dict[str, Any]]:
-    grouped: dict[str, dict[str, Any]] = {}
-    for row in labels:
-        key = row.get(key_name) or "(unknown)"
-        stats = grouped.setdefault(key, {"key": key, "injected": 0, "used": 0})
-        stats["injected"] += 1
-        if row.get("used"):
-            stats["used"] += 1
-    out: list[dict[str, Any]] = []
-    for stats in grouped.values():
-        injected = stats["injected"]
-        stats["hit_rate"] = stats["used"] / injected if injected else 0.0
-        out.append(stats)
-    return out
-
-
 def analyze_header(
     events: list[dict[str, Any]], notes: list[str], since_days: int | None
 ) -> dict[str, Any]:
@@ -418,122 +201,6 @@ def analyze_header(
         "source_counts": dict(source_counts.most_common()),
         "since_days": since_days,
         "notes": notes,
-    }
-
-
-def analyze_doc_precision(events: list[dict[str, Any]]) -> dict[str, Any]:
-    labels, meta = build_doc_labels(events)
-    total = len(labels)
-    used = sum(1 for row in labels if row.get("used"))
-    per_doc = stats_by_key(labels, "doc_key")
-    eligible = [row for row in per_doc if row["injected"] >= 3]
-    worst = sorted(
-        eligible, key=lambda row: (row["hit_rate"], -row["injected"], row["key"])
-    )[:8]
-    best = sorted(
-        eligible, key=lambda row: (-row["hit_rate"], -row["injected"], row["key"])
-    )[:8]
-    return {
-        "available": bool(total),
-        "total_injections": total,
-        "used_injections": used,
-        "overall_precision": used / total if total else None,
-        "doc_used_events": meta["doc_used_events"],
-        "join": meta["join"],
-        "fallback_matches": meta["fallback_matches"],
-        "per_doc": per_doc,
-        "worst_eligible": worst,
-        "best_eligible": best,
-        "eligible_threshold": 3,
-        "labels": labels,
-        "notes": [] if total else ["no doc_inject events in the selected window"],
-    }
-
-
-def analyze_never_surfaced(events: list[dict[str, Any]]) -> dict[str, Any]:
-    doc_universe, doc_notes = load_doc_universe()
-    injected_docs = {
-        doc_key(event.get("doc"))
-        for event in events
-        if event.get("kind") == "doc_inject" and doc_key(event.get("doc"))
-    }
-    never_docs = sorted(doc_universe - injected_docs)
-    return {
-        "doc_universe_count": len(doc_universe),
-        "doc_injected_count": len(doc_universe & injected_docs) if doc_universe else 0,
-        "never_docs": [display_doc(key) for key in never_docs],
-        "doc_notes": doc_notes,
-        "notes": doc_notes,
-    }
-
-
-def analyze_score_calibration(doc_precision: dict[str, Any]) -> dict[str, Any]:
-    labels = doc_precision.get("labels") or []
-    rows = [
-        {
-            "index": row["index"],
-            "score": row["score"],
-            "used": bool(row["used"]),
-        }
-        for row in labels
-        if row.get("score") is not None
-    ]
-    scores = [row["score"] for row in rows]
-    used_values = [1.0 if row["used"] else 0.0 for row in rows]
-    rho = spearman(scores, used_values)
-    quartiles = percentile_bins(rows, 4)
-    hit_rates = [row["hit_rate"] for row in quartiles]
-    monotone = (
-        all(a <= b for a, b in zip(hit_rates, hit_rates[1:]))
-        if len(hit_rates) >= 2
-        else None
-    )
-    notes: list[str] = []
-    if len(rows) < 3:
-        notes.append("fewer than 3 scored doc injections; Spearman not meaningful")
-    elif rho is None:
-        notes.append(
-            "Spearman unavailable because score or used-label ranks have no variance"
-        )
-    return {
-        "available": bool(rows),
-        "n": len(rows),
-        "spearman_rho": rho,
-        "quartiles": quartiles,
-        "monotone_hit_rate": monotone,
-        "notes": notes,
-    }
-
-
-def analyze_zero_routes(events: list[dict[str, Any]]) -> dict[str, Any]:
-    inject_count = sum(1 for event in events if event.get("kind") == "doc_inject")
-    zero_events = [event for event in events if event.get("kind") == "doc_zero_route"]
-    by_signal = collections.Counter(
-        str(event.get("signal") or "unknown") for event in zero_events
-    )
-    total_router = inject_count + len(zero_events)
-    none_count = by_signal.get("none", 0)
-    deduped_count = by_signal.get("deduped", 0)
-    suppressed_co = sum(
-        len(event.get("suppressed") or [])
-        for event in events
-        if event.get("kind") == "doc_inject"
-    )
-    return {
-        "doc_inject": inject_count,
-        "doc_zero_route": len(zero_events),
-        "router_firings": total_router,
-        "by_signal": dict(by_signal.most_common()),
-        "suppressed_sole_cause": by_signal.get("suppressed", 0),
-        "suppressed_co_injection": suppressed_co,
-        "zero_route_fraction": len(zero_events) / total_router
-        if total_router
-        else None,
-        "true_zero_fraction": none_count / total_router if total_router else None,
-        "deduped_fraction": deduped_count / total_router if total_router else None,
-        "notes": []
-        if total_router
-        else ["no doc router firings in the selected window"],
     }
 
 
@@ -798,55 +465,6 @@ def safe_section(
 def build_top_signals(report: dict[str, Any]) -> list[str]:
     signals: list[str] = []
 
-    zero = report.get("zero_routes", {})
-    router_firings = zero.get("router_firings") or 0
-    if router_firings:
-        signals.append(
-            "Doc router zero-route is "
-            f"{fmt_pct(zero.get('doc_zero_route', 0), router_firings)} "
-            f"({fmt_int(zero.get('doc_zero_route', 0))}/{fmt_int(router_firings)} "
-            "firings)."
-        )
-
-    precision = report.get("doc_precision", {})
-    injections = precision.get("total_injections") or 0
-    used = precision.get("used_injections") or 0
-    if injections:
-        doc_used_events = precision.get("doc_used_events") or 0
-        if doc_used_events < 10:
-            signals.append(
-                f"Doc precision is {fmt_pct(used, injections)} "
-                f"({fmt_int(used)}/{fmt_int(injections)}), but only "
-                f"{fmt_int(doc_used_events)} doc_used events exist. Treat precision "
-                "as an instrumentation smoke signal until more usage is captured."
-            )
-        else:
-            signals.append(
-                f"Doc precision is {fmt_pct(used, injections)} "
-                f"({fmt_int(used)}/{fmt_int(injections)}); use the worst-served table "
-                "as the router-tuning queue."
-            )
-
-    never = report.get("never_surfaced", {})
-    never_docs = never.get("never_docs") or []
-    universe = never.get("doc_universe_count") or 0
-    if universe and never_docs:
-        sample = ", ".join(never_docs[:5])
-        suffix = "..." if len(never_docs) > 5 else ""
-        signals.append(
-            f"{fmt_int(len(never_docs))}/{fmt_int(universe)} routable docs never "
-            f"surfaced: {sample}{suffix}"
-        )
-
-    score = report.get("score_calibration", {})
-    if score.get("n"):
-        rho = score.get("spearman_rho")
-        monotone = score.get("monotone_hit_rate")
-        signals.append(
-            "Router score calibration: "
-            f"Spearman rho {fmt_float(rho)}; monotone quartiles={monotone}."
-        )
-
     serial = report.get("serial_wait", {})
     if serial.get("available"):
         worst = (serial.get("serial_sessions") or [{}])[0]
@@ -877,25 +495,12 @@ def build_report(since_days: int | None) -> dict[str, Any]:
     header = safe_section(
         "header", lambda: analyze_header(events, load_notes, since_days)
     )
-    doc_precision = safe_section("doc precision", lambda: analyze_doc_precision(events))
-    never_surfaced = safe_section(
-        "never surfaced", lambda: analyze_never_surfaced(events)
-    )
-    score_calibration = safe_section(
-        "score calibration", lambda: analyze_score_calibration(doc_precision)
-    )
-    doc_precision = dict(doc_precision)
-    doc_precision.pop("labels", None)
 
     report = {
         "generated_at": generated_at,
         "unify": str(UNIFY),
         "window": {"since_days": since_days},
         "header": header,
-        "doc_precision": doc_precision,
-        "never_surfaced": never_surfaced,
-        "score_calibration": score_calibration,
-        "zero_routes": safe_section("zero routes", lambda: analyze_zero_routes(events)),
         "delegation": safe_section("delegation", lambda: analyze_delegation(events)),
         "friction": safe_section("friction", lambda: analyze_friction(events)),
         "serial_wait": safe_section("serial wait", lambda: analyze_serial_wait(events)),
@@ -942,173 +547,9 @@ def render_header(report: dict[str, Any]) -> list[str]:
     return lines
 
 
-def render_precision_table(
-    rows: list[dict[str, Any]], key_label: str, doc_names: bool = False
-) -> list[str]:
-    table_rows = []
-    for row in rows:
-        key = row.get("key") or "(unknown)"
-        if doc_names and key != "(unknown)":
-            key = display_doc(key)
-        table_rows.append(
-            [
-                key,
-                fmt_int(row.get("injected", 0)),
-                fmt_int(row.get("used", 0)),
-                fmt_pct(row.get("used", 0), row.get("injected", 0)),
-            ]
-        )
-    return table([key_label, "injected", "used", "hit-rate"], table_rows)
-
-
-def render_doc_precision(report: dict[str, Any]) -> list[str]:
-    section = report["doc_precision"]
-    lines = ["## 2. Router Precision"]
-    if not section.get("available"):
-        lines.append("No doc injection data yet.")
-    else:
-        lines.append(
-            f"- Overall precision: "
-            f"{fmt_pct(section.get('used_injections', 0), section.get('total_injections', 0))} "
-            f"({fmt_int(section.get('used_injections', 0))}/"
-            f"{fmt_int(section.get('total_injections', 0))} injections)"
-        )
-        lines.append(
-            f"- doc_used events observed: {fmt_int(section.get('doc_used_events', 0))}"
-        )
-        lines.append(f"- Join: {section.get('join')}")
-        if section.get("fallback_matches"):
-            lines.append(
-                f"- Fallback same-session matches: "
-                f"{fmt_int(section.get('fallback_matches'))}"
-            )
-        lines.append(
-            f"- Tables include docs injected at least "
-            f"{section.get('eligible_threshold', 3)} times."
-        )
-        lines.append("")
-        lines.append("### Worst-served docs")
-        lines.extend(
-            render_precision_table(section.get("worst_eligible") or [], "doc", True)
-            or ["No eligible docs."]
-        )
-        lines.append("")
-        lines.append("### Best-served docs")
-        lines.extend(
-            render_precision_table(section.get("best_eligible") or [], "doc", True)
-            or ["No eligible docs."]
-        )
-    if section.get("notes"):
-        lines.append("")
-        lines.append("Notes: " + "; ".join(str(note) for note in section["notes"]))
-    return lines
-
-
-def render_never_surfaced(report: dict[str, Any]) -> list[str]:
-    section = report["never_surfaced"]
-    lines = ["## 3. Never-Surfaced Router Docs"]
-    if section.get("doc_universe_count"):
-        lines.append(
-            f"- Docs: {fmt_int(len(section.get('never_docs') or []))}/"
-            f"{fmt_int(section.get('doc_universe_count'))} routable docs have zero "
-            "doc_inject events."
-        )
-        if section.get("never_docs"):
-            lines.append("- Never-surfaced docs: " + ", ".join(section["never_docs"]))
-        else:
-            lines.append("- Never-surfaced docs: none")
-    else:
-        lines.append("- Docs: no universe data.")
-    if section.get("doc_notes"):
-        lines.append(
-            "- Doc universe notes: "
-            + "; ".join(str(note) for note in section["doc_notes"])
-        )
-    return lines
-
-
-def render_score_calibration(report: dict[str, Any]) -> list[str]:
-    section = report["score_calibration"]
-    lines = ["## 4. Router Score Calibration"]
-    if not section.get("available"):
-        lines.append("No scored doc injections available.")
-    else:
-        lines.append(f"- Scored doc injections: {fmt_int(section.get('n', 0))}")
-        lines.append(
-            f"- Spearman(score, used-label): {fmt_float(section.get('spearman_rho'))}"
-        )
-        monotone = section.get("monotone_hit_rate")
-        lines.append(
-            f"- Quartile hit-rate monotone increasing: "
-            f"{monotone if monotone is not None else 'n/a'}"
-        )
-        quartile_rows = [
-            [
-                row["bin"],
-                fmt_float(row["score_min"], 3),
-                fmt_float(row["score_max"], 3),
-                fmt_int(row["n"]),
-                fmt_int(row["used"]),
-                fmt_pct(row["used"], row["n"]),
-            ]
-            for row in section.get("quartiles") or []
-        ]
-        lines.append("")
-        lines.extend(
-            table(
-                ["bin", "score min", "score max", "n", "used", "hit-rate"],
-                quartile_rows,
-            )
-            or ["No quartile data."]
-        )
-    if section.get("notes"):
-        lines.append("")
-        lines.append("Notes: " + "; ".join(str(note) for note in section["notes"]))
-    return lines
-
-
-def render_zero_routes(report: dict[str, Any]) -> list[str]:
-    section = report["zero_routes"]
-    lines = ["## 5. Zero-Route Analysis"]
-    total = section.get("router_firings") or 0
-    if not total:
-        lines.append("No doc router firing data yet.")
-    else:
-        lines.append(f"- Router firings: {fmt_int(total)}")
-        lines.append(
-            f"- doc_inject: {fmt_int(section.get('doc_inject', 0))}; "
-            f"doc_zero_route: {fmt_int(section.get('doc_zero_route', 0))} "
-            f"({fmt_pct(section.get('doc_zero_route', 0), total)})"
-        )
-        by_signal = section.get("by_signal") or {}
-        lines.append(
-            f"- True-zero (signal=none): {fmt_int(by_signal.get('none', 0))} "
-            f"({fmt_pct(by_signal.get('none', 0), total)} of all firings)"
-        )
-        lines.append(
-            f"- Healthy dedup (signal=deduped): "
-            f"{fmt_int(by_signal.get('deduped', 0))} "
-            f"({fmt_pct(by_signal.get('deduped', 0), total)} of all firings)"
-        )
-        other = {
-            key: value
-            for key, value in by_signal.items()
-            if key not in {"none", "deduped"}
-        }
-        if other:
-            lines.append(
-                "- Other zero signals: "
-                + ", ".join(f"{key}={value}" for key, value in other.items())
-            )
-    if section.get("notes"):
-        lines.append("")
-        lines.append("Notes: " + "; ".join(str(note) for note in section["notes"]))
-    return lines
-
-
 def render_delegation(report: dict[str, Any]) -> list[str]:
     section = report["delegation"]
-    lines = ["## 6. Delegation Summary"]
+    lines = ["## 2. Delegation Summary"]
     if not section.get("delegation_count"):
         lines.append("No delegation data yet.")
     else:
@@ -1137,7 +578,7 @@ def render_delegation(report: dict[str, Any]) -> list[str]:
 
 def render_friction(report: dict[str, Any]) -> list[str]:
     section = report["friction"]
-    lines = ["## 7. Friction and Rework"]
+    lines = ["## 3. Friction and Rework"]
     lines.append(f"- hook_block events: {fmt_int(section.get('hook_block_count', 0))}")
     if section.get("top_hook_blocks"):
         rows = [
@@ -1176,7 +617,7 @@ def render_friction(report: dict[str, Any]) -> list[str]:
 
 def render_serial_wait(report: dict[str, Any]) -> list[str]:
     section = report.get("serial_wait") or {}
-    lines = ["## 8. Serial-Wait Diagnostic"]
+    lines = ["## 4. Serial-Wait Diagnostic"]
     if not section.get("available"):
         lines.append("- Unavailable: " + "; ".join(section.get("notes", ["no data"])))
         return lines
@@ -1240,10 +681,6 @@ def render_markdown(report: dict[str, Any]) -> str:
 
     renderers = [
         render_header,
-        render_doc_precision,
-        render_never_surfaced,
-        render_score_calibration,
-        render_zero_routes,
         render_delegation,
         render_friction,
         render_serial_wait,

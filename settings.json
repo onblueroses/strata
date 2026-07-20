@@ -63,8 +63,7 @@
     "UserPromptSubmit": [
       {
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-nudge.sh", "timeout": 2000 },
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-doc-router.sh", "timeout": 2000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-nudge.sh", "timeout": 2000 }
         ]
       }
     ],
@@ -162,12 +161,6 @@
         "matcher": "Edit|Write|Bash",
         "hooks": [
           { "type": "command", "command": "bash $STRATA_HOME/hooks/observe-track-session-events.sh", "timeout": 2000 }
-        ]
-      },
-      {
-        "matcher": "Grep|Glob",
-        "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-enrich-search.sh", "timeout": 2000 }
         ]
       }
     ]

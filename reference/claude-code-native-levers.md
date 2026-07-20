@@ -64,14 +64,15 @@ Five hook types in `settings.json` `hooks`: `command` (shell), `prompt` (forced-
 <details>
 <summary>Hook-Event Table</summary>
 
-This install wires 6 of ~27 events. Wired now (from `$STRATA_HOME/settings.json`): **SessionStart, Stop, UserPromptSubmit, PreCompact, PreToolUse, PostToolUse**.
+This install wires 7 of ~27 events. Wired now (from `$STRATA_HOME/settings.json`): **SessionStart, SessionEnd, Stop, UserPromptSubmit, PreCompact, PreToolUse, PostToolUse**.
 
 | Event | In recent build | Wired | Worth wiring | Idea |
 |---|---|---|---|---|
-| PreToolUse | yes | ✅ | — | (already heavy: gates + routers) |
+| PreToolUse | yes | ✅ | — | (already heavy: gates) |
 | PostToolUse | yes | ✅ | — | (already heavy: observe + lint) |
-| UserPromptSubmit | yes | ✅ | — | (doc router + nudge) |
+| UserPromptSubmit | yes | ✅ | — | (context nudge) |
 | SessionStart | yes | ✅ | — | (restore + daily note) |
+| SessionEnd | yes | ✅ | — | (memory access reconciliation) |
 | Stop | yes | ✅ | — | (teardown — overloaded) |
 | PreCompact | yes | ✅ | — | (pre-compaction save) |
 | Notification | yes | — | maybe | surface idle / permission notifications |
@@ -79,7 +80,6 @@ This install wires 6 of ~27 events. Wired now (from `$STRATA_HOME/settings.json`
 | StopFailure | yes | — | maybe | |
 | SubagentStart | yes | — | ✅ | per-subagent telemetry start |
 | SubagentStop | yes | — | ✅ | subagent quota/telemetry; verify a field-agent's output |
-| SessionEnd | yes | — | ✅ | move teardown off the overloaded Stop |
 | PostCompact | yes | — | ✅ | native post-compaction restore (replaces the SessionStart+guard hack) |
 | PermissionRequest | yes | — | maybe | delegate allow/deny |
 | PermissionDenied | yes | — | maybe | |

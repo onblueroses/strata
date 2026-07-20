@@ -653,12 +653,12 @@ These files are loaded into context ONLY when the AI touches a matching file. Ze
 
 ---
 
-## 12. CLAUDE.md Structure (Lean Router Pattern)
+## 12. CLAUDE.md Structure (Lean Spine Pattern)
 
 <details>
-<summary>12. CLAUDE.md Structure (Lean Router Pattern)</summary>
+<summary>12. CLAUDE.md Structure (Lean Spine Pattern)</summary>
 
-The project-level CLAUDE.md should be under 80 lines. It is a router, not a manual.
+Keep the project-level CLAUDE.md under 80 lines as an orientation spine backed by indexed project docs.
 
 Structure:
 1. **One-liner** - what the project does
@@ -1538,7 +1538,7 @@ When starting a new Rust project, apply in order:
 17. [ ] Create `.claude/settings.json` with permissions (include all cargo tool commands)
 18. [ ] Create `.claude/rules/` with one file per module (include dependency boundaries)
 19. [ ] Add code style rules to project CLAUDE.md (Section 23: no slop, trust types, comments=WHY)
-20. [ ] Write project CLAUDE.md (lean router pattern, under 80 lines, front-load critical rules)
+20. [ ] Write project CLAUDE.md (lean spine pattern, under 80 lines, front-load critical rules)
 21. [ ] Add 2-3 exemplary functions in your style to the project for the agent to reference (under `$KB_DIR/resources/` or project docs)
 22. [ ] Wire a project-local `/lint` skill or pre-commit step (8-step pipeline)
 23. [ ] Update .gitignore with Claude Code entries + `.cargo/config.toml`

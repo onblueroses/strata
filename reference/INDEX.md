@@ -1,9 +1,8 @@
 # Reference Index
 
-Scan this index before starting work. Read any doc whose trigger matches the current task.
-Don't read docs that don't apply - they're 60-1500 lines each. Each doc has a `## Quick Nav` table at the top - jump to the right section instead of reading everything.
+This is the complete index of shipped reference docs. Scan it on demand, use each doc's `## Quick Nav`, and let your own intelligence decide which guidance is relevant to the task.
 
-**Maintainer note**: New reference docs must be added to this index AND given a `<!-- keywords: ... -->` comment at line 1 of the doc itself, so `context-doc-router.sh` can route them at UserPromptSubmit.
+**Maintainer note**: Add every new reference doc to this index and give it a `## Quick Nav` near the top.
 
 | Doc | What | Jump to | Read when |
 |-----|------|---------|-----------|

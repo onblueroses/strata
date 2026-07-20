@@ -1,6 +1,6 @@
 ---
 name: memory-recall
-description: Deep on-demand memory PULL judge. Receives a query plus candidate memory cards retrieved by the /recall skill, reads the promising card bodies, optionally widens the search by grepping the card corpus, and returns only the genuinely relevant subset with a one-line reason each. Use for queries whose wording does not lexically match the right card. The ambient per-prompt router was retired as measured noise, so this is the query-time retrieval path. Read-only by construction and proposes no writes.
+description: Deep on-demand memory PULL judge. Receives a query plus candidate memory cards retrieved by the /recall skill, reads the promising card bodies, optionally widens the search by grepping the card corpus, and returns only the genuinely relevant subset with a one-line reason each. Use for queries whose wording does not lexically match the right card. This is the query-time retrieval path; the SessionStart digest is the only ambient memory context. Read-only by construction and proposes no writes.
 tools: Read, Grep, Glob
 model: haiku
 ---

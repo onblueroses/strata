@@ -3,10 +3,9 @@
 sentinel exists for this session. Blocks consequential tools until the
 session-specific context save has been Read *since* the compaction.
 
-Generalizes the router thesis: injected recovery context lands only if it is
-both compelling AND enforced. session-post-compaction-restore.sh injects the
-"read these first" map (compelling); this gate makes the first consequential
-action wait until the model actually opened it (enforced).
+Recovery context lands only when it is compelling and enforced.
+session-post-compaction-restore.sh provides the "read these first" map; this gate
+makes the first consequential action wait until the model actually opened it.
 
 Contract (matches the repo's PreToolUse deny convention):
   - allow  -> exit 0 (silent)

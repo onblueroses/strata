@@ -46,7 +46,7 @@ The root virtue a skill chases is **predictability**: the agent taking the same 
 
 Two costs trade off when placing a skill:
 - **Context load**: a model-invoked skill's `description` sits in the window every turn. Pay it only when the agent, or another skill, must reach the skill autonomously.
-- **Cognitive load**: a user-invoked skill (`disable-model-invocation: true`) costs zero context but makes *you* the index that must remember it exists. Cure piled-up cognitive load with a router skill that names the others.
+- **Cognitive load**: a user-invoked skill (`disable-model-invocation: true`) costs zero context but makes *you* the index that must remember it exists. Cure piled-up cognitive load with a complete catalog whose descriptions let the model or user choose on demand.
 
 A **leading word** is a compact concept already in the model's pretraining that the agent thinks with while running the skill (e.g. *tight*, *red*, *fog of war*, *tracer bullet*); it anchors execution in the body and invocation in the description. Collapse restatements into one pretrained word: "fast, deterministic, low-overhead" becomes a *tight* loop; "a loop you believe in" becomes the loop going *red*.
 
@@ -54,9 +54,9 @@ Five failure modes to diagnose against: **premature completion** (ending a step 
 
 **Completion criteria - checkable and, where it matters, exhaustive.** Each step ends on the condition that tells the agent it is done. The checkable test: can the agent tell done from not-done? "Every modified file accounted for" beats "produce a change list", because a vague criterion invites *premature completion*. A demanding criterion also drives thorough legwork whether the skill is steps or flat reference: "every rule applied" binds reference the way "every step done" binds a sequence.
 
-### Routing reality
+### Selection reality
 
-A skill's `Triggers on:` / `Auto-trigger when` phrasing is advisory authoring metadata, not a routing guarantee. The skill router auto-surfaces only the skills listed in its curated catalog, and it keys on the catalog's embeddings, not the literal trigger tag. For any skill outside the catalog, the description still earns its keep through the model's own skill-scan, but the router will not fire it; promote a skill into the catalog when it should auto-trigger reliably.
+A skill's `Triggers on:` / `Auto-trigger when` phrasing is advisory authoring metadata. Keep the available-skill catalog complete and write each description so the model can recognize task fit during its own scan; keep manually invoked skills easy for users to find by name and purpose.
 
 ## Structure
 

@@ -3,6 +3,16 @@
 
 Read this protocol when `/review` Step 1b sees at least 10 changed files or at least 500 changed lines. Smaller diffs stay on the single-reviewer path.
 
+## Quick Nav
+
+| Need | Section |
+|------|---------|
+| Assign every changed file once | [Bucket categorization](#bucket-categorization) |
+| Choose and run specialist passes | [Specialist reviewers](#specialist-reviewers) |
+| Keep each review prompt consistent | [Specialist prompt template](#specialist-prompt-template) |
+| Reconcile overlapping findings | [Deduplicate and merge](#deduplicate-and-merge) |
+| Verify the fan-out was complete | [Fan-out self-check](#fan-out-self-check) |
+
 ## Bucket categorization
 
 Categorize every changed file into one of six buckets. Apply the first matching bucket because order carries precedence.

@@ -95,11 +95,9 @@ inside a metadata ancestor refuses the write and falls back to stdout.
 
 ### `digest.py`
 
-Read-only public telemetry synthesis. It invokes `unify.py` directly and renders router precision
-(worst/best-served docs, never-surfaced docs, router score calibration, and zero-routes), delegation
+Read-only public telemetry synthesis. It invokes `unify.py` directly and renders delegation
 summary, friction/rework signals, and serial-wait diagnostics. Inputs resolve under `$STATE_DIR`
-and `$STRATA_HOME` through the shared runtime path contract; the router catalog and lexical cache
-live under `$STRATA_HOME/reference/.router-eval/`.
+and `$STRATA_HOME` through the shared runtime path contract.
 
 - `python3 digest.py` writes the Markdown digest to stdout; `--json` emits the same findings as JSON.
 - `--since DAYS` limits unified events to a recent window.
@@ -210,7 +208,7 @@ the emit.
 python3 unify.py                    # all sources -> one normalized time-sorted JSONL on stdout
 python3 unify.py --counts           # + a kind/source tally to stderr
 python3 unify.py --out PATH         # write to PATH (refused if tracked and not gitignored)
-python3 digest.py                   # public router/delegation/friction/serial-wait digest
+python3 digest.py                   # public delegation/friction/serial-wait digest
 python3 cost_rollup.py <sid>        # per-channel true-cost ledger for one session
 python3 cost_rollup.py --aggregate  # lifetime notional/real totals across sessions
 bash    rotate_telemetry.sh         # rotate sinks over threshold (call from a SessionEnd hook)

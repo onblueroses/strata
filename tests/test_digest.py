@@ -1,7 +1,6 @@
 import contextlib
 import importlib.util
 import io
-import json
 import os
 import tempfile
 import unittest
@@ -33,26 +32,7 @@ def patched_env(**updates: str | None) -> Iterator[None]:
                 os.environ[key] = value
 
 
-def write_router_universe(home: Path) -> None:
-    router_dir = home / "reference" / ".router-eval"
-    router_dir.mkdir(parents=True)
-    (router_dir / "doc-catalog.json").write_text(
-        json.dumps(
-            [
-                {"doc": "alpha.md", "keywords": "alpha"},
-                {"doc": "never.md", "keywords": "never"},
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (router_dir / ".lex-cache.json").write_text(
-        json.dumps({"vecs": {"alpha.md": {}, "never.md": {}}}),
-        encoding="utf-8",
-    )
-
-
 def load_digest(home: Path) -> ModuleType:
-    write_router_universe(home)
     state_dir = home / "workspace" / "state"
     telemetry_dir = state_dir / "telemetry"
     with patched_env(
@@ -80,47 +60,6 @@ def call_main(module: ModuleType, argv: list[str]) -> tuple[int, str, str]:
 
 def synthetic_events() -> list[dict[str, object]]:
     events: list[dict[str, object]] = [
-        {
-            "ts": "2026-01-01T00:00:00Z",
-            "sid": "abc12345",
-            "kind": "doc_inject",
-            "source": "injection-log",
-            "doc": "alpha.md",
-            "score": 0.2,
-            "signal": "lexical",
-        },
-        {
-            "ts": "2026-01-01T00:00:30Z",
-            "sid": "abc12345-full",
-            "kind": "doc_used",
-            "source": "session-events",
-            "item": "alpha.md",
-        },
-        {
-            "ts": "2026-01-01T00:01:00Z",
-            "sid": "abc12345",
-            "kind": "doc_inject",
-            "source": "injection-log",
-            "doc": "alpha.md",
-            "score": 0.5,
-            "signal": "lexical",
-        },
-        {
-            "ts": "2026-01-01T00:02:00Z",
-            "sid": "abc12345",
-            "kind": "doc_inject",
-            "source": "injection-log",
-            "doc": "alpha.md",
-            "score": 0.9,
-            "signal": "lexical",
-        },
-        {
-            "ts": "2026-01-01T00:03:00Z",
-            "sid": "abc12345",
-            "kind": "doc_zero_route",
-            "source": "injection-log",
-            "signal": "none",
-        },
         {
             "ts": "2026-01-01T00:04:00Z",
             "sid": "abc12345",
@@ -174,15 +113,9 @@ class DigestTests(unittest.TestCase):
 
             self.assertEqual(status, 0, error)
             for header in (
-                "## 2. Router Precision",
-                "### Worst-served docs",
-                "### Best-served docs",
-                "## 3. Never-Surfaced Router Docs",
-                "## 4. Router Score Calibration",
-                "## 5. Zero-Route Analysis",
-                "## 6. Delegation Summary",
-                "## 7. Friction and Rework",
-                "## 8. Serial-Wait Diagnostic",
+                "## 2. Delegation Summary",
+                "## 3. Friction and Rework",
+                "## 4. Serial-Wait Diagnostic",
             ):
                 self.assertIn(header, output)
             for dropped in (
@@ -201,19 +134,12 @@ class DigestTests(unittest.TestCase):
                     "unify",
                     "window",
                     "header",
-                    "doc_precision",
-                    "never_surfaced",
-                    "score_calibration",
-                    "zero_routes",
                     "delegation",
                     "friction",
                     "serial_wait",
                     "top_signals",
                 },
             )
-            self.assertEqual(report["doc_precision"]["used_injections"], 1)
-            self.assertIn("instrumentation smoke signal", output)
-            self.assertEqual(report["never_surfaced"]["never_docs"], ["never.md"])
             self.assertEqual(report["delegation"]["lanes"][0]["lane"], "strong")
             self.assertEqual(report["delegation"]["lanes"][0]["success"], 3)
             self.assertEqual(report["serial_wait"]["overall_parallelism"], 1.0)
@@ -258,8 +184,8 @@ class DigestTests(unittest.TestCase):
 
             self.assertEqual(status, 0, error)
             self.assertIn("No events found.", output)
-            self.assertIn("## 2. Router Precision", output)
-            self.assertIn("## 8. Serial-Wait Diagnostic", output)
+            self.assertIn("## 2. Delegation Summary", output)
+            self.assertIn("## 4. Serial-Wait Diagnostic", output)
             self.assertNotIn("Traceback", error)
 
 

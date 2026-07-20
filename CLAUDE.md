@@ -72,9 +72,7 @@ Lane wrappers live at `$STRATA_HOME/bin/`. The model bound to each lane is set i
 
 **Commit your work**: before ending a session or reporting a task as complete, check `git status` in every repo you touched. If there are uncommitted changes from your work, commit them with a descriptive message. Don't leave uncommitted changes for the next session.
 
-**Reference docs**: the `context-doc-router` hook routes docs by WORK CONTEXT at UserPromptSubmit — where you are (`cwd` + marker files), what you just edited (transcript tail), and what you mean (pure-Python lexical match) — not by prompt keywords. When a doc is injected, read its Quick Nav and load relevant sections before proceeding. When a relevant doc wasn't injected, check `reference/INDEX.md` manually. To make routing land, keep each doc's line-1 `<!-- keywords: ... -->` rich with natural-prompt vocabulary and run `reference/.router-eval/build-lex-cache.py` after editing keywords or `INDEX.md` (the hook reads the committed cache; it does not self-rebuild).
-
-**Thin core, routed elaboration (cache discipline)**: this file is the always-loaded static core — keep it small and STABLE so it stays in the cached prefix. Push elaboration (the how-to detail) into `reference/` docs and let the router deliver them per-turn into the uncached tail. When demoting a rule out of the core, keep its TRIGGER inline and move only the elaboration, and never demote a safety/irreversibility guardrail. Never inject per-turn-varying content into this file or the system prompt: that busts the prefix cache every turn. The router injection is cache-positive — it lands in the per-turn tail (like the user message) and dedups once per doc per session.
+**Reference docs**: `reference/INDEX.md` is the complete index the agent scans on demand; each doc carries a Quick Nav, and the agent's own intelligence decides relevance. Keep this always-loaded spine small and stable, preserve safety and irreversibility guardrails here, and move detailed guidance into the indexed reference docs.
 
 ---
 

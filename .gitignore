@@ -42,14 +42,6 @@ cli/target/
 *.log
 *.pid
 
-# context-doc-router runtime artifacts. The committed cache (.lex-cache.json) +
-# doc-catalog.json ship with the skeleton so the router works on first install;
-# the hit-rate log, cache backups, optional embed cache, and the wordfreq venv do not.
-reference/.router-eval/injection-log.jsonl
-reference/.router-eval/*.bak
-reference/.router-eval/.embed-cache.json
-reference/.router-eval/.local/
-
 # Stop hook markers + session edit lists (created at runtime under workspace/, but globbed for safety)
 .session-edits-*
 .verify-passed-*

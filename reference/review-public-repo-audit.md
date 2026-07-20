@@ -15,6 +15,19 @@ Use this workflow when making a repository public for the first time and every f
 
 **Token budget:** Follow the caps below to keep the audit bounded.
 
+## Quick Nav
+
+| Need | Section |
+|------|---------|
+| Resolve the public account and private-token inputs | [Step 0](#step-0-resolve-the-handle-and-privacy-denylist) |
+| Inventory public repositories | [Step 1](#step-1-list-public-repositories) |
+| Scan current content | [Step 2](#step-2-scan-each-repositorys-current-state) |
+| Inspect relevant history | [Step 3](#step-3-scan-full-history-where-warranted) |
+| Triage and repair findings | [Step 4](#step-4-report-and-fix) |
+| Keep the audit bounded | [Deep audit boundaries](#deep-audit-boundaries) |
+
+## Workflow
+
 ### Step 0: Resolve the handle and privacy denylist
 
 Resolve the GitHub handle from `--public-repos <handle>` when provided. Otherwise run:

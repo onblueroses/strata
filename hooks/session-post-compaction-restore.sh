@@ -322,9 +322,8 @@ Save files: skill=${skillSaveFile:-none} hook=${hookSaveFile:-none} (read manual
 fi
 
 # --- Read-gate enforcement notice (added AFTER truncation so it is never dropped) ---
-# Generalizes the router thesis: injected recovery context lands only if it is BOTH
-# compelling AND enforced. The block above is compelling; this gate makes the first
-# consequential action wait until the save is actually opened.
+# Recovery context lands only when it is compelling and enforced. The block above is
+# compelling; this gate makes the first consequential action wait until the save is opened.
 if [ -n "$sid" ] && { [ -f "$skillSaveFile" ] || [ -f "$hookSaveFile" ]; }; then
     output+="
 ### >> READ YOUR SESSION SAVE BEFORE ANY NON-READ TOOL (enforced this turn)

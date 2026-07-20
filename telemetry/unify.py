@@ -104,7 +104,6 @@ STATE_DIR = os.environ.get("STATE_DIR") or f"{KB_DIR}/state"
 TEL_DIR = os.environ.get("STRATA_TELEMETRY_DIR") or f"{STATE_DIR}/telemetry"
 
 SOURCES = {
-    "injection-log": f"{STRATA_HOME}/reference/.router-eval/injection-log.jsonl",
     "skill-runs": f"{STATE_DIR}/skill-runs.jsonl",
     "live": f"{TEL_DIR}/events.jsonl",  # MUST equal the emitter's sink
 }
@@ -118,25 +117,6 @@ def norm(source, obj):
     """Map one raw record from `source` to the common envelope, or None to drop it."""
     if not isinstance(obj, dict):
         return None
-    if source == "injection-log":
-        doc = obj.get("doc")
-        e = {
-            "ts": obj.get("ts"),
-            "sid": obj.get("session"),
-            "source": source,
-            "kind": "doc_inject" if doc else "doc_zero_route",
-            "doc": doc,
-            "signal": obj.get("signal"),
-            "work_context": obj.get("work_context"),
-            "score": obj.get("score"),
-            "plen": obj.get("plen"),
-        }
-        # router additions: cwd (matched-rule attribution) and suppressed (registry drops
-        # on co-injection rows); optional so old rows without them stay byte-stable.
-        for k in ("cwd", "suppressed"):
-            if k in obj:
-                e[k] = obj[k]
-        return e
     if source == "skill-runs":
         return {
             "ts": obj.get("ts"),
