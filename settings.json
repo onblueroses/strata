@@ -138,12 +138,6 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|Bash|Agent|Skill",
-        "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-suggest-compact.sh", "timeout": 2000 }
-        ]
-      },
-      {
         "matcher": "Skill",
         "hooks": [
           { "type": "command", "command": "bash $STRATA_HOME/hooks/observe-track-skill-runs.sh", "timeout": 2000 }
