@@ -232,7 +232,7 @@ Blocking hooks (surface as errors; fix the underlying issue, don't bypass):
 | Hook | Trigger | Effect |
 |------|---------|--------|
 | `gate-verify.sh` | Stop | blocks session close when /verify has not passed |
-| `quality-lint-on-write.sh` | PostToolUse (Edit/Write) | blocks write on lint failure |
+| `quality-lint-on-write.sh` | PostToolUse (Edit/Write) | auto-fixes lint/format on the written file, surfaces remaining errors (post-write, non-reverting) |
 | `gate-pre-push.sh` | PreToolUse (Bash(git push*)) | scans the outgoing diff for secrets (any repo) and denylist identifiers (public repos), checks the /verify marker; surfaces flagged pushes as a decision |
 
 Advisory hooks run silently in the background. Full list: `settings.json` and `hooks/README.md`.
