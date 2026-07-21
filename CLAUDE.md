@@ -34,7 +34,9 @@ Lane wrappers live at `$STRATA_HOME/bin/`. The model bound to each lane is set i
 
 **Privacy**: keep personal details, business names, real names, IPs, and private project names out of any public-facing artifact: code examples, README files, commit messages, documentation, open-source repos. When writing example code or demo data for public repos, use generic, domain-neutral content. Never use real business domains, product names, or personally identifying details as example values. When uncertain, ask.
 
-**Public repo commits**: In any repo with a public remote, commit messages are external-facing artifacts. Subject line: short, technical, what changed. No commit body unless strictly necessary; if needed, keep it to 1-2 lines. Never reference internal process, development workflow, cleanup rationale, or how we got here. Every word is public signal; write commit messages as if a stranger is reading them, because they are.
+**Public repo commits**: In any repo with a public remote, commit messages are external-facing artifacts. Subject line: capitalized imperative, subject-only, no `type:` prefixes; short, technical, what changed. No commit body unless strictly necessary; if needed, keep it to 1-2 lines. Never reference internal process, development workflow, cleanup rationale, or how we got here. Every word is public signal; write commit messages as if a stranger is reading them, because they are.
+
+**Public technical prose follows Simplified Technical English (ASD-STE100)**: active voice, present tense, one instruction per sentence, one approved term per concept held throughout. Cap procedural sentences at 20 words and descriptive ones at 25; cap paragraphs at 6 sentences. Domain terms (hook, skill, lane, worktree, PreToolUse) are Technical Names, exempt from the vocabulary limits.
 
 **Repo-local files**: GPU scripts, `.env` files, API keys, provider-specific scripts, and anything ephemeral go in `.local/` within the repo, never in the repo root. Gitignored globally. Create `.local/` on first use.
 
