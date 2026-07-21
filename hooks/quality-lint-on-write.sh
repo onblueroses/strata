@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
-# PostToolUse hook: runs fast language checks after Claude edits Python, TS/JS, and Rust files.
-# Reads file path from stdin JSON (tool_input.file_path). Outputs issues for Claude to see.
+# PostToolUse hook: silently auto-fixes formatting/lint after Claude edits Python, TS/JS, and
+# Rust files (ruff --fix + format, biome --write, rustfmt). Reads file path from stdin JSON
+# (tool_input.file_path). Fixes are applied in place, non-reverting.
+# The model NEVER sees this hook's stdout: on a PostToolUse event exit-1 stdout goes to the
+# user, not to Claude. So the diagnostic-only checkers (sloppylint, pyright, tsgo --noEmit)
+# were removed 2026-07-21 — they paid up to 15s of latency reporting errors the model could
+# not read. Only the silent auto-fixers remain; any error a fixer cannot fix is surfaced to
+# the USER via exit 1 (never to the model).
 
 stdinContent=""
 if [ ! -t 0 ]; then
@@ -19,43 +25,14 @@ fi
 
 [ -f "$filePath" ] || exit 0
 
-dir=$(dirname "$filePath")
 ext="${filePath##*.}"
 ext=$(echo ".$ext" | tr '[:upper:]' '[:lower:]')
 issues=()
 
 # This hook runs automatically after edits; keep it to tools that do not execute repo-controlled code.
 
-find_up() {
-    local start="$1"
-    local marker="$2"
-    local current="$start"
-
-    while [ -n "$current" ] && [ "$current" != "/" ]; do
-        if [ -f "$current/$marker" ]; then
-            echo "$current"
-            return 0
-        fi
-        current=$(dirname "$current")
-    done
-
-    if [ -f "/$marker" ]; then
-        echo "/"
-        return 0
-    fi
-
-    return 1
-}
-
 # -- Python ----------------------------------------------------------------
 if [ "$ext" = ".py" ]; then
-    if command -v sloppylint &>/dev/null; then
-        result=$(sloppylint "$filePath" 2>&1)
-        if [ -n "$result" ]; then
-            issues+=("sloppylint:"$'\n'"$result")
-        fi
-    fi
-
     if command -v ruff &>/dev/null; then
         if ! result=$(ruff check --fix "$filePath" 2>&1); then
             issues+=("ruff check:"$'\n'"$result")
@@ -65,26 +42,8 @@ if [ "$ext" = ".py" ]; then
         fi
     fi
 
-    if command -v pyright &>/dev/null; then
-        if ! result=$(pyright "$filePath" 2>&1); then
-            issues+=("pyright:"$'\n'"$result")
-        fi
-    fi
-
 # -- TypeScript / JavaScript -----------------------------------------------
 elif [[ "$ext" =~ ^\.(ts|tsx|js|jsx|mjs|cjs)$ ]]; then
-    tsconfigRoot=$(find_up "$dir" "tsconfig.json" || true)
-    projectRoot="$dir"
-    if [ -n "$tsconfigRoot" ]; then
-        projectRoot="$tsconfigRoot"
-    fi
-
-    if [[ "$ext" =~ ^\.(ts|tsx)$ ]] && command -v tsgo &>/dev/null && [ -f "$projectRoot/tsconfig.json" ]; then
-        if ! result=$(cd "$projectRoot" && tsgo --noEmit 2>&1); then
-            issues+=("tsgo:"$'\n'"$result")
-        fi
-    fi
-
     if command -v biome &>/dev/null; then
         if ! result=$(biome check --write --no-errors-on-unmatched "$filePath" 2>&1); then
             issues+=("biome:"$'\n'"$result")

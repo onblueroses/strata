@@ -117,11 +117,16 @@ case ".$ext" in
                     }
                 }
             }' "$filePath" 2>/dev/null)
-        # swallowed exceptions (ruff E722/S110/SIM105 overlap; backstop only)
-        collect '^\s*except\s*:' '#'
-        collect 'except\b.*:\s*pass\s*$' '#'
-        collect 'except\b.*:\s*continue\s*$' '#'
-        # multi-line: `except X:` whose next non-blank line is exactly pass/continue/...
+        # swallowed exceptions on a BROAD catch only: bare `except:`, `except Exception:`,
+        # `except BaseException:` (with optional `as e`). A specific exception class with
+        # pass/continue (e.g. `except json.JSONDecodeError: continue`) is an intentional skip
+        # and stays silent. (ruff E722/S110/SIM105 overlap; backstop only.)
+        collect 'except\s*:\s*pass\s*$' '#'
+        collect 'except\s*:\s*continue\s*$' '#'
+        collect 'except\s+(Exception|BaseException)\b[^:]*:\s*pass\s*$' '#'
+        collect 'except\s+(Exception|BaseException)\b[^:]*:\s*continue\s*$' '#'
+        # multi-line: broad `except:` / `except Exception:` / `except BaseException:` whose
+        # next non-blank line is exactly pass/continue/...
         while IFS= read -r line; do
             [ -z "$line" ] && continue
             code="$(echo "${line#*:}" | sed 's/^[[:space:]]*//')"
@@ -131,7 +136,8 @@ case ".$ext" in
             { lines[NR]=$0 }
             END {
                 for (i=1;i<=NR;i++){
-                    if (lines[i] ~ /^[[:space:]]*except[^#]*:[[:space:]]*$/){
+                    if (lines[i] ~ /^[[:space:]]*except[[:space:]]*:[[:space:]]*$/ ||
+                        lines[i] ~ /^[[:space:]]*except[[:space:]]+(Exception|BaseException)([[:space:]]+as[[:space:]]+[A-Za-z_][A-Za-z0-9_]*)?[[:space:]]*:[[:space:]]*$/){
                         j=i+1
                         while (j<=NR && lines[j] ~ /^[[:space:]]*$/) j++
                         s=lines[j]; gsub(/^[[:space:]]+/,"",s); gsub(/[[:space:]]+$/,"",s)
@@ -163,10 +169,13 @@ msg="⚠ resource-sizing advisory (${fileName}): floor-value / silent-default te
 
 ${body}
 
-A floor value is the fingerprint of an unmade decision. For each: right-size it to the substrate (cores / VRAM / rate limit / dataset size), or state the basis inline naming substrate or cost (e.g. \`batch_size=1  # VRAM-bound, 4k-token items\`) — a basis comment silences this check, a bare \`# ok\` does not. Bare/empty excepts hide failures: let them surface or name why it is safe to swallow. Advisory, not a verdict; 1 is sometimes correct, and the hook cannot see non-floor-but-conservative values. See reference/resource-sizing.md."
+Right-size to the substrate or state the basis inline to silence -> reference/resource-sizing.md"
 
-jq -n --arg msg "$msg" \
+emit=$(jq -n --arg msg "$msg" \
     '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$msg}}' 2>/dev/null \
-    || echo "$msg"
+    || printf '%s' "$msg")
+sid=$(echo "$data" | jq -r '.session_id // empty' 2>/dev/null)
+printf '%s' "$emit" | bash "$STRATA_HOME/hooks/lib-ledger.sh" quality-resource-sizing "$sid" >/dev/null 2>&1 || true
+printf '%s\n' "$emit"
 
 exit 0

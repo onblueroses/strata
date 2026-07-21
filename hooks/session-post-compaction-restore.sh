@@ -122,11 +122,24 @@ Read the orchestration log (\`.dmux/orchestration.md\`) for full wave history an
 fi
 
 # --- Section 3: JSONL event log tail ---
-jsonlLines=25
+# Cap the tail at 10 mechanical events (edit/commit/compaction). For commit events keep ONLY
+# the first clean line of the message: a raw multi-line `-m` capture otherwise leaks
+# `$(cat <<'MARKER'` heredoc scaffolding (verbose, truncated mid-string, low signal). The
+# empty-msg guard renders a missing message as a blank line rather than "null".
+jsonlLines=10
 jsonlFile="$stateDir/session-events-$sessionId.jsonl"
+eventsFilter='
+  select(.type=="edit" or .type=="commit" or .type=="compaction")
+  | if .type=="commit" then
+      .msg |= ( (. // "") | split("\n")
+                | ( (.[0] // "") as $first
+                    | if ($first | test("^\\$\\(cat <<")) then (.[1] // $first) else $first end )
+                | gsub("^\\s+|\\s+$"; "") )
+    else . end
+'
 jsonlOutput=""
 if [ -n "$sessionId" ] && [ -f "$jsonlFile" ]; then
-    jsonlOutput=$(tail -n "$jsonlLines" "$jsonlFile" 2>/dev/null)
+    jsonlOutput=$(jq -c "$eventsFilter" "$jsonlFile" 2>/dev/null | tail -n "$jsonlLines")
 fi
 
 if [ -n "$jsonlOutput" ]; then
@@ -244,7 +257,7 @@ charCount=${#output}
 if [ "$charCount" -gt 9500 ]; then
     # Truncation pass 1: reduce JSONL to 10 lines
     if [ -n "$jsonlOutput" ] && [ -n "$sessionId" ] && [ -f "$jsonlFile" ]; then
-        jsonlOutput=$(tail -n 10 "$jsonlFile" 2>/dev/null)
+        jsonlOutput=$(jq -c "$eventsFilter" "$jsonlFile" 2>/dev/null | tail -n 10)
         # Rebuild output (simpler than surgical replacement)
         output="## Post-Compaction Recovery
 Session: $sessionId | Window: $windowNum | CWD: $cwd
@@ -336,5 +349,6 @@ A PreToolUse read-gate blocks Edit / Write / Bash / dispatch tools until you Rea
 "
 fi
 
+[ -n "$output" ] && printf '%s' "$output" | bash "$STRATA_HOME/hooks/lib-ledger.sh" session-post-compaction-restore "$sessionId" >/dev/null 2>&1 || true
 printf '%s' "$output"
 exit 0

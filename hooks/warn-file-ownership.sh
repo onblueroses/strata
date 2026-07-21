@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# PreToolUse hook (Write only): warns if another session recently edited this file.
-# Write overwrites the entire file, so it's the one operation that can silently
-# clobber another session's work. Edit is safe (exact-match fails on stale content).
+# PreToolUse hook (Write only): gates a Write that would clobber a file another session
+# recently edited. Write overwrites the entire file, so it's the one operation that can
+# silently clobber another session's work (Edit is safe: exact-match fails on stale content).
+# Emits the PreToolUse JSON contract permissionDecision:"ask" so the clobber guard actually
+# surfaces as a confirm prompt — plain stdout on PreToolUse is invisible to the model.
 
 stdinContent=""
 if [ ! -t 0 ]; then
@@ -43,7 +45,11 @@ done < <(find "$stateDir" -maxdepth 1 -name '.session-edits-*' -not -name '*.jso
 
 if [ -n "$owners" ]; then
     owners="${owners%, }"
-    echo "WARNING: Write to $filePath will overwrite the entire file. Also edited by: $owners. Consider using Edit instead to avoid clobbering their changes."
+    reason="Write to $filePath overwrites the entire file, which was also edited by: $owners. Confirm this won't clobber their work, or use Edit instead."
+    emit=$(jq -n --arg r "$reason" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}')
+    printf '%s' "$emit" | bash "$STRATA_HOME/hooks/lib-ledger.sh" warn-file-ownership "$sid" >/dev/null 2>&1 || true
+    printf '%s\n' "$emit"
 fi
 
 exit 0

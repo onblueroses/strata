@@ -183,8 +183,20 @@ if [ -n "$transcriptPath" ] && [ -f "$transcriptPath" ]; then
     done
 fi
 
-# Clean up save files older than 24 hours (from other sessions)
-find "$stateDir" -maxdepth 1 -name "auto-context-save*.md" -mmin +1440 ! -path "$saveFile" -delete 2>/dev/null
+# Cleanup 1: keep only the 3 most recent per-window hook copies for THIS session.
+# Window copies (-hook-wN.md) stay <24h in a long live session, so the age-out below never
+# fires on them and they accumulate. Keep-3 bounds growth regardless of session length; the
+# ageless main copy (-hook.md, no -wN) uses a different glob and is untouched.
+if [ -n "$sessionId" ]; then
+    ls -1t "$stateDir/auto-context-save-$sessionId-hook-w"*.md 2>/dev/null \
+        | tail -n +4 \
+        | while IFS= read -r f; do rm -f "$f"; done
+fi
+
+# Cleanup 2: age out saves left by OTHER / dead sessions (>24h). Skip this session's main save
+# and its window copies — Cleanup 1 owns those.
+find "$stateDir" -maxdepth 1 -name "auto-context-save*.md" -mmin +1440 \
+    ! -path "$saveFile" ! -name "auto-context-save-$sessionId-hook-w*.md" -delete 2>/dev/null
 
 # Clean up JSONL event logs older than 24 hours (from other sessions)
 find "$stateDir" -maxdepth 1 -name "session-events-*.jsonl" -mmin +1440 ! -name "session-events-$sessionId.jsonl" -delete 2>/dev/null
