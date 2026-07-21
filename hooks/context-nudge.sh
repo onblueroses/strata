@@ -30,7 +30,9 @@ printf '%d' "$count" > "$counterFile"
 
 # First nudge at 40, then every 25 after
 if [ "$count" -eq 40 ] || { [ "$count" -gt 40 ] && [ $(( (count - 40) % 25 )) -eq 0 ]; }; then
-    echo "[$count messages] You have rich context right now. Consider running /context-save before compaction hits."
+    msg="[$count messages] You have rich context right now. Consider running /context-save before compaction hits."
+    printf '%s\n' "$msg" | bash "$STRATA_HOME/hooks/lib-ledger.sh" context-nudge "$sessionId" >/dev/null 2>&1 || true
+    echo "$msg"
 fi
 
 exit 0

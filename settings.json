@@ -162,6 +162,12 @@
         "hooks": [
           { "type": "command", "command": "bash $STRATA_HOME/hooks/observe-track-session-events.sh", "timeout": 2000 }
         ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/observe-track-mcp-tools.sh", "timeout": 2000 }
+        ]
       }
     ]
   },
