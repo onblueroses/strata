@@ -20,6 +20,11 @@ checklist live in `README.md`.
   `quality-lint-on-write`, and `gate-pre-push` surface a nonzero exit as an
   error to the user. Exit 0 (silent) unless the gate genuinely trips; loud false
   positives train people to bypass.
+- **Telemetry ledgers are fail-open and invisible.** `lib-ledger.sh`
+  (`hook-firings.jsonl`) and `observe-track-mcp-tools.sh` (`mcp-tool-calls.jsonl`)
+  measure what fires without emitting to the model: no stdout, no stderr, always
+  exit 0, and each sink is size-capped at 512 KB with one `.1` rollover. A broken
+  sink can never break a hook.
 
 ## Local checks
 

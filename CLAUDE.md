@@ -237,6 +237,8 @@ Blocking hooks (surface as errors; fix the underlying issue, don't bypass):
 
 Advisory hooks run silently in the background. Full list: `settings.json` and `hooks/README.md`.
 
+Telemetry ledgers (`lib-ledger.sh` → `hook-firings.jsonl`, `observe-track-mcp-tools.sh` → `mcp-tool-calls.jsonl`) record which model-visible hooks fire and which MCP tools get called under `$STATE_DIR`; both are invisible-by-design (exit 0, no output) and size-capped at 512 KB.
+
 ---
 
 ## Post-Compaction Recovery
