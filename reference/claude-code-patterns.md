@@ -147,12 +147,12 @@ Three clean categories: **notifications** (what to tell the user), **permissions
 **Local harness application:**
 
 Name hooks with concern prefixes:
-- `session-*`: initialization (ensure-daily-note, check-dev-servers, cleanup-verify-markers)
-- `gate-*`: stop enforcement (verify-gate)
-- `lifecycle-*`: session end/sync (auto-end-fallback, sync-life-repo)
-- `context-*`: context management (context-nudge, pre-compaction-save, suggest-compact)
-- `quality-*`: code quality checks (search-path-guard, lint-on-write, crlf-check)
-- `observe-*`: tracking/observability (track-edits, track-session-events, track-skill-runs)
+- `session-*`: session lifecycle (ensure-daily-note, check-dev-servers, cleanup-verify-markers, post-compaction-restore)
+- `gate-*`: guards and gates (verify, pre-push, rm-guard)
+- `lifecycle-*`: session end and sync (auto-end-fallback, sync-state, warn-unpushed)
+- `context-*`: context management (nudge, pre-compaction-save)
+- `quality-*`: code-quality checks (lint-on-write, resource-sizing)
+- `observe-*`: tracking and observability (track-edits, track-session-events, track-skill-runs, track-mcp-tools)
 
 
 </details>
