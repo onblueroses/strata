@@ -25,7 +25,7 @@ Hooks read `$CLAUDE_SESSION_ID` from the environment and write state files keyed
 
 ## Telemetry ledgers
 
-Two invisible-by-design sinks under `$STATE_DIR` answer "what actually fires" without adding any model-visible output. `hook-firings.jsonl` records that a model-visible hook (context-nudge, resource-sizing, restore, warn-file-ownership) emitted, and how many bytes; `lib-ledger.sh` is the shared writer the instrumented hooks pipe their payload into. `mcp-tool-calls.jsonl` records which MCP servers' tools get called (`observe-track-mcp-tools`, PostToolUse `mcp__.*`). Both loggers exit 0 with no stdout or stderr and never alter a hook's own output; each sink is size-capped at 512 KB with one `.1` rollover generation.
+Two invisible-by-design sinks under `$STATE_DIR` answer "what actually fires" without adding any model-visible output. `hook-firings.jsonl` records that a model-visible hook (context-nudge, resource-sizing, restore, warn-file-ownership) emitted, and how many bytes. `lib-ledger.sh` is the shared writer the instrumented hooks pipe their payload into. `mcp-tool-calls.jsonl` records which MCP servers' tools get called (`observe-track-mcp-tools`, PostToolUse `mcp__.*`). Both loggers exit 0 with no stdout or stderr and never alter a hook's own output. Each sink is size-capped at 512 KB with one `.1` rollover generation.
 
 ## Adding a hook
 
