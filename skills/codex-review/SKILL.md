@@ -61,7 +61,7 @@ For new specs from /spec, design docs, or implementation plans.
 
 **Inputs Codex does NOT see:** the conversation that asked for this plan, the Plan subagent's reasoning, prior /codex-review iterations.
 
-**PDMC boundary:** `/codex-review --plan` is a procedural review, not a methodological review. It does not satisfy PDMC. If the plan contains `Harness: yes` or probe/harness methodology, report that a separate PDMC review pass is required before `PROCEED` is valid, using `/spec` Step 3.6 and `skills/spec/references/pdmc-checklist.md`.
+**PDMC boundary:** `/codex-review --plan` is a procedural review, not a methodological review. It does not satisfy PDMC. If the plan contains `Harness: yes` or probe/harness methodology, report that a separate PDMC review pass is required before `PROCEED` is valid, using the frontier entry gates under `/spec`'s "Advancing the Frontier" and `skills/spec/references/pdmc-checklist.md`.
 
 ### --hypothesis: Debugging hypothesis review
 
@@ -262,7 +262,7 @@ Sequence the edits: PROTECT first (mark inviolate), then DIAGNOSE (smallest inte
 
 ## Wiring (where this is invoked from)
 
-- **/spec** Step 3.5 (after Plan subagent returns content, before writing the spec to disk for plans with 3+ files OR 3+ phases). The spec skill writes the proposed spec to a temp file, calls /codex-review --plan for procedural review only, then revises the spec with the BLOCKING + IMPORTANT findings before persisting. If any phase has `Harness: yes`, `/spec` Step 3.6 must run a separate PDMC methodological review before the spec can proceed.
+- **/spec** in the "Creating a Spec" adversarial-review step (after the draft is frozen, before writing the spec to disk for work touching 3+ files). The spec skill calls /codex-review --plan for procedural review only, then revises the spec with the BLOCKING + IMPORTANT findings before persisting. At the frontier entry gates under "Advancing the Frontier", any `Harness: yes` frontier runs a separate PDMC methodological review before proceeding. Legacy phased specs with 3+ phases trigger the same review wiring.
 - **/verify --deep** when reviewing a spec-driven phase whose output included structural decisions (the spec's Phase has `Harness: yes` AND harness flagged structural-failure escalation).
 - Manually for ad-hoc plan / hypothesis / decision review.
 

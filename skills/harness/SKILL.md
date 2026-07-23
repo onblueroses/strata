@@ -103,6 +103,8 @@ Prepare the harness run by parsing inputs, deriving criteria, selecting the firs
    - **Fallback only:** If the current phase has `Harness: yes` but no `#### Harness Criteria` subsection (older spec format), derive criteria from the phase's step acceptance criteria (the `-> [acceptance criteria]` part after each step). Each criterion becomes one evaluation gate.
    - In both cases, add the spec's Validation section checks as additional gates
 
+   _Frontier-format compatibility: use `### Success means` plus the open Frontier's `Gate:` as Validation; closed work lives in `## Trail`, where `State proof:` is verification evidence and `Built:` names produced artifacts. Legacy phased specs keep their existing handling unchanged._
+
    **From inline task:**
    - Break the task description into discrete, testable requirements
    - Each requirement becomes one PASS/FAIL criterion

@@ -71,6 +71,9 @@ If any fail, say what is missing and how to fix it. Surface the gap and stop; a 
 
 1. **Parse args**: `--from-spec`, `--n N` (default 3, max 5 without `--force-n`; reject N < 2), `--feature-slug`, `--timeout-min` (default 30), `--lane` (default `strong`; `fast` allowed), `--force-n`.
 2. **From-spec**: read the active spec, find the current phase via `>> Current Step`. Assert the Harness/BoN mutex (abort if both tagged). Read the phase's `#### BoN Criteria` block; if absent, fall back to the step acceptance criteria with an explicit warning that they may be coarse.
+
+   _Frontier-format compatibility: use `### Success means` plus the open Frontier's `Gate:` as Validation; closed work lives in `## Trail`, where `State proof:` is verification evidence and `Built:` names produced artifacts. Legacy phased specs keep their existing handling unchanged._
+
 3. **Run-id**: `{YYYY-MM-DD-HHMMSS}-{session-suffix}`. State dir: `$STATE_DIR/bon-runs/{run-id}/`.
 4. **Cost gate** (load `/ask-better` first): show N, the generator lane, the timeout, and the run-id; confirm before dispatch. N agentic strong-lane runs cost real tokens — the user confirms.
 
