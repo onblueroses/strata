@@ -1,7 +1,9 @@
-<!-- keywords: codex exec, codex review, codex cli, codex invocation, codex flags, fast lane, strong lane, codex-review skill, verify, review, gate-codex-exec, gate-codex hooks, dangerously-bypass-approvals-and-sandbox, skip-git-repo-check, service_tier fast, model_reasoning_effort, config.toml defaults, web_search, background stdin hang, dev/null, uncommitted diff review -->
+<!-- keywords: codex exec, codex exec resume, codex review, codex cli, codex invocation, codex flags, fast lane, strong lane, codex-review skill, verify, review, gate-codex-exec, gate-codex hooks, dangerously-bypass-approvals-and-sandbox, skip-git-repo-check, service_tier fast, model_reasoning_effort, config.toml defaults, web_search, background stdin hang, dev/null, uncommitted diff review, output schema -->
 # Codex Invocation Standard
 
-How to invoke the bare `codex` CLI. The flag set differs by subcommand. Pick the right form — flags valid for `codex exec` are NOT all valid for `codex review`. Verified against `codex exec --help` + `codex review --help` (CLI v0.138.0).
+How to invoke the bare `codex` CLI. Each subcommand accepts a different flag set.
+
+These forms match codex-cli 0.145.0.
 
 For day-to-day code/analysis delegation, use the `fast` / `strong` lane wrappers instead — see `reference/model-delegation.md`. This doc covers the bare `codex` invocations strata genuinely uses: the `/codex-review`, `/verify`, and `/review` skills, plus the `gate-codex-*` hooks.
 
@@ -10,6 +12,7 @@ For day-to-day code/analysis delegation, use the `fast` / `strong` lane wrappers
 | Task | Section |
 |------|---------|
 | `codex exec` flag form (skill use only) | codex exec |
+| Continue a stored Codex session | codex exec resume |
 | `codex review` flag form (diff/commit review) | codex review |
 | Defaults from config.toml | Config defaults |
 | Which skill uses which form | Skills Using This Standard |
@@ -29,6 +32,29 @@ codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check \
 ```
 
 Top-level flags (`--dangerously-bypass-approvals-and-sandbox`, `--skip-git-repo-check`) are valid here. `--model` overrides the config.toml default model. When run in the background (`run_in_background: true`), append `< /dev/null` so codex does not hang forever on "Reading additional input from stdin" at 0 CPU.
+
+## `codex exec resume`
+
+`codex exec resume` exists in codex-cli 0.145.0 and later. It adds a follow-up turn to stored history.
+
+```bash
+codex exec resume 12345678-1234-4123-8123-123456789abc "Follow-up prompt"
+codex exec resume --last "Follow-up prompt"
+```
+
+Resume rejects `-s` and `-C`. Map the sandbox through `-c 'sandbox_mode="read-only"'`.
+
+The original working directory persists.
+
+Use an explicit `-` prompt position when piping stdin.
+
+```bash
+codex exec resume 12345678-1234-4123-8123-123456789abc - < prompt.txt
+```
+
+Without `-`, the pipeline waits for prompt input. `--last` selects the newest stored session.
+
+`--output-schema FILE` works with both `exec` and `exec resume`.
 
 ## `codex review` (diff/commit review subcommand)
 
