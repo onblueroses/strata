@@ -1,102 +1,71 @@
 ---
 name: context-resume
-version: 2.0.0
+version: 4.0.0
 description: |
-  Manual fallback for post-compaction context restoration. Primary recovery is now mechanical
-  (session-post-compaction-restore.sh injects context via SessionStart stdout).
-  Use this skill only when the automatic injection seems incomplete or missing.
-  Auto-trigger: when post-compaction system-reminder seems incomplete or missing.
+  Manual fallback for post-compaction context restoration. Primary recovery is mechanical
+  (session-post-compaction-restore.sh injects the recovery map via SessionStart and arms a
+  read-gate). Use this skill when the automatic injection is missing, truncated, or seems incomplete.
+  Auto-trigger: when the post-compaction system-reminder seems incomplete or missing.
 allowed-tools:
   - Read
   - Bash
   - Glob
+  - Grep
 ---
 
 # Context Resume
 
-Manual fallback for restoring context after compaction. Primary recovery is now handled
-automatically by `session-post-compaction-restore.sh` (SessionStart hook, sync stdout injection).
-Use this skill when the automatic injection is missing or insufficient.
+Manual fallback for restoring context after compaction. The post-compaction hook already injects the recovery map and points at the save files. This skill walks the full reconstruction when that injection is missing, truncated, or insufficient. Pipeline overview: `$STRATA_HOME/reference/context-continuity.md`.
 
-**Avoid these - they cause real problems:**
-- **Don't start working before confidence >= 4** - working with partial context leads to re-doing work or contradicting decisions already made. Asking the user takes 30 seconds; re-doing work takes 30 minutes.
-- **Don't skip spec files** - specs contain the authoritative implementation plan, settled decisions, and the exact step where work stopped. The auto-save often misses this detail because it's written by a hook before /end runs.
-- **Don't assume the auto-save file is complete** - the PreCompact hook writes it before /end, so it may lack the session's final state, entity updates, and decisions made in the last few exchanges.
-- **Don't ignore uncommitted git changes** - they usually represent in-progress work from before compaction. Overwriting or ignoring them loses real work.
+**Outcome:**
+- Goal: reconstruct the frame (north star, canonical docs, entity KB) AND the live session state (in-flight loop, ruled-out paths, next move) before doing any work.
+- Success means: every save file that exists is read (the semantic save exists only if /context-save ran; the hook save alone is a valid starting point), every `Read On Resume` entry and owned spec opened, Frame docs opened by relevance, confidence ≥ 4.
+- Stop when: confidence ≥ 4 and the next action is concrete and unblocked, OR confidence < 4 and a specific clarifying question is being asked.
 
-## Step 1: Read Sources (in order)
+Reach confidence ≥ 4 before working: partial context re-does work and contradicts settled decisions; asking costs 30 seconds, re-doing costs 30 minutes. Treat "Ruled out" entries as walls: they exist so dead ends are not re-tried. Treat uncommitted git changes as in-progress work to preserve, never to overwrite.
 
-<details>
-<summary>Step 1: Read Sources (in order)</summary>
+## Step 1: Read sources (in order)
 
-### 1a. JSONL Event Log (Primary - highest fidelity)
-Append-only structured log of every significant action this session.
-1. Find your session ID from the SessionStart hook output (8-char suffix of daily note filename)
-2. Read `$STATE_DIR/session-events-{session-id}.jsonl`
-3. Each line is a JSON object. Event types:
-   - `edit` - file was modified (`file` field has the path)
-   - `commit` - git commit was made (`msg` field has the message)
-   - `compaction` - context was compacted (`window` field = compaction count)
-   - `goal` - session objective (`text` field)
-   - `decision` - a decision was made (`what` and `why` fields)
-   - `milestone` - phase gate or status checkpoint (`text` field)
-4. The most recent `compaction` event marks the boundary. Events after it are from the current context window. Events before it are from previous windows (still valuable for understanding full session history).
-5. Reconstruct: which files were edited, what was committed, what decisions were made, how many compaction windows have passed.
+**1a. Save files** — read every one that exists, at `$STATE_DIR/`:
 
-### 1b. Auto-Save (Fallback)
-Provides narrative context (Goal, Decisions, Next Actions) that the JSONL stream doesn't capture. If the JSONL log exists and has events, use it as primary source and treat the markdown saves as supplementary.
+1. `auto-context-save-{session-id}.md` — skill-written semantic save: Frame pointers (north star, station, canonical doc paths), Session Goal, Decisions, In-Flight, Read On Resume, Last Run Outputs, Session-Specific State.
+2. `auto-context-save-{session-id}-hook.md` — hook-written mechanical snapshot + Frame map: canonical doc paths with line counts, entity KB paths, git state, owned specs' `>> Current Step`, daily-note summaries.
 
-**Two save files may exist per session** (read both, they complement each other):
-1. `$STATE_DIR/auto-context-save-{session-id}.md` — written by the `/context-save` skill. Holds rich semantic content the model composed: Goal, Critical Context, Decisions, Key Files. May be stale if the skill ran early in the session.
-2. `$STATE_DIR/auto-context-save-{session-id}-hook.md` — written by the PreCompact hook just before each compaction. Holds fresh mechanical state: Active Specs `>> Current Step`, Git State, Today's Daily Notes. Always reflects the moment of compaction.
+The saves are maps, not archives: open the files their `Read On Resume` and Frame blocks name, at the listed line ranges. In-Flight carries the loop ("Next move" is the default action); Last Run Outputs carries the actual error the previous instance was reacting to.
 
-Use the skill file for **intent** (Goal/Decisions) and the hook file for **state** (git/specs/daily). If only one exists, use what you have. If neither session-specific file is found, fall back to the most recent matching files in `state/`.
+If the session ID is unknown, take the 8-char suffix of today's daily-note filename from SessionStart hook output, or read the newest matching files in the state directory.
 
-### 1c. Today's Daily Note
-Find latest file matching `$KB_DIR/daily/[today]-*.json`
-- Parse as JSON. Key fields: `summary`, `decisions`, `outputs`, `entities_touched`, `takeaway`
+**1b. JSONL event log** — `$STATE_DIR/session-events-{session-id}.jsonl`: mechanical edit/commit/compaction events. The most recent `compaction` event marks the boundary; events after it are the current window.
 
-### 1d. Git State
+**1c. This session's daily note** — the file whose name ends in `-{session-id}.json` under `$KB_DIR/daily/` (search all dates; a sibling session's newest note is contamination). Key fields: `summary`, `decisions`, `outputs`, `entities_touched`.
+
+**1d. Git state**
+
 ```bash
-git branch --show-current 2>/dev/null || echo "not a git repo"
-git status --short 2>/dev/null | head -15
-git log --oneline -3 2>/dev/null
+git branch --show-current && git status --short | head -15 && git log --oneline -10
 ```
 
-### 1e. Spec Files (HIGHEST PRIORITY)
-Check for active implementation specs:
-```bash
-ls $SPECS_DIR/*.md 2>/dev/null
-```
-If found, read ALL of them. Specs with `Status: in-progress` are critical - they contain the full implementation plan, decisions already made, and the `>> Current Step` section that tells you exactly where work left off. The spec is the source of truth for resuming mid-implementation tasks. Do NOT re-debate entries in the Decisions table - they were made with full context.
+**1e. Owned specs (highest priority for in-progress implementation)** — for any spec at `$SPECS_DIR/` with header `Status: in-progress` or `planning` that this session owns (its `Session:` field matches, is absent, or the spec was edited here — the same filter the hooks apply): read it. `>> Current Step` says exactly where work stopped; the Decisions journal is settled (reopen an entry only when its `Re-examine when` trigger fires).
 
-### 1f. Entity Context
-If working in a known project, read its entity file:
-- `$KB_DIR/projects/[name]/summary.md`
-- `$KB_DIR/areas/[name]/summary.md`
+**1f. Frame from disk** — canonical docs and entity KB live on disk untouched by compaction; the saves only point. Open the load-bearing ones the Frame names (THESIS/STRATEGY/ARCHITECTURE class, entity `summary.md`/`items.json`); the harness reloads the cwd CLAUDE.md chain natively.
 
-</details>
+## Step 2: Confidence check
 
-## Step 2: Confidence Check
-
-Rate understanding (1-5):
-- 5: Crystal clear, ready to continue
-- 4: Good understanding, minor gaps
-- 3: General idea, need clarification
-- 1-2: Confused, need user input
+Rate understanding 1-5:
+- 5: crystal clear — frame inherited, loop state known, next action concrete.
+- 4: good, minor gaps — proceed and flag what's uncertain.
+- 3: general idea — one specific clarification needed.
+- 1-2: multiple gaps — need user input.
 
 ## Step 3: Output
 
-<details>
-<summary>Step 3: Output</summary>
-
-### If Confidence >= 4:
+Confidence ≥ 4:
 
 ```
 CONTEXT RESTORED
 ================
-Project: [name/path]
-Goal: [what we're doing]
+Repo: [name] (north star: [one-line])
+Session goal: [what we're doing]
 Status: [completed/pending counts]
 Git: [branch] - [status]
 Next: [immediate priority]
@@ -106,7 +75,7 @@ Resuming...
 
 Then start on the next action.
 
-### If Confidence <= 3:
+Confidence ≤ 3:
 
 ```
 PARTIAL RESTORE
@@ -116,14 +85,8 @@ Uncertain: [what's unclear]
 Please clarify: [specific question]
 ```
 
-Wait for user response.
+Wait for the user's response.
 
-</details>
+## If no save file found
 
-## If No Save File Found
-
-```
-NO CONTEXT FOUND
-Checked: $STATE_DIR/auto-context-save-{sid}.md (skill), auto-context-save-{sid}-hook.md (hook), daily notes, git state
-What should I work on?
-```
+Report which paths were checked (skill save, hook save, daily notes, git state of cwd) and ask: "What should I work on?"

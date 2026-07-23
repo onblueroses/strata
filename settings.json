@@ -71,7 +71,7 @@
     "PreCompact": [
       {
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-pre-compaction-save.sh", "timeout": 10000, "async": true }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/context-pre-compaction-save.sh", "timeout": 10000 }
         ]
       }
     ],

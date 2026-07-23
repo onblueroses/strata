@@ -20,7 +20,12 @@ Execute steps 1-7 in order. Apply each step whose condition matches. Low context
 
 ## 1. Find and name daily note
 
-Find in `$KB_DIR/daily/`: match today's date + session ID from SessionStart hook (or `$STATE_DIR/auto-context-save.md` after compaction, or most recent `*-unnamed-*.json`). Use the daily-note path shape `$KB_DIR/daily/YYYY-MM-DD-{slug}-{sessionId}.json`. If hooks disabled: create stub using step 3 schema.
+Find the note in `$KB_DIR/daily/` using the path shape `$KB_DIR/daily/YYYY-MM-DD-{slug}-{sessionId}.json`. Resolve it in this order:
+
+1. Use the session ID emitted by the SessionStart hook.
+2. Match today's daily notes by that session ID: `$KB_DIR/daily/YYYY-MM-DD-*-{sessionId}.json`.
+3. After compaction, if the session ID is unavailable, recover it from the newest `$STATE_DIR/auto-context-save-{sid}-hook.md`, then repeat step 2.
+4. Last resort: use the most recent `*-unnamed-*.json`, or create a stub with today's date using the step 3 schema when hooks are disabled.
 
 **Name** (if `unnamed` present): choose 2-3 words, `{noun}-{verb}` format (e.g. vault-move, api-deploy). Rename file and update `session_name` field inside.
 

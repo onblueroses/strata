@@ -6,12 +6,12 @@ Event-driven scripts wired by `settings.json`. The template registers 32 hook co
 
 | Event | When it fires | Hooks shipped |
 |-------|---------------|---------------|
-| `SessionStart` | Claude Code session opens | `session-ensure-daily-note`, `session-check-dev-servers`, `session-cleanup-verify-markers`, `session-cleanup-codex`, `session-post-compaction-restore`, `session-sibling-awareness`, `session-update-check`, `memory-digest`, `memory-entities` |
+| `SessionStart` | Claude Code session opens or restarts after compaction/resume | `session-cleanup-verify-markers` preserves edit/verify markers on `compact` and `resume`; `session-post-compaction-restore` injects the pointer map and arms the read gate only on `compact`; plus `session-ensure-daily-note`, `session-check-dev-servers`, `session-cleanup-codex`, `session-sibling-awareness`, `session-update-check`, `memory-digest`, `memory-entities` |
 | `Stop` | Session closing | `gate-verify` (blocking), `lifecycle-auto-end-fallback`, `lifecycle-sync-state`, `lifecycle-warn-unpushed` |
 | `SessionEnd` | Session has ended | `memory-access-log` |
 | `UserPromptSubmit` | After each user prompt, before model sees it | `context-nudge` |
-| `PreCompact` | Before the runtime compresses prior turns | `context-pre-compaction-save` |
-| `PreToolUse` | Before a tool call executes | `gate-resume-read`, `allow-claude-dir-edits`, `warn-file-ownership`, `gate-pre-push` (blocking), `gate-nested-clone`, `gate-gh-public-actions`, `gate-rm-guard`, `gate-codex-exec`, `gate-destructive-git`, `gate-paid-compute-destroy` |
+| `PreCompact` | Before the runtime compresses prior turns; runs synchronously | `context-pre-compaction-save` atomically publishes the pointer-first `auto-context-save-{sid}-hook.md` |
+| `PreToolUse` | Before a tool call executes | `gate-resume-read` blocks consequential tools until every save named by the post-compaction sentinel has been read; plus `allow-claude-dir-edits`, `warn-file-ownership`, `gate-pre-push` (blocking), `gate-nested-clone`, `gate-gh-public-actions`, `gate-rm-guard`, `gate-codex-exec`, `gate-destructive-git`, `gate-paid-compute-destroy` |
 | `PostToolUse` | After a tool call returns | `observe-track-skill-runs`, `quality-lint-on-write` (blocking), `quality-resource-sizing`, `observe-track-edits`, `observe-track-session-events`, `observe-track-mcp-tools` |
 
 ## Blocking vs advisory
@@ -21,7 +21,7 @@ Event-driven scripts wired by `settings.json`. The template registers 32 hook co
 
 ## State and side effects
 
-Hooks read `$CLAUDE_SESSION_ID` from the environment and write state files keyed to the 8-char session id at `$STATE_DIR/.session-edits-<sid>`, `$STATE_DIR/.verify-passed-<sid>`, `$STATE_DIR/session-events-<sid>.jsonl`, and similar. Parallel sessions never collide on the same file. The `session-sibling-awareness` hook injects a summary of other live sessions at SessionStart. One exception is `session-update-check`: its daily stamp lives at `$STRATA_HOME/.local/update-check.stamp` because the once-per-day network check is per-install, not per-session.
+Hooks read `$CLAUDE_SESSION_ID` from the environment and write state files keyed to the 8-char session id at `$STATE_DIR/.session-edits-<sid>`, `$STATE_DIR/.verify-passed-<sid>`, `$STATE_DIR/session-events-<sid>.jsonl`, `$STATE_DIR/auto-context-save-<sid>.md` (manual semantic save), and `$STATE_DIR/auto-context-save-<sid>-hook.md` (synchronous pointer-first PreCompact snapshot). Parallel sessions never collide on the same file. After compaction, the restore hook atomically writes a full-session-id sentinel under `/tmp`; the read gate clears it only after every listed save path has been read. Compact/resume SessionStart events retain the current session's edit and verification markers. The `session-sibling-awareness` hook injects a summary of other live sessions at SessionStart. One exception is `session-update-check`: its daily stamp lives at `$STRATA_HOME/.local/update-check.stamp` because the once-per-day network check is per-install, not per-session.
 
 ## Telemetry ledgers
 

@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
-# Post-compaction context restore
-# Fires on SessionStart after compaction. Reads save files from disk and outputs
-# structured recovery context to stdout, which gets injected as system-reminder.
-# MUST be sync (not async) - stdout injection requires synchronous execution.
+# Post-compaction context restore (v3 — pointer-first edition)
+# Fires on SessionStart after compaction. Injects the recovery map: points at the
+# session saves (which themselves point at canonical docs, specs, and the entity KB
+# on disk) and arms the read-gate so the save is actually read before work resumes.
+# Pipeline overview: $STRATA_HOME/reference/context-continuity.md
 
-# Read hook JSON from stdin
+STRATA_HOME="${STRATA_HOME:-$HOME/.strata}"
+KB_DIR="${KB_DIR:-$STRATA_HOME/workspace}"
+STATE_DIR="${STATE_DIR:-$KB_DIR/state}"
+SPECS_DIR="${SPECS_DIR:-$STATE_DIR/specs}"
+
 hookData=""
 if [ ! -t 0 ]; then
     hookData=$(cat)
 fi
 
-# Parse session info
 sessionId=""
 cwd="$HOME"
 triggerVal=""
 
 if [ -n "$hookData" ]; then
-    # Check both 'trigger' and 'source' - docs are ambiguous on field name
     triggerVal=$(echo "$hookData" | jq -r '.trigger // empty' 2>/dev/null)
     if [ -z "$triggerVal" ]; then
         triggerVal=$(echo "$hookData" | jq -r '.source // empty' 2>/dev/null)
@@ -29,18 +32,19 @@ if [ -n "$hookData" ]; then
     fi
 fi
 
-# Only fire on compaction, exit silently for startup/resume/clear
+# Fire only on compaction
 if [ "$triggerVal" != "compact" ]; then
     exit 0
 fi
 
-# --- From here: compaction recovery only ---
-
 stateDir="$STATE_DIR"
-specDir="$stateDir/specs"
+specDir="$SPECS_DIR"
 output=""
 
-# --- Section 1: Header/metadata ---
+# ============================================================
+# Section 1: Header — session, window, repo identity
+# ============================================================
+
 windowNum="?"
 if [ -n "$sessionId" ]; then
     windowFile="/tmp/claude-compact-window-$sessionId.txt"
@@ -49,83 +53,213 @@ if [ -n "$sessionId" ]; then
     fi
 fi
 
-gitBranch=""
+# Repo identity
+repoRoot=""
 if [ -d "$cwd" ]; then
-    gitBranch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+    repoRoot=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
+fi
+[ -z "$repoRoot" ] && repoRoot="$cwd"
+repoName=$(basename "$repoRoot")
+
+gitBranch=""
+if [ -d "$repoRoot/.git" ] || [ -f "$repoRoot/.git" ]; then
+    gitBranch=$(git -C "$repoRoot" branch --show-current 2>/dev/null)
 fi
 [ -z "$gitBranch" ] && gitBranch="(not a git repo)"
 
+# Entity mapping
+entityPath=""
+for kind in projects areas; do
+    candidate="$KB_DIR/$kind/$repoName"
+    if [ -d "$candidate" ]; then
+        entityPath="$candidate"
+        break
+    fi
+done
+
+# Save file paths
+skillSaveFile=""
+hookSaveFile=""
+if [ -n "$sessionId" ]; then
+    skillSaveFile="$stateDir/auto-context-save-$sessionId.md"
+    hookSaveFile="$stateDir/auto-context-save-$sessionId-hook.md"
+fi
+[ -f "$skillSaveFile" ] || skillSaveFile=""
+[ -f "$hookSaveFile" ] || hookSaveFile=""
+
+# Emergency fallback when session_id is missing: pre-compaction hook still writes
+# the generic auto-context-save-hook.md path. Use it ONLY when sessionId is empty
+# (never as a cross-session leak when sessionId is set).
+if [ -z "$sessionId" ] && [ -z "$hookSaveFile" ] && [ -f "$stateDir/auto-context-save-hook.md" ]; then
+    hookSaveFile="$stateDir/auto-context-save-hook.md"
+fi
+
+# Arm the read-gate: drop a sentinel naming the save file(s) so the PreToolUse
+# hook gate-resume-read.sh blocks consequential tools until one is Read this
+# turn. Reading the save clears it; a 30-min TTL in the gate is the anti-deadlock
+# backstop. Only armed when a save actually exists.
+# - Keyed on the FULL session id ($sid, not the 8-char $sessionId) so sessions
+#   sharing a prefix can't collide on one gate; gate-resume-read.sh uses the same id.
+# - Written atomically (temp + mv) so a tool call can never observe an empty
+#   half-written sentinel and slip through unenforced.
+if [ -n "$sid" ] && { [ -n "$skillSaveFile" ] || [ -n "$hookSaveFile" ]; }; then
+    sentinelFile="/tmp/claude-needs-resume-read-$sid"
+    tmpSentinel="${sentinelFile}.$$.tmp"
+    : >"$tmpSentinel" 2>/dev/null || true
+    [ -n "$skillSaveFile" ] && echo "$skillSaveFile" >>"$tmpSentinel" 2>/dev/null
+    [ -n "$hookSaveFile" ] && echo "$hookSaveFile" >>"$tmpSentinel" 2>/dev/null
+    mv -f "$tmpSentinel" "$sentinelFile" 2>/dev/null || rm -f "$tmpSentinel" 2>/dev/null
+fi
+
 output="## Post-Compaction Recovery
-Session: $sessionId | Window: $windowNum | CWD: $cwd
-Branch: $gitBranch
+Session: $sessionId | Window: $windowNum
+Repo: \`$repoName\` (\`$repoRoot\`) | Branch: $gitBranch
+Entity: ${entityPath:-(no entity mapping)}
 "
 
-# --- Section 2: Active specs (HIGHEST PRIORITY) ---
+# ============================================================
+# Section 2: MANDATORY READS — point at the save files
+# ============================================================
+
+readSection=""
+if [ -n "$skillSaveFile" ] || [ -n "$hookSaveFile" ]; then
+    readSection="
+### >> READ EVERY FILE LISTED HERE BEFORE ANY TEXT RESPONSE OR NON-READ TOOL CALL
+
+**This is enforced this turn.** A read-gate blocks Edit / Write / Bash / dispatch tools until you Read the save below; read-only tools (Read / Grep / Glob) stay open, and reading the save clears the gate automatically. Read it first.
+
+The saves below hold the live session state plus the map: paths to canonical docs, specs, and the entity KB, which all live on disk untouched by compaction. Open the saves, then open what their map names. This recovery block deliberately contains no previews; open the files yourself.
+"
+    idx=1
+    if [ -n "$skillSaveFile" ]; then
+        readSection+="
+${idx}. \`$skillSaveFile\` — skill-written rich save (Goal, Decisions, In-Flight, Last Outputs, Session-Specific State)"
+        idx=$((idx + 1))
+    fi
+    if [ -n "$hookSaveFile" ]; then
+        readSection+="
+${idx}. \`$hookSaveFile\` — hook-written mechanical snapshot + Frame map (canonical doc paths, git, specs, daily-note summaries)"
+    fi
+    readSection+="
+
+After reading, also open any file listed in the save's \`## Read On Resume\` block at the specified line ranges. Do not skip this — it's the previous instance telling you exactly where to look first.
+"
+    output+="$readSection"
+fi
+
+# ============================================================
+# Section 3: Active specs (READ THESE FIRST after Repo Frame)
+# ============================================================
+
+# Filter specs to OWN session only. The owner runs multiple parallel sessions on
+# different specs; reading another session's spec contaminates this recovery.
+# Match criteria (ANY of these passes a spec for inclusion):
+#   1. Spec's `Session:` frontmatter field matches THIS sessionId
+#   2. Spec has no `Session:` field at all (genuinely shared / unowned)
+#   3. Spec was edited in THIS session per .session-edits-{sid}
+# Skip every other in-progress spec — those belong to sibling sessions.
+
+sessionEditsFile="$stateDir/.session-edits-$sessionId"
 specOutput=""
-specCount=0
+specOverflow=""
+ownedCount=0
+otherSessionCount=0
 if [ -d "$specDir" ]; then
-    for spec in "$specDir/"*.md; do
+    while IFS= read -r spec; do
         [ -f "$spec" ] || continue
         raw=$(cat "$spec" 2>/dev/null)
         [ -z "$raw" ] && continue
-        if echo "$raw" | grep -qE 'Status:\s*(in-progress|planning)'; then
-            specName=$(basename "$spec")
-            specCount=$((specCount + 1))
-            if [ "$specCount" -le 3 ]; then
-                # Extract >> Current Step section (lines after heading until next ##)
-                step=$(echo "$raw" | sed -n '/^## >> Current Step/,/^## /{ /^## >> Current Step/d; /^## /d; p; }' | head -3 | sed '/^$/d')
-                if [ -n "$step" ]; then
-                    specOutput+="- \`$specName\`: $step
-"
-                else
-                    specOutput+="- \`$specName\`: (no current step)
-"
-                fi
-            else
-                specOutput+="- \`$specName\`: (name only, over limit)
-"
+        # Header-only Status check: body prose can quote historical "Status: planning"
+        if ! echo "$raw" | head -10 | grep -qE 'Status:\s*(in-progress|planning)'; then
+            continue
+        fi
+
+        # Ownership check — Session field can be at line start OR after `| ` separator
+        specSession=$(echo "$raw" | head -20 | grep -oE 'Session:[[:space:]]*[a-f0-9]{8}' | head -1 | grep -oE '[a-f0-9]{8}$')
+        editedHere=0
+        if [ -n "$sessionEditsFile" ] && [ -f "$sessionEditsFile" ]; then
+            if grep -qF "$spec" "$sessionEditsFile" 2>/dev/null; then
+                editedHere=1
             fi
         fi
-    done
+
+        if [ -n "$specSession" ] && [ "$specSession" != "$sessionId" ] && [ "$editedHere" = "0" ]; then
+            otherSessionCount=$((otherSessionCount + 1))
+            continue
+        fi
+
+        ownedCount=$((ownedCount + 1))
+        specName=$(basename "$spec")
+        # No preview — listing the file is the cue to open it. Recently touched specs
+        # surface in the main list; older specs ride in the overflow.
+        if find "$spec" -mtime -7 -print -quit 2>/dev/null | grep -q .; then
+            specOutput+="- \`$specName\` (recently touched)
+"
+        else
+            specOverflow+="$specName "
+        fi
+    done < <(ls -1t "$specDir/"*.md 2>/dev/null)
 fi
 
-if [ -n "$specOutput" ]; then
+if [ -n "$specOutput" ] || [ -n "$specOverflow" ]; then
     output+="
-### Active Specs (READ THESE FIRST)
+### Active Specs — THIS session only (authoritative; don't re-debate Decisions)
 $specOutput"
-else
+    if [ -n "$specOverflow" ]; then
+        # List owned-but-stale spec names so the model can read them on resume —
+        # they're THIS session's specs even if untouched recently; dropping them
+        # to a count loses the path the model needs.
+        overflowList=""
+        for name in $specOverflow; do
+            overflowList+="- \`$name\` (owned by this session; not touched in 7d)
+"
+        done
+        output+="
+$overflowList"
+    fi
+    if [ "$otherSessionCount" -gt 0 ]; then
+        output+="
+($otherSessionCount in-progress spec(s) belong to OTHER active sessions — deliberately hidden to prevent contamination)
+"
+    fi
+elif [ "$otherSessionCount" -gt 0 ]; then
     output+="
 ### Active Specs
-(none)
+(none for this session; $otherSessionCount in-progress spec(s) belong to sibling sessions and are hidden)
 "
 fi
 
-# --- Section 2b: Active dmux orchestration ---
+# ============================================================
+# Section 4: Active dmux orchestration
+# ============================================================
+
+# Only look at the CURRENT cwd's orchestration log — scanning ~/Work/* leaks
+# other sessions' parallel dispatches into this recovery.
 orchOutput=""
-# Check cwd and common project locations for orchestration logs
-for orchPath in "$cwd/.dmux/orchestration.md" $HOME/Work/*/.dmux/orchestration.md; do
-    if [ -f "$orchPath" ]; then
-        projName=$(basename "$(dirname "$(dirname "$orchPath")")")
-        if grep -q '^## Wave' "$orchPath"; then
-            orchOutput+="- \`$projName\`: $(grep '^## Wave' "$orchPath" | tail -1 | sed 's/## //')
+orchPath="$repoRoot/.dmux/orchestration.md"
+if [ -f "$orchPath" ]; then
+    lastWave=$(grep '^## Wave' "$orchPath" 2>/dev/null | tail -1 | sed 's/## //')
+    [ -n "$lastWave" ] && orchOutput+="- \`$repoName\`: $lastWave
 "
-        fi
-    fi
-done
+fi
 
 if [ -n "$orchOutput" ]; then
     output+="
 ### Active Orchestrations (dmux dispatch)
 $orchOutput
-Read the orchestration log (\`.dmux/orchestration.md\`) for full wave history and decisions.
+Read the orchestration log (\`.dmux/orchestration.md\`) for full wave history.
 "
 fi
 
-# --- Section 3: JSONL event log tail ---
-# Cap the tail at 10 mechanical events (edit/commit/compaction). For commit events keep ONLY
-# the first clean line of the message: a raw multi-line `-m` capture otherwise leaks
-# `$(cat <<'MARKER'` heredoc scaffolding (verbose, truncated mid-string, low signal). The
-# empty-msg guard renders a missing message as a blank line rather than "null".
+# ============================================================
+# Section 5: Recent JSONL events
+# ============================================================
+
+# Cap the tail at 10 events. Mechanical events only (edit/commit/compaction); semantic events
+# (decision/milestone/goal/hypothesis) carry verbose what/why payloads that preview the save's
+# Decisions table — drop them so the model opens the save to learn what was decided and why.
+# For commit events keep ONLY the first clean line of the message: the raw capture otherwise
+# leaks `$(cat <<'MARKER'` heredoc scaffolding (verbose, truncated mid-string, low signal).
 jsonlLines=10
 jsonlFile="$stateDir/session-events-$sessionId.jsonl"
 eventsFilter='
@@ -151,203 +285,36 @@ $jsonlOutput
 "
 fi
 
-# --- Section 4: Save file extract ---
-# Two save files may exist per session:
-#   - auto-context-save-{sid}.md       <- written by /context-save skill (rich semantic content)
-#   - auto-context-save-{sid}-hook.md  <- written by PreCompact hook (fresh mechanical state)
-# Read both. Skill file gives Goal/Critical Context/Decisions; hook file gives
-# fresh Git State / Active Specs / Daily Notes captured at compaction moment.
-skillSaveFile=""
-hookSaveFile=""
-if [ -n "$sessionId" ]; then
-    skillSaveFile="$stateDir/auto-context-save-$sessionId.md"
-    hookSaveFile="$stateDir/auto-context-save-$sessionId-hook.md"
-fi
-# Skill-file fallback: ONLY if no session_id (emergency recovery). Never grab another
-# session's manual save when we have a session_id - it would inject the wrong intent.
-if [ -z "$sessionId" ] && [ ! -f "$skillSaveFile" ]; then
-    skillSaveFile=$(ls -1t "$stateDir"/auto-context-save-*.md 2>/dev/null | grep -v -- '-hook' | grep -v -- '-w[0-9]' | head -1)
-fi
-# Hook-file fallback: prefer the no-session generic path the hook still writes when
-# session_id is missing. Don't pull other sessions' hook files for the same reason.
-if [ ! -f "$hookSaveFile" ]; then
-    if [ -f "$stateDir/auto-context-save-hook.md" ]; then
-        hookSaveFile="$stateDir/auto-context-save-hook.md"
-    elif [ -z "$sessionId" ]; then
-        hookSaveFile=$(ls -1t "$stateDir"/auto-context-save-*-hook.md 2>/dev/null | grep -v -- '-w[0-9]' | head -1)
-    fi
-fi
+# ============================================================
+# Section 6: Uncommitted changes
+# ============================================================
 
-# --- Arm the post-compaction read-gate ---
-# Drop a sentinel naming the save file(s) so the PreToolUse hook gate-resume-read.sh
-# blocks consequential tools until one is Read since this compaction. Keyed on the FULL
-# session id ($sid, not the 8-char $sessionId) so sessions sharing a prefix can't collide
-# on one gate (gate-resume-read.sh keys on the same full id). Written atomically (temp + mv)
-# so a tool call can never observe a half-written sentinel and slip through unenforced.
-# Armed only when a save actually exists to read.
-if [ -n "$sid" ] && { [ -f "$skillSaveFile" ] || [ -f "$hookSaveFile" ]; }; then
-    sentinelFile="/tmp/claude-needs-resume-read-$sid"
-    tmpSentinel="${sentinelFile}.$$.tmp"
-    : >"$tmpSentinel" 2>/dev/null || true
-    [ -f "$skillSaveFile" ] && echo "$skillSaveFile" >>"$tmpSentinel" 2>/dev/null
-    [ -f "$hookSaveFile" ] && echo "$hookSaveFile" >>"$tmpSentinel" 2>/dev/null
-    mv -f "$tmpSentinel" "$sentinelFile" 2>/dev/null || rm -f "$tmpSentinel" 2>/dev/null
-fi
-
-saveOutput=""
-# Pull rich semantic blocks from skill file (Goal, Critical Context, Decisions)
-if [ -f "$skillSaveFile" ]; then
-    for section in "Goal" "Critical Context" "Decisions"; do
-        block=$(sed -n "/^## $section/,/^## /{/^## $section/d; /^## /d; p;}" "$skillSaveFile" 2>/dev/null | head -20)
-        if [ -n "$block" ]; then
-            saveOutput+="
-$section:
-$block
-"
-        fi
-    done
-fi
-# Pull fresh mechanical state from hook file (Active Specs, Git State)
-if [ -f "$hookSaveFile" ]; then
-    specsSection=$(sed -n '/^## Active Specs/,/^## /{/^## Active Specs/d; /^## /d; p;}' "$hookSaveFile" 2>/dev/null | head -10)
-    if [ -n "$specsSection" ]; then
-        saveOutput+="
-Active Specs:
-$specsSection
-"
-    fi
-    gitSection=$(sed -n '/^## Git State/,/^## /{/^## Git State/d; /^## /d; p;}' "$hookSaveFile" 2>/dev/null | head -15)
-    if [ -n "$gitSection" ]; then
-        saveOutput+="
-Git State:
-$gitSection"
-    fi
-fi
-
-if [ -n "$saveOutput" ]; then
-    output+="
-### From Save Files
-$saveOutput
-"
-fi
-
-# --- Section 5: Uncommitted changes ---
 gitStatus=""
-if [ -d "$cwd" ]; then
-    gitStatus=$(git -C "$cwd" status --short 2>/dev/null | head -10)
+if [ -d "$repoRoot" ]; then
+    gitStatus=$(git -C "$repoRoot" status --short 2>/dev/null | head -15)
 fi
 if [ -n "$gitStatus" ]; then
     uncommittedCount=$(echo "$gitStatus" | wc -l | tr -d '[:space:]')
     output+="
 ### Uncommitted ($uncommittedCount files)
+\`\`\`
 $gitStatus
+\`\`\`
 "
 fi
 
-# --- Section 6: Directive ---
+# ============================================================
+# Section 7: Tail — what to do after reading
+# ============================================================
+
 output+="
-### Resume
-Continue from where you left off. Active specs are authoritative - read them first.
-Decisions in spec tables are settled - do not re-debate.
-If this context seems incomplete, run /context-resume for full manual recovery.
+### After reading
+Resume from \`>> Current Step\` in the spec / \`Next Actions\` in the save. If anything is still unclear, run \`/context-resume\`.
 "
 
-# --- Character budget enforcement ---
-charCount=${#output}
-if [ "$charCount" -gt 9500 ]; then
-    # Truncation pass 1: reduce JSONL to 10 lines
-    if [ -n "$jsonlOutput" ] && [ -n "$sessionId" ] && [ -f "$jsonlFile" ]; then
-        jsonlOutput=$(jq -c "$eventsFilter" "$jsonlFile" 2>/dev/null | tail -n 10)
-        # Rebuild output (simpler than surgical replacement)
-        output="## Post-Compaction Recovery
-Session: $sessionId | Window: $windowNum | CWD: $cwd
-Branch: $gitBranch
-"
-        if [ -n "$specOutput" ]; then
-            output+="
-### Active Specs (READ THESE FIRST)
-$specOutput"
-        fi
-        if [ -n "$jsonlOutput" ]; then
-            output+="
-### Recent Events (last 10, truncated)
-\`\`\`
-$jsonlOutput
-\`\`\`
-"
-        fi
-        if [ -n "$saveOutput" ]; then
-            output+="
-### From Save File
-$saveOutput
-"
-        fi
-        if [ -n "$gitStatus" ]; then
-            output+="
-### Uncommitted ($uncommittedCount files)
-$gitStatus
-"
-        fi
-        output+="
-### Resume
-Continue from where you left off. Active specs are authoritative - read them first.
-Decisions in spec tables are settled - do not re-debate.
-If this context seems incomplete, run /context-resume for full manual recovery.
-"
-    fi
-fi
-
-# Truncation pass 2: drop save file section if still over
-charCount=${#output}
-if [ "$charCount" -gt 9500 ]; then
-    saveOutput=""
-    # Rebuild without save section
-    output="## Post-Compaction Recovery
-Session: $sessionId | Window: $windowNum | CWD: $cwd
-Branch: $gitBranch
-"
-    if [ -n "$specOutput" ]; then
-        output+="
-### Active Specs (READ THESE FIRST)
-$specOutput"
-    fi
-    if [ -n "$jsonlOutput" ]; then
-        output+="
-### Recent Events (truncated)
-\`\`\`
-$jsonlOutput
-\`\`\`
-"
-    fi
-    if [ -n "$gitStatus" ]; then
-        output+="
-### Uncommitted ($uncommittedCount files)
-$gitStatus
-"
-    fi
-    output+="
-### Resume
-Continue from where you left off. Active specs are authoritative - read them first.
-Decisions in spec tables are settled - do not re-debate.
-If this context seems incomplete, run /context-resume for full manual recovery.
-Save files: skill=${skillSaveFile:-none} hook=${hookSaveFile:-none} (read manually if needed)
-"
-fi
-
-# --- Read-gate enforcement notice (added AFTER truncation so it is never dropped) ---
-# Recovery context lands only when it is compelling and enforced. The block above is
-# compelling; this gate makes the first consequential action wait until the save is opened.
-if [ -n "$sid" ] && { [ -f "$skillSaveFile" ] || [ -f "$hookSaveFile" ]; }; then
-    output+="
-### >> READ YOUR SESSION SAVE BEFORE ANY NON-READ TOOL (enforced this turn)
-A PreToolUse read-gate blocks Edit / Write / Bash / dispatch tools until you Read the save below since this compaction; read-only tools (Read / Grep / Glob) stay open, reading the save clears the gate, and it self-expires after 30 min. Open it now:"
-    [ -f "$skillSaveFile" ] && output+="
-  Read $skillSaveFile"
-    [ -f "$hookSaveFile" ] && output+="
-  Read $hookSaveFile"
-    output+="
-"
-fi
+# Output stays small by construction: pointers, 10 one-line events, 15 status lines.
+# (The v2 char-budget trim was a no-op — it replaced the 10-event tail with the same
+# 10 events — and was removed with the embedding it guarded against.)
 
 [ -n "$output" ] && printf '%s' "$output" | bash "$STRATA_HOME/hooks/lib-ledger.sh" session-post-compaction-restore "$sessionId" >/dev/null 2>&1 || true
 printf '%s' "$output"

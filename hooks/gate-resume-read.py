@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Read-gate body — invoked by gate-resume-read.sh ONLY when a post-compaction
-sentinel exists for this session. Blocks consequential tools until the
-session-specific context save has been Read *since* the compaction.
+sentinel exists for this session. Blocks consequential tools until EVERY
+session save listed in the sentinel has been Read *since* the compaction.
 
-Recovery context lands only when it is compelling and enforced.
-session-post-compaction-restore.sh provides the "read these first" map; this gate
-makes the first consequential action wait until the model actually opened it.
+Generalizes the router thesis: injected recovery context lands only if it is
+both compelling AND enforced. session-post-compaction-restore.sh injects the
+"read these first" map (compelling); this gate makes the first consequential
+action wait until the model actually opened it (enforced).
 
 Contract (matches the repo's PreToolUse deny convention):
   - allow  -> exit 0 (silent)
@@ -46,12 +47,12 @@ def block(saves) -> NoReturn:
         "spec, the handoff, and the exact files + line ranges to open next. "
         "Open it now:\n"
         f"{reads}\n"
-        "Then open the files its `## Read On Resume` / `>> READ THESE FIRST` "
-        "block lists. This gate clears itself automatically once you've Read the "
-        "save; read-only tools (Read/Grep/Glob) stay open, and it self-expires "
-        "after 30 minutes regardless."
+        "Then open the files its `## Read On Resume` / `## Active Specs` "
+        "block lists. This gate clears itself automatically once every listed "
+        "save is Read; read-only tools (Read/Grep/Glob) stay open, and it "
+        "self-expires after 30 minutes regardless."
     )
-    print(reason, file=sys.stderr)
+    print(json.dumps({"result": "block", "reason": reason}))
     sys.exit(2)
 
 
@@ -64,16 +65,17 @@ def parse_ts(s):
         return None
 
 
-def save_read_since(tx, saves, since):
-    """True if the transcript shows a Read tool_use of one of `saves` with a
-    timestamp at/after the compaction boundary. Unparseable-timestamp entries do
-    NOT count (a pre-compaction read must not satisfy the gate)."""
+def saves_read_since(tx, saves, since):
+    """Return the subset of `saves` the transcript shows as Read (tool_use) with
+    a timestamp at/after the compaction boundary. Unparseable-timestamp entries
+    do NOT count (a pre-compaction read must not satisfy the gate)."""
+    read = set()
     if not (isinstance(tx, str) and tx and os.path.exists(tx)):
-        return False
+        return read
     try:
         lines = open(tx, encoding="utf-8", errors="replace").read().splitlines()[-TAIL:]
     except Exception:
-        return False
+        return read
     # require the Read strictly at/after the sentinel creation (compaction boundary).
     # No negative skew: filesystem mtime and transcript timestamps share one machine
     # clock, so a tolerance would only let a pre-compaction read clear the gate.
@@ -97,10 +99,11 @@ def save_read_since(tx, saves, since):
                 isinstance(it, dict)
                 and it.get("type") == "tool_use"
                 and it.get("name") == "Read"
-                and ((it.get("input") or {}).get("file_path", "") in saves)
             ):
-                return True
-    return False
+                fp = (it.get("input") or {}).get("file_path", "")
+                if fp in saves:
+                    read.add(fp)
+    return read
 
 
 def main():
@@ -136,14 +139,15 @@ def main():
     if not saves:
         allow()
 
-    if save_read_since(tx, saves, mtime):
+    remaining = saves - saves_read_since(tx, saves, mtime)
+    if not remaining:
         try:
-            os.remove(sentinel)  # satisfied: clear so steady state resumes
+            os.remove(sentinel)  # every listed save read: clear so steady state resumes
         except Exception:
             pass
         allow()
 
-    block(saves)
+    block(remaining)
 
 
 if __name__ == "__main__":

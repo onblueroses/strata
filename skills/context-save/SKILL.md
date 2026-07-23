@@ -1,170 +1,59 @@
 ---
 name: context-save
-version: 3.0.0
-description: |
-  Pre-compaction context preservation. Saves session state to files including spec file progress.
-  Manual: PreCompact hook handles basic saves automatically. Invoke /context-save for thorough manual save at milestones.
+version: 8.0.0
+description: "Pre-compaction session-state save, pointer-first: capture the live loop that dies with the context window (In-Flight, decisions, next actions, last outputs) and point at everything that lives on disk (specs, canonical docs, entity KB). Manual: invoke /context-save at milestones or before manual compaction."
 allowed-tools:
   - Read
   - Write
   - Edit
   - Bash
   - Glob
+  - Grep
 ---
 
 # Context Save
 
-Save current session state before compaction or at a milestone.
+Save this session's live state as a brief for the next instance, so it resumes the work without asking a clarifying question and without re-trying dead ends.
 
-**Guard:** Save files are session-specific: `$STATE_DIR/auto-context-save-{session-id}.md` (session ID = 8-char suffix of daily note filename). Read your session's existing save file first. If it has more detail than what you're about to write (e.g., from a previous manual save this session), merge: keep the more detailed Goal and Critical Context, union the Decisions and Key Files tables, update Status checkboxes to current state.
+**Outcome:**
+- Goal: the post-compaction model inherits the live loop (current hypothesis, last result, next move, ruled-out paths) and a map of where everything else lives.
+- Success means: every Core and Bridge block filled, `>> Current Step` updated on disk for owned specs, no `[placeholder]` left.
+- Stop when: the Self-Check passes.
 
-**Save coordination:** Write the semantic save only to `$STATE_DIR/auto-context-save-{session-id}.md`. The PreCompact hook exclusively owns `$STATE_DIR/auto-context-save-{session-id}-hook.md` and its per-window copies, which hold fresh mechanical state (Git/Specs/Daily Notes). Both files survive and `/context-resume` reads them together. Keep the `## Goal`, `## Decisions`, and `## Critical Context` headings byte-intact because the post-compaction restore extracts them by name.
+**Capture vs point.** Compaction destroys only what exists solely in the context window; disk survives untouched. Capture verbatim: the in-flight loop, session decisions with reasoning, last run outputs, anything not yet written anywhere else. Point by path: specs, canonical docs (THESIS.md, README.md, CLAUDE.md), entity summary.md/items.json, git state. The pipeline overview lives at `$STRATA_HOME/reference/context-continuity.md`.
 
-When remaining context is scarce, persist in recoverability order: (1) update the active spec's `>> Current Step`, (2) append new JSONL semantic events, (3) merge Goal, Next Actions, and Critical Context into the semantic save, then (4) fill the remaining tables. The hook independently preserves fresh mechanical state.
+**Division of labor.** The PreCompact hook (`hooks/context-pre-compaction-save.sh`) automatically writes `auto-context-save-{session-id}-hook.md`: the mechanical snapshot (git state, owned specs' `>> Current Step`, daily-note summaries) plus the Frame map (canonical doc paths, entity paths). The harness natively reloads the cwd CLAUDE.md chain and writes its own compaction summary. This skill owns the semantic layer nothing else records: North Star + Station framing, In-Flight, Decisions, Read On Resume, Last Run Outputs.
 
-**Avoid these - they cause real problems:**
-- **Don't overwrite with less detail** - a previous manual save this session may have richer context than the current state. Merging preserves information; overwriting destroys it.
-- **Don't list every file changed** - after compaction, the model reads this file. A 50-file list wastes tokens and obscures what matters. Summarize by area (e.g., "12 files in src/components/") if >10 files.
-- **Don't include sensitive data** - save files are plaintext in the repo. Passwords, API keys, and tokens in the save file are a security leak.
-- **Don't skip Next Actions** - this section is the primary driver for post-compaction resumption. Without it, the model has to re-derive what to do next, which wastes time and risks going in a different direction.
+**Guard — merge, don't overwrite.** The save lives at `$STATE_DIR/auto-context-save-{session-id}.md` (session ID = 8-char suffix of the daily-note filename). Read your session's existing save first; if it is richer than what you're about to write, merge: keep the fuller Goal/Critical Context, union Decisions/Key Files, refresh Status/In-Flight/Last Outputs to now.
 
-## Step 1: Gather State
+**Scope vs `/handoff`.** /context-save survives THIS session's own compaction. To hand a *different* next task to a *fresh* session, use `/handoff` (writes `$STATE_DIR/handoffs/`).
 
-<details>
-<summary>Step 1: Gather State</summary>
+**Keep sensitive data out:** saves are plaintext in the repo; no keys, tokens, passwords.
 
-### Session Info
-- What was the goal this session?
-- What decisions were made and why?
-- What files were created/modified?
-- What's the current task status?
+## Step 1: Gather state
 
-### Classify Session Type (pick 1-2)
+1. **Touched repos.** For each: path, branch, entity mapping (`$KB_DIR/projects/{name}` or `$KB_DIR/areas/{name}`), and the canonical docs worth naming (THESIS/STRATEGY/ARCHITECTURE/README class, root + `docs/ notes/ .claude/`). Record paths, one line on why each matters; quote at most the single load-bearing claim.
+2. **Owned specs only (sibling isolation).** The owner runs multiple parallel sessions; a sibling's spec contaminates the resume. For each spec at `$SPECS_DIR/` with header `Status: in-progress` or `planning`: include it only if its `Session:` field matches THIS session, is absent, or the spec was edited here (the same filter the hooks apply). Update each included spec's `>> Current Step` on disk NOW — the spec is the durable pointer; the save only quotes it.
+3. **Live loop.** The current hypothesis/approach, last attempt, result, next move, ruled-out paths; the verbatim load-bearing 20-50 lines of the last test/command output; pending background work (agents, dmux panes, codex sessions with their resume ids).
 
-| Type | Signal |
-|------|--------|
-| **debugging** | Hunting a bug, running tests repeatedly, narrowing a hypothesis |
-| **implementing** | Working through a spec, building a feature, refactoring |
-| **exploring** | Open-ended research, surveying code, weighing approaches |
-| **writing** | Drafting prose where voice or register matters across revisions |
-| **experimenting** | Comparing data or ML runs across configurations |
-| **dispatching** | Orchestrating lanes, workers, or panes with results pending |
+## Step 2: Write the save
 
-### Git State
-```bash
-git branch --show-current 2>/dev/null || echo "not a git repo"
-git status --short 2>/dev/null | head -20
-git log --oneline -5 2>/dev/null
-git diff --stat 2>/dev/null | tail -5
-```
+Copy the block shapes from `references/save-template.md` and fill every field. Section names are a parse contract with `/context-resume` and the restore/gate hooks — keep them exact; `## Read On Resume` is the load-bearing one.
 
-### Background Tasks
-Check for running agents or background shells.
+Where the work has live state the template doesn't name (experiment configs mid-run, dispatched-agent status, draft-in-progress voice notes), add it under `## Session-Specific State` in whatever shape fits: capture what would be lost, skip what a genre template would pad.
 
-### Spec Files
-Check for active implementation specs:
-```bash
-ls $SPECS_DIR/*.md 2>/dev/null
-```
-If found, read them. For each spec with `Status: in-progress`:
-- Record the file path
-- Extract the `>> Current Step` section (this is the compaction lifeline)
-- Count completed vs total steps
-- Before saving, update the spec's `>> Current Step` to reflect current state
+**Priority Mode (budget near-exhausted).** Write in recoverability order and stop where the budget ends: (1) spec `>> Current Step` on disk, (2) In-Flight + Next Actions + Read On Resume, (3) remaining Core blocks, (4) Frame pointers. The hook independently guarantees the mechanical snapshot; the semantic layer exists nowhere else.
 
-</details>
-
-## Step 2: Write Save File
-
-<details>
-<summary>Step 2: Write Save File</summary>
-
-Create/update `$STATE_DIR/auto-context-save-{session-id}.md`:
-
-The save has two layers in this order: **Core** (always) and **Conditional** (one or two blocks matching the classified session type).
-
-### Core blocks (always include)
-
-```markdown
-# Context Save - [DATE TIME]
-
-## Goal
-[Primary objective this session]
-
-## Status
-- [x] Completed items
-- [ ] In progress
-- [ ] Pending
-
-## Decisions
-| Decision | Reasoning |
-|----------|-----------|
-| [choice] | [why] |
-
-## Key Files Modified
-| Path | What changed |
-|------|-------------|
-| [path] | [change] |
-
-## Git State
-- Branch: [name]
-- Uncommitted: [count] files
-- Recent commits: [last 5 one-liners]
-
-## Spec Files
-| Path | Progress |
-|------|----------|
-| [spec path] | [X/Y complete] |
-
-## Next Actions
-1. [First priority]
-2. [Second]
-3. [Third]
-
-## Critical Context
-[Non-obvious things that would be bad to forget]
-```
-
-### Conditional blocks
-
-Read `references/session-type-blocks.md`, copy one or two templates matching the classified session type after the Core blocks, and fill every field.
-
-### Append JSONL Semantic Events
-
-After writing the markdown save, append semantic events to `$STATE_DIR/session-events-{session-id}.jsonl`. These capture agent-level understanding that the PostToolUse hook cannot detect:
-
-```bash
-# Session ID = 8-char suffix from daily note filename
-JSONL="$STATE_DIR/session-events-{session-id}.jsonl"
-```
-
-Append one JSON line per event using Bash `echo >>`:
-- **Goal**: `{"type":"goal","ts":"ISO8601","sid":"...","text":"[session objective]"}`
-- **Each decision**: `{"type":"decision","ts":"ISO8601","sid":"...","what":"[choice]","why":"[reasoning]"}`
-- **Milestone**: `{"type":"milestone","ts":"ISO8601","sid":"...","text":"[status summary, e.g. Phase 1 complete, 3/7 steps done]"}`
-
-Only append events that are NEW since the last /context-save. Check the existing JSONL for duplicate goals/decisions before appending.
-
-### Quality Self-Check
-
-After writing the save file, verify:
-1. **Next Actions non-empty** - does it have at least 1 concrete action?
-2. **Goal is specific** - does it describe the actual objective, not just "working on X"?
-3. **Critical Context captured** - any non-obvious state that would be lost in compaction?
-4. **Spec files listed** - if any exist, are they referenced with progress counts?
-5. **JSONL events appended** - did you write goal + decisions + milestone to the event log?
-6. **Conditional blocks match session type** - are one or two applicable templates filled with current state?
-
-</details>
+**Self-Check** (fix any miss before finishing): Session Goal specific and distinct from the repo's north star; Read On Resume lists 3-7 paths beyond the save itself (line ranges where they materially narrow a large file); In-Flight has all five sub-fields (an empty "Ruled out" is suspicious); Last Run Outputs verbatim, not paraphrase; Decisions carry the *because*; owned specs' `>> Current Step` updated on disk and quoted; Frame pointers name paths, not copies; no `[placeholder]` left.
 
 ## Step 3: Output
 
 ```
 CONTEXT SAVED to $STATE_DIR/auto-context-save-{session-id}.md
-Git: [branch] - [uncommitted count] files
+Repos: [touched repos]
+Specs: [owned specs, >> Current Step updated on disk]
+Git: [branch], [uncommitted count] uncommitted
 Next: [top priority action]
 
 Ready to compact.
 ```
-
-Keep it brief.
