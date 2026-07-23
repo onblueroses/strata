@@ -103,25 +103,30 @@ dmux roles, protocol, scratchpad rules: `reference/dmux-dispatch-protocol.md`.
 
 ## Prompt Authoring
 
-Two layers. Apply both whenever writing a prompt, dispatch brief, SKILL.md body, slash command, tool description, or eval rubric. Skill: `/directional-prompting`.
+Three layers, each earned by the task. Apply them whenever writing a prompt, dispatch brief, SKILL.md body, slash command, tool description, or eval rubric. Skill: `/directional-prompting`.
 
-**Layer 1 — Outcome block.** Open the prompt with the destination:
+**Layer 1 — Outcome contract.** Open the prompt with the destination:
 
 ```
 Goal: <one sentence>
 Success means:
   - <checkable output element>
-  - <checkable output element>
+  - <constraint: format, schema, length>
+Does not count:
+  - <the plausible near-miss>
 Stop when: <explicit stopping condition>
+Verify by: <the check the model runs on its own work before returning>
 ```
 
-Stopping condition is load-bearing; reasoning-heavy models will refine past usefulness without one. Replaces the `--timeout` hack with a self-termination criterion the model actually reasons about.
+`Goal` / `Success means` / `Stop when` are the floor; add `Does not count` and `Verify by` for anything hard, ambiguous, or agentic. The stopping condition is load-bearing; reasoning-heavy models refine past usefulness without one. The does-not-count list closes the loopholes a model walks through while satisfying the letter of the criteria: a plan instead of working code, a mocked test instead of a real call, a status report instead of an artifact.
 
-**Layer 2 — Directional body.** Every sentence leads with the positive verb of the correct action: trace, build, use, read, return, ask, check. Describe the destination so clearly the wrong behavior has no room to exist. "Return JSON matching schema X" beats "do not return prose".
+**Layer 2 — Directional body.** Every sentence leads with the positive verb of the correct action: trace, build, use, read, return, ask, check. Describe the destination so clearly the wrong behavior has no room to exist. "Return JSON matching schema X" beats "do not return prose". Keep instructions contradiction-free: conflicting rules burn reasoning tokens and resolve differently every run, so state the hierarchy where real tension exists.
 
-**Audit pass.** Scan the draft for `don't | do not | never | avoid | refrain | instead of | rather than | not allowed | prohibited | forbidden | won't | shouldn't` and rewrite each as the positive replacement. Negation survives only in four cases: hard safety boundaries, near-identical-path disambiguation, acceptable space too large to enumerate, specific banned items where the positive form is genuinely ambiguous.
+**Layer 3 — Loop engineering.** For prompts that drive a tool loop, state the persistence policy: continue through reversible in-scope decisions, stop and surface when an action is irreversible, destructive, or outside granted authority. Give the loop an exit test; re-reading the same files without new evidence means the route is exhausted, so switch routes. Verify adversarially in a pass separate from generation. Open-ended search adds route diversification and a blocked-route criterion (an approach is blocked when it only reduces the problem to another of comparable difficulty). Returns carry evidence: the diff, the test output, the counterexample, the exact remaining gap.
 
-**Absolute rules.** Reserve `ALWAYS` / `NEVER` / `MUST` / `MANDATORY` / `IMPORTANT` for true invariants. Demote decorative absolutes to plain prose so the loud signal stays loud where it matters.
+**Audit pass.** Four scans over the draft's normative instructions. Negation: search `don't | do not | never | avoid | refrain | instead of | rather than | not allowed | prohibited | forbidden | won't | shouldn't` and rewrite each as the positive replacement where the positive is equally precise; negation survives for hard safety boundaries, near-identical-path disambiguation, an acceptable space too large to enumerate, and named bans narrower than any positive paraphrase. Contradiction: any two rules that can collide in one situation get an explicit hierarchy, or one gets cut. Emphasis: every absolute marks a true invariant. No-op: delete each sentence the model already obeys by default.
+
+**Absolute rules.** Reserve `ALWAYS` / `NEVER` / `MUST` / `MANDATORY` / `IMPORTANT` for true invariants. Current models read emphasis literally, so an over-emphasized instruction overtriggers and fires in situations it was never meant for.
 
 **Why this matters more in orchestrator mode.** Sub-model dispatches and dmux `.task-brief.md` field-agent briefs get re-read on every turn or dispatched task. A vague outcome lets the agent's notion of "done" drift turn-by-turn. Outcome + direction together re-load the correct frame on every read.
 
