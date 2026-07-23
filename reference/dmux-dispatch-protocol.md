@@ -172,7 +172,7 @@ siblings:
 [Embedded: relevant constraint/quality sections from project CLAUDE.md]
 ```
 
-**Design principles**: Outcome on top (Goal / Success means / Stop when), directional body underneath. Prescriptive about WHAT, descriptive about WHY, silent about HOW. Every sentence in Objective / Acceptance Criteria leads with the positive verb of the correct action. Negation survives only in Constraints, and only in the four legitimate cases. See global CLAUDE.md `## Prompt Authoring` and `/directional-prompting` skill.
+**Design principles**: Outcome on top (Goal / Success means / Stop when), directional body underneath. Prescriptive about WHAT, descriptive about WHY, silent about HOW. Every sentence in Objective / Acceptance Criteria leads with the positive verb of the correct action. Negation survives only in Constraints, and only in the four legitimate cases. A brief drives an autonomous loop, so name the persistence policy and the exit test in Constraints: work through reversible in-scope decisions, surface before anything irreversible or outside granted authority, and treat a route that yields no new evidence as exhausted. See global CLAUDE.md `## Prompt Authoring` and `/directional-prompting` skill.
 
 Contains things the child CAN'T discover (entity context, sibling coordination). Points to things it CAN discover (key files, not code snippets).
 
