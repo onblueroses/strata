@@ -54,6 +54,7 @@ cli/target/
 # already ignored above); these patterns are belt-and-suspenders if telemetry writes elsewhere.
 telemetry/events.jsonl
 telemetry/session-metrics.jsonl
+telemetry/context-ledger.jsonl
 telemetry/telemetry-errors.jsonl
 telemetry/*-health.jsonl
 telemetry/archive/

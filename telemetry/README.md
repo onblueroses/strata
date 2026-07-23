@@ -39,7 +39,8 @@ TEL_DIR     = os.environ.get("STRATA_TELEMETRY_DIR") or f"{STATE_DIR}/telemetry"
 ```
 
 - **Live event sink**: `$TEL_DIR/events.jsonl` (enveloped JSONL). The per-session token rollup,
-  when an install produces one, sits beside it at `$TEL_DIR/session-metrics.jsonl`.
+  when an install produces one, sits beside it at `$TEL_DIR/session-metrics.jsonl`; the offline
+  context ledger sits at `$TEL_DIR/context-ledger.jsonl`.
 - **Runtime data stays under `$STATE_DIR`**, never the tracked install tree. The scripts here ship;
   the live event/metric data is gitignored.
 - **Tracked template**: the rate table `$STRATA_HOME/telemetry/model_rates.json` ships alongside the
@@ -145,6 +146,38 @@ An optional SessionEnd distiller can produce it, but no such distiller is shippe
 file, the delegated-lane channel still reports from `events.jsonl` and the main/subagent channels
 read as zero.
 
+### `context_ledger.py`
+
+Offline context-composition ledger for Claude Code transcript JSONL under the generic
+`~/.claude/projects` transcript root. It treats the first distinct assistant request after each
+`compact_boundary` as authoritative: prompt fill is the sum of that record's input, cache-creation,
+and cache-read usage. Named buckets such as durable skill/tool listings, nested `CLAUDE.md`
+content, hook output, preserved conversation, tool calls, and tool results are calibrated from
+payload characters against `compactMetadata.postTokens`; `system_and_tools` remains the signed
+authoritative residual rather than a claimed direct system-prompt measurement.
+
+Each measured boundary records absolute and window-normalized fill, the actual hook set observed
+around compaction, refill velocity across later assistant requests, and per-source refill
+attribution. Sessions without compaction contribute a first-request session-floor measurement.
+Boundary timestamps are joined to git history for the discovered compaction-stack files under
+`$STRATA_CONFIG_REPO` (default `$STRATA_HOME`), so reports keep configuration regimes separate. A
+missing or non-git config checkout yields an explicit `unknown` regime instead of aborting.
+
+- `python3 context_ledger.py --backfill` scans all top-level transcripts, fits the corpus
+  calibration, atomically replaces `$TEL_DIR/context-ledger.jsonl`, and idempotently mirrors new
+  `context_composition` rows into `$TEL_DIR/events.jsonl` under the shared telemetry lock. It reads
+  transcripts only and never modifies them.
+- `python3 context_ledger.py --session UUID_OR_PATH` analyzes one transcript to stdout. It uses a
+  fitted calibration from that transcript when possible and otherwise may reuse an existing
+  backfill calibration; it does not update the ledger or event sink.
+- `python3 context_ledger.py --report` reads the collected ledger and renders the selected config
+  regime, earlier baselines, bucket deltas, refill, calibration diagnostics, cache-prefix
+  stability, and the session floor. `--json` emits the same report as JSON; `--regime COMMIT`
+  selects a historical regime.
+
+All runtime artifacts resolve through the four-anchor contract. `STATE_DIR` redirects the default
+sink, while `STRATA_TELEMETRY_DIR` takes precedence for the ledger, event stream, and lock.
+
 ### `model_rates.json`
 
 The correctable $/Mtok rate table — the only place prices live. Keys are the concrete model ids your
@@ -195,6 +228,15 @@ the new `kb_query` rows and folds which cards were returned into
 not an input to `telemetry/digest.py`. The hook is O(new-tail), bounded by a 20s wrapper timeout,
 and fail-open.
 
+## The `context_composition` event (context ledger)
+
+An explicit `context_ledger.py --backfill` mirrors one event for every boundary and session ledger
+row into `$TEL_DIR/events.jsonl`. The normal envelope uses `source: "context_ledger"`; payloads carry
+`row_type: "boundary"` or `"session"`, schema version, measurements, attribution, calibration, and
+a stable `ledger_id`. Existing IDs are read before append, so rerunning a backfill does not
+duplicate the same schema entity in the unified stream. This event is produced on demand rather
+than by a hot-path hook and does not require `STRATA_TELEMETRY=1`.
+
 ## Adding a new event kind
 
 Any hook appends by calling `telemetry-emit.sh <kind> <sid> '<json-payload>'`. Keep payload keys
@@ -211,6 +253,8 @@ python3 unify.py --out PATH         # write to PATH (refused if tracked and not 
 python3 digest.py                   # public delegation/friction/serial-wait digest
 python3 cost_rollup.py <sid>        # per-channel true-cost ledger for one session
 python3 cost_rollup.py --aggregate  # lifetime notional/real totals across sessions
+python3 context_ledger.py --backfill # rebuild context-composition ledger + unified events
+python3 context_ledger.py --report   # report the collected context-composition ledger
 bash    rotate_telemetry.sh         # rotate sinks over threshold (call from a SessionEnd hook)
 ```
 
