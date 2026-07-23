@@ -9,9 +9,11 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
+from typing import Any, Mapping
 import unittest
 
 
@@ -76,6 +78,129 @@ with patched_env(
 
 SID = "11111111-1111-4111-8111-111111111111"
 TS = "2026-07-23T10:00:00Z"
+REAL_VERIFICATION_SAMPLES = (
+    (
+        "095a4afb-7630-43d3-b7b8-45444ff49832",
+        "a0cc30a5-98cf-4e4f-a67b-4b3d1cb4768b",
+    ),
+    (
+        "9bd155e1-a338-48b6-99a2-134cb5256673",
+        "26ad35c4-87ad-4ae6-a8dc-4cdcbbcf4950",
+    ),
+    (
+        "0e8cf2b5-9c4b-4c46-b4df-c5a0178cb221",
+        "69c8bd53-798d-4b6d-938e-7d4b63648820",
+    ),
+)
+ATTRIBUTION_BUCKETS = ("compaction_summary", "skill_listing")
+ATTRIBUTION_TOKEN_TOLERANCE = 1
+MIN_NAMED_SHARE = 0.30
+LIVE_LEDGER_PATH = Path.home() / ".claude" / "telemetry" / "context-ledger.jsonl"
+
+
+def _independent_textual_chars(value: Any) -> int:
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, list):
+        return sum(_independent_textual_chars(item) for item in value)
+    if isinstance(value, dict):
+        return len(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
+    return 0
+
+
+def _independent_block_chars(value: Any) -> int:
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, list):
+        return sum(_independent_block_chars(item) for item in value)
+    if not isinstance(value, Mapping):
+        return 0
+    block_type = value.get("type")
+    if block_type in ("text", "thinking"):
+        key = "thinking" if block_type == "thinking" else "text"
+        return _independent_textual_chars(value.get(key))
+    if block_type == "tool_result":
+        return _independent_block_chars(value.get("content"))
+    if "content" in value:
+        return _independent_block_chars(value.get("content"))
+    return _independent_textual_chars(value)
+
+
+def _first_positive_assistant_index(rows: tuple[Any, ...], boundary_index: int) -> int:
+    for index in range(boundary_index + 1, len(rows)):
+        value = rows[index].value
+        if value.get("subtype") == "compact_boundary":
+            break
+        if value.get("type") != "assistant":
+            continue
+        message = value.get("message")
+        if not isinstance(message, Mapping):
+            continue
+        usage = message.get("usage")
+        if not isinstance(usage, Mapping):
+            continue
+        total = sum(
+            int(usage.get(field, 0) or 0)
+            for field in (
+                "input_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+            )
+        )
+        if total > 0:
+            return index
+    raise AssertionError("verification boundary has no post-boundary assistant usage")
+
+
+def _independent_bucket_chars(
+    rows: tuple[Any, ...],
+    boundary_index: int,
+    first_assistant_index: int,
+) -> dict[str, int]:
+    summary_chars = 0
+    for candidate in rows[boundary_index + 1 : first_assistant_index]:
+        value = candidate.value
+        if value.get("type") != "user" or not value.get("isCompactSummary"):
+            continue
+        message = value.get("message")
+        if isinstance(message, Mapping):
+            summary_chars += _independent_block_chars(message.get("content"))
+
+    skill_listing: Any = None
+    for candidate in rows[:first_assistant_index]:
+        value = candidate.value
+        if value.get("type") != "attachment":
+            continue
+        attachment = value.get("attachment")
+        if (
+            isinstance(attachment, Mapping)
+            and attachment.get("type") == "skill_listing"
+        ):
+            skill_listing = attachment.get("content")
+    return {
+        "compaction_summary": summary_chars,
+        "skill_listing": _independent_textual_chars(skill_listing),
+    }
+
+
+def _published_ratio(calibration: Mapping[str, Any], bucket: str) -> float:
+    class_name = "prose" if bucket == "skill_listing" else "structured"
+    classes = calibration.get("classes")
+    assert isinstance(classes, Mapping)
+    details = classes.get(class_name)
+    assert isinstance(details, Mapping)
+    if details.get("reliable") is True:
+        return float(details["chars_per_token"])
+    pooled = calibration.get("pooled")
+    assert isinstance(pooled, Mapping)
+    return float(pooled["chars_per_token"])
 
 
 def row(line_no: int, **value: object) -> ledger.TranscriptRow:
@@ -684,6 +809,124 @@ class ToleranceTests(unittest.TestCase):
                     "source": ledger.SOURCE,
                 },
             )
+
+
+class RealCorpusReconciliationTests(unittest.TestCase):
+    """Read the real corpus, but keep all Strata-controlled paths and writes temporary."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not LIVE_LEDGER_PATH.is_file():
+            raise unittest.SkipTest("local context-ledger backfill is unavailable")
+        cls._runtime = tempfile.TemporaryDirectory()
+        root = Path(cls._runtime.name)
+        install = root / "install"
+        state = root / "state"
+        telemetry = root / "telemetry"
+        config_repo = root / "config"
+        config_repo.mkdir(parents=True)
+        cls.module = load_context_ledger(
+            install,
+            state_dir=state,
+            telemetry_dir=telemetry,
+            config_repo=config_repo,
+        )
+        transcript_root = root / "transcripts"
+        setattr(cls.module, "TRANSCRIPT_ROOT", transcript_root)
+
+        source_rows, _ = cls.module.load_ledger(LIVE_LEDGER_PATH)
+        by_identity = {
+            (item.get("sid"), item.get("boundary_uuid")): item
+            for item in source_rows
+            if item.get("row_type") == "boundary"
+        }
+        if not all(sample in by_identity for sample in REAL_VERIFICATION_SAMPLES):
+            raise unittest.SkipTest(
+                "run the local context-ledger backfill before integration check"
+            )
+
+        cls.verification: list[tuple[dict[str, Any], Any, int, int]] = []
+        for identity in REAL_VERIFICATION_SAMPLES:
+            published = by_identity[identity]
+            source_transcript = Path(published["transcript_path"])
+            destination = (
+                transcript_root / source_transcript.parent.name / source_transcript.name
+            )
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_transcript, destination)
+            parsed = cls.module.read_transcript(destination)
+            boundary_index = next(
+                index
+                for index, candidate in enumerate(parsed.rows)
+                if candidate.line_no == published["boundary_line"]
+                and candidate.value.get("uuid") == published["boundary_uuid"]
+            )
+            reanalyzed, _ = cls.module.analyze_transcript(
+                parsed, published["calibration"]
+            )
+            item = next(
+                candidate
+                for candidate in reanalyzed
+                if candidate["boundary_line"] == published["boundary_line"]
+                and candidate["boundary_uuid"] == published["boundary_uuid"]
+            )
+            first_assistant_index = _first_positive_assistant_index(
+                parsed.rows, boundary_index
+            )
+            cls.verification.append(
+                (item, parsed, boundary_index, first_assistant_index)
+            )
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._runtime.cleanup()
+
+    def test_residual_identity_holds(self) -> None:
+        # This asserts only the definition of the residual. It cannot detect a
+        # bucketing or calibration error because system_and_tools absorbs it.
+        for item, _, _, _ in self.verification:
+            with self.subTest(sid=item["sid"], boundary_uuid=item["boundary_uuid"]):
+                self.assertEqual(
+                    sum(item["buckets"].values()), item["post_prompt_tokens"]
+                )
+
+    def test_named_buckets_match_independent_transcript_walk(self) -> None:
+        for item, parsed, boundary_index, first_index in self.verification:
+            with self.subTest(sid=item["sid"], boundary_uuid=item["boundary_uuid"]):
+                characters = _independent_bucket_chars(
+                    parsed.rows, boundary_index, first_index
+                )
+                for bucket in ATTRIBUTION_BUCKETS:
+                    with self.subTest(bucket=bucket):
+                        self.assertEqual(
+                            characters[bucket],
+                            item["bucket_chars"][bucket],
+                            "independent payload walk disagrees with stored characters",
+                        )
+                        expected = round(
+                            characters[bucket]
+                            / _published_ratio(item["calibration"], bucket)
+                        )
+                        self.assertLessEqual(
+                            abs(item["buckets"][bucket] - expected),
+                            ATTRIBUTION_TOKEN_TOLERANCE,
+                            "stored attribution does not match independently routed ratio",
+                        )
+
+    def test_named_buckets_cover_at_least_thirty_percent(self) -> None:
+        for item, _, _, _ in self.verification:
+            with self.subTest(sid=item["sid"], boundary_uuid=item["boundary_uuid"]):
+                named = sum(
+                    tokens
+                    for bucket, tokens in item["buckets"].items()
+                    if bucket != "system_and_tools"
+                )
+                share = named / item["post_prompt_tokens"]
+                self.assertGreaterEqual(
+                    share,
+                    MIN_NAMED_SHARE,
+                    "attribution regressed into the residual",
+                )
 
 
 class RuntimePathTests(unittest.TestCase):
