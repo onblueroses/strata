@@ -54,6 +54,9 @@ SOURCE = "context_ledger"
 SCHEMA = 3
 BASE_CONTEXT_WINDOW = 200_000
 EXTENDED_CONTEXT_WINDOW = 1_000_000
+REGIME_HISTORY_BASIS = (
+    "git_log_of_active_head_ancestry_for_discovered_compaction_stack_paths"
+)
 # A strata install keeps the versioned Claude Code configuration in STRATA_HOME.
 # An alternate config checkout can be supplied without moving runtime state.
 CONFIG_REPO = Path(os.environ.get("STRATA_CONFIG_REPO") or STRATA_HOME)
@@ -86,8 +89,15 @@ class TranscriptRow:
 class Transcript:
     path: Path
     rows: tuple[TranscriptRow, ...]
-    malformed_lines: int
+    malformed_json_lines: int
     non_object_lines: int
+    invalid_encoding_lines: int = 0
+    blank_lines: int = 0
+
+    @property
+    def malformed_lines(self) -> int:
+        """Backward-compatible name for the malformed-JSON counter."""
+        return self.malformed_json_lines
 
 
 @dataclass(frozen=True)
@@ -493,16 +503,22 @@ def boundary_post_rows_buckets(
     buckets: collections.Counter[str] = collections.Counter()
     for row in rows[start:stop]:
         value = row.value
-        if value.get("type") == "attachment":
-            attachment = value.get("attachment")
-            if (
-                isinstance(attachment, Mapping)
-                and attachment.get("type") in DURABLE_ATTACHMENT_TYPES
-            ):
-                continue
+        if is_durable_attachment_row(row):
+            continue
         if value.get("type") in PROMPT_RECORD_TYPES:
             buckets.update(record_buckets(value, tools))
     return buckets
+
+
+def is_durable_attachment_row(row: TranscriptRow) -> bool:
+    value = row.value
+    if value.get("type") != "attachment":
+        return False
+    attachment = value.get("attachment")
+    return (
+        isinstance(attachment, Mapping)
+        and attachment.get("type") in DURABLE_ATTACHMENT_TYPES
+    )
 
 
 def _delta_state(
@@ -584,17 +600,25 @@ def durable_ambient_buckets(
 
 def read_transcript(path: Path) -> Transcript:
     rows: list[TranscriptRow] = []
-    malformed = 0
+    malformed_json = 0
     non_object = 0
+    invalid_encoding = 0
+    blank = 0
     try:
-        with path.open(encoding="utf-8", errors="replace") as handle:
-            for line_no, line in enumerate(handle, 1):
+        with path.open("rb") as handle:
+            for line_no, raw_line in enumerate(handle, 1):
+                try:
+                    line = raw_line.decode("utf-8", errors="strict")
+                except UnicodeDecodeError:
+                    invalid_encoding += 1
+                    continue
                 if not line.strip():
+                    blank += 1
                     continue
                 try:
                     value = json.loads(line)
-                except (json.JSONDecodeError, UnicodeDecodeError, RecursionError):
-                    malformed += 1
+                except (json.JSONDecodeError, RecursionError):
+                    malformed_json += 1
                     continue
                 if not isinstance(value, dict):
                     non_object += 1
@@ -602,7 +626,14 @@ def read_transcript(path: Path) -> Transcript:
                 rows.append(TranscriptRow(line_no, value))
     except OSError:
         raise
-    return Transcript(path, tuple(rows), malformed, non_object)
+    return Transcript(
+        path,
+        tuple(rows),
+        malformed_json,
+        non_object,
+        invalid_encoding,
+        blank,
+    )
 
 
 def session_id(transcript: Transcript) -> str:
@@ -723,6 +754,8 @@ def calibration_samples(transcript: Transcript) -> list[CalibrationSample]:
         preserved, _ = preserved_rows(rows, index, metadata)
         buckets: collections.Counter[str] = collections.Counter()
         for preserved_row in preserved:
+            if is_durable_attachment_row(preserved_row):
+                continue
             buckets.update(record_buckets(preserved_row.value, tools))
         buckets.update(boundary_post_rows_buckets(rows, index + 1, first.index, tools))
         prose = sum(
@@ -796,16 +829,22 @@ def _metric_summary(
 def _calibration_partition(
     samples: Sequence[CalibrationSample],
 ) -> tuple[list[CalibrationSample], list[CalibrationSample], str]:
-    if len(samples) < 10:
-        return list(samples), list(samples), "all_samples_reused_below_10"
+    session_ids = {sample.sid for sample in samples}
+    if len(session_ids) < 10:
+        return list(samples), [], "validation_unavailable_below_10_sessions"
+    heldout_session_ids = {
+        sid
+        for sid in session_ids
+        if int.from_bytes(hashlib.sha256(sid.encode("utf-8")).digest()[:4], "big") % 5
+        == 0
+    }
+    if not heldout_session_ids or heldout_session_ids == session_ids:
+        return list(samples), [], "validation_unavailable_degenerate_session_split"
     fit: list[CalibrationSample] = []
     heldout: list[CalibrationSample] = []
     for sample in samples:
-        digest = hashlib.sha256(sample.key.encode("utf-8")).digest()
-        (heldout if int.from_bytes(digest[:4], "big") % 5 == 0 else fit).append(sample)
-    if not fit or not heldout:
-        return list(samples), list(samples), "all_samples_reused_degenerate_split"
-    return fit, heldout, "stable_sha256_80_20"
+        (heldout if sample.sid in heldout_session_ids else fit).append(sample)
+    return fit, heldout, "stable_sha256_session_80_20"
 
 
 def fit_calibration(
@@ -881,14 +920,16 @@ def fit_calibration(
         metrics = _metric_summary(actual, predicted)
         heldout_r2 = finite_number(metrics.get("r2"))
         reliable = heldout_r2 is not None and heldout_r2 > 0
+        if not heldout:
+            reliability_state = "validation_unavailable_no_heldout_sessions"
+        elif reliable:
+            reliability_state = "reliable_positive_heldout_r2"
+        else:
+            reliability_state = "unreliable_nonpositive_heldout_r2"
         classes[class_name] = {
             "chars_per_token": 1.0 / class_slope,
             "reliable": reliable,
-            "reliability_state": (
-                "reliable_positive_heldout_r2"
-                if reliable
-                else "unreliable_nonpositive_heldout_r2"
-            ),
+            "reliability_state": reliability_state,
             "attribution_ratio": ("class_fitted" if reliable else "pooled_combined"),
             "samples_fit": sum(getattr(sample, field) > 0 for sample in fit),
             "samples_validation": sum(getattr(sample, field) > 0 for sample in heldout),
@@ -902,27 +943,36 @@ def fit_calibration(
         for sample in samples
         if sample.raw_json_chars > 0 and sample.target_tokens > 0
     ]
+    fit_session_ids = {sample.sid for sample in fit}
+    heldout_session_ids = {sample.sid for sample in heldout}
+    pooled_reliable = (
+        finite_number(pooled_validation.get("r2")) is not None
+        and float(pooled_validation["r2"]) > 0
+    )
     return {
         "state": "fitted",
         "method": "two_feature_through_origin_ols_against_compactMetadata.postTokens",
         "samples_total": len(samples),
         "samples_fit": len(fit),
         "samples_validation": len(heldout),
+        "session_groups_total": len(fit_session_ids | heldout_session_ids),
+        "session_groups_fit": len(fit_session_ids),
+        "session_groups_validation": len(heldout_session_ids),
         "split_policy": split_policy,
         "classes": classes,
         "pooled": {
             "chars_per_token": 1.0 / pooled_slope,
             "samples_fit": len(fit),
             "samples_validation": len(heldout),
-            "reliable": (
-                finite_number(pooled_validation.get("r2")) is not None
-                and float(pooled_validation["r2"]) > 0
-            ),
+            "reliable": pooled_reliable,
             "reliability_state": (
-                "reliable_positive_heldout_r2"
-                if finite_number(pooled_validation.get("r2")) is not None
-                and float(pooled_validation["r2"]) > 0
-                else "unreliable_nonpositive_heldout_r2"
+                "validation_unavailable_no_heldout_sessions"
+                if not heldout
+                else (
+                    "reliable_positive_heldout_r2"
+                    if pooled_reliable
+                    else "unreliable_nonpositive_heldout_r2"
+                )
             ),
             **pooled_validation,
         },
@@ -950,6 +1000,9 @@ def calibration_public(calibration: Mapping[str, Any]) -> dict[str, Any]:
             "samples_total",
             "samples_fit",
             "samples_validation",
+            "session_groups_total",
+            "session_groups_fit",
+            "session_groups_validation",
             "split_policy",
             "classes",
             "pooled",
@@ -995,8 +1048,10 @@ def estimate_and_reconcile(
     if len(ratio_map) < 2:
         return {"system_and_tools": authoritative_tokens}, {
             "raw_estimated_tokens": 0.0,
+            "allocated_named_tokens": 0,
             "reconciliation_scale": None,
-            "estimation_overflow_tokens": 0.0,
+            "estimation_overflow_tokens": 0,
+            "raw_estimation_overflow_tokens": 0.0,
             "calibration_failure": False,
             "downscaled": False,
             "class_estimated_tokens": {},
@@ -1012,18 +1067,22 @@ def estimate_and_reconcile(
     raw_total = sum(raw.values())
     allocated = {key: int(round(value)) for key, value in raw.items()}
     allocated = {key: value for key, value in allocated.items() if value > 0}
-    allocated["system_and_tools"] = authoritative_tokens - sum(allocated.values())
+    allocated_named_total = sum(allocated.values())
+    allocated["system_and_tools"] = authoritative_tokens - allocated_named_total
     class_estimates: dict[str, float] = collections.defaultdict(float)
     for key, value in raw.items():
         class_estimates[bucket_content_class(key)] += value
     bucket_methods = {key: class_methods[bucket_content_class(key)] for key in raw}
     bucket_methods["system_and_tools"] = "authoritative_residual"
-    overflow = max(0.0, raw_total - authoritative_tokens)
+    allocated_overflow = max(0, allocated_named_total - authoritative_tokens)
+    raw_overflow = max(0.0, raw_total - authoritative_tokens)
     return dict(sorted(allocated.items())), {
         "raw_estimated_tokens": raw_total,
+        "allocated_named_tokens": allocated_named_total,
         "reconciliation_scale": 1.0,
-        "estimation_overflow_tokens": overflow,
-        "calibration_failure": overflow > 0,
+        "estimation_overflow_tokens": allocated_overflow,
+        "raw_estimation_overflow_tokens": raw_overflow,
+        "calibration_failure": allocated_overflow > 0,
         "downscaled": False,
         "class_estimated_tokens": dict(sorted(class_estimates.items())),
         "class_attribution_methods": dict(sorted(class_methods.items())),
@@ -1169,7 +1228,7 @@ def load_regime_history(
     repo: Path = CONFIG_REPO,
     paths: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Return chronological git regimes for the discovered compaction stack."""
+    """Return relevant commits reachable from the active configuration HEAD."""
     relevant = list(paths) if paths is not None else configured_compaction_paths()
     if not relevant:
         return []
@@ -1178,7 +1237,7 @@ def load_regime_history(
         "-C",
         str(repo),
         "log",
-        "--all",
+        "HEAD",
         "--format=%H%x09%cI%x09%s",
         "--",
         *relevant,
@@ -1209,6 +1268,10 @@ def load_regime_history(
                 "timestamp_epoch": parsed.timestamp(),
                 "subject": parts[2],
                 "relevant_paths": relevant,
+                "history_scope": "active_head_ancestry",
+                # The commit graph proves ancestry, not which branch was checked
+                # out at each historical wall-clock instant.
+                "historical_checkout_state": "unverifiable",
             }
         )
     history.sort(key=lambda item: item["timestamp_epoch"])
@@ -1227,7 +1290,9 @@ def regime_for_timestamp(
             "timestamp": None,
             "subject": "config history unavailable",
             "is_current": False,
-            "basis": "git_log_of_discovered_compaction_stack_paths",
+            "basis": REGIME_HISTORY_BASIS,
+            "history_scope": "active_head_ancestry",
+            "historical_checkout_state": "unverifiable",
         }
     parsed = parse_timestamp(timestamp)
     if parsed is None:
@@ -1237,7 +1302,9 @@ def regime_for_timestamp(
             "timestamp": None,
             "subject": "timestamp unavailable",
             "is_current": False,
-            "basis": "git_log_of_discovered_compaction_stack_paths",
+            "basis": REGIME_HISTORY_BASIS,
+            "history_scope": "active_head_ancestry",
+            "historical_checkout_state": "unverifiable",
         }
     candidates = [
         item
@@ -1252,7 +1319,9 @@ def regime_for_timestamp(
             "timestamp": None,
             "subject": "before first relevant compaction-stack commit",
             "is_current": False,
-            "basis": "git_log_of_discovered_compaction_stack_paths",
+            "basis": REGIME_HISTORY_BASIS,
+            "history_scope": "active_head_ancestry",
+            "historical_checkout_state": "unverifiable",
         }
     selected = candidates[-1]
     return {
@@ -1261,7 +1330,9 @@ def regime_for_timestamp(
         "timestamp": selected.get("timestamp"),
         "subject": selected.get("subject"),
         "is_current": bool(selected.get("is_current")),
-        "basis": "git_log_of_discovered_compaction_stack_paths",
+        "basis": REGIME_HISTORY_BASIS,
+        "history_scope": selected.get("history_scope"),
+        "historical_checkout_state": selected.get("historical_checkout_state"),
     }
 
 
@@ -1443,6 +1514,27 @@ def transcript_timestamp(rows: Sequence[TranscriptRow]) -> str:
     return "unknown"
 
 
+def boundary_timestamp(
+    rows: Sequence[TranscriptRow], boundary_index: int, next_boundary: int
+) -> str:
+    """Resolve a boundary timestamp without borrowing future session bookkeeping."""
+    own = rows[boundary_index].value.get("timestamp")
+    if parse_timestamp(own) is not None:
+        return str(own)
+    for row in rows[boundary_index + 1 : next_boundary]:
+        timestamp = row.value.get("timestamp")
+        if (
+            row.value.get("type") == "assistant"
+            and parse_timestamp(timestamp) is not None
+        ):
+            return str(timestamp)
+    for row in reversed(rows[:boundary_index]):
+        timestamp = row.value.get("timestamp")
+        if parse_timestamp(timestamp) is not None:
+            return str(timestamp)
+    return "unknown"
+
+
 def analyze_transcript(
     transcript: Transcript,
     calibration: Mapping[str, Any],
@@ -1470,7 +1562,7 @@ def analyze_transcript(
         )
         first = call_after_boundary(calls, index, next_index)
         boundary_uuid = str(boundary.get("uuid") or f"line-{row.line_no}")
-        timestamp = boundary.get("timestamp") or transcript_timestamp(rows)
+        timestamp = boundary_timestamp(rows, index, next_index)
         config_regime = regime_for_timestamp(timestamp, regime_history)
         before = previous_call(calls, index)
         fired = hooks_fired(
@@ -1504,6 +1596,10 @@ def analyze_transcript(
             "compact_metadata_post_tokens": integer(metadata.get("postTokens")),
             "duration_ms": integer(metadata.get("durationMs")),
             "malformed_lines_in_transcript": transcript.malformed_lines,
+            "malformed_json_lines_in_transcript": transcript.malformed_json_lines,
+            "invalid_encoding_lines_in_transcript": transcript.invalid_encoding_lines,
+            "blank_lines_in_transcript": transcript.blank_lines,
+            "non_object_lines_in_transcript": transcript.non_object_lines,
             "calibration": calibration_public(calibration),
             "config_regime": config_regime,
             "hooks_fired": fired,
@@ -1533,6 +1629,8 @@ def analyze_transcript(
         preserved, preserved_basis = preserved_rows(rows, index, metadata)
         char_buckets: collections.Counter[str] = collections.Counter()
         for preserved_row in preserved:
+            if is_durable_attachment_row(preserved_row):
+                continue
             char_buckets.update(record_buckets(preserved_row.value, tools))
         char_buckets.update(
             boundary_post_rows_buckets(rows, index + 1, first.index, tools)
@@ -1673,6 +1771,9 @@ def analyze_transcript(
             }
         ),
         "malformed_lines": transcript.malformed_lines,
+        "malformed_json_lines": transcript.malformed_json_lines,
+        "invalid_encoding_lines": transcript.invalid_encoding_lines,
+        "blank_lines": transcript.blank_lines,
         "non_object_lines": transcript.non_object_lines,
         "post_prompt_tokens_distribution": distribution(fills),
         "fill_pct_distribution_known_windows": distribution(fill_pcts),
@@ -1754,64 +1855,85 @@ def atomic_write_jsonl(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
         raise
 
 
-def existing_ledger_ids(events_path: Path) -> set[str]:
-    result: set[str] = set()
+def read_unified_events(events_path: Path) -> list[dict[str, Any]]:
+    """Read the unified sink without silently dropping rows before a rewrite."""
+    rows: list[dict[str, Any]] = []
     try:
-        with events_path.open(encoding="utf-8", errors="replace") as handle:
-            for line in handle:
-                if KIND not in line:
+        with events_path.open(encoding="utf-8") as handle:
+            for line_no, line in enumerate(handle, 1):
+                if not line.strip():
                     continue
                 try:
                     row = json.loads(line)
                 except (json.JSONDecodeError, RecursionError):
-                    continue
-                if (
-                    isinstance(row, dict)
-                    and row.get("kind") == KIND
-                    and row.get("source") == SOURCE
-                    and isinstance(row.get("ledger_id"), str)
-                ):
-                    result.add(row["ledger_id"])
+                    raise ValueError(
+                        f"{events_path}:{line_no}: malformed unified event"
+                    ) from None
+                if not isinstance(row, dict):
+                    raise ValueError(
+                        f"{events_path}:{line_no}: unified event is not an object"
+                    )
+                rows.append(row)
     except FileNotFoundError:
         pass
-    return result
+    return rows
+
+
+def unified_event(row: Mapping[str, Any]) -> dict[str, Any]:
+    """Apply the fixed telemetry envelope to one context-composition row."""
+    payload = {
+        key: value
+        for key, value in row.items()
+        if key not in ("ts", "sid", "kind", "source")
+    }
+    return payload | {
+        "ts": row.get("ts") or "unknown",
+        "sid": row.get("sid") or "unknown",
+        "kind": KIND,
+        "source": SOURCE,
+    }
 
 
 def append_missing_events(
     rows: Sequence[Mapping[str, Any]], events_path: Path = EVENTS_PATH
 ) -> int:
-    """Append each stable ledger entity at most once for this schema."""
+    """Atomically synchronize this source's stable entities in the unified sink."""
     events_path.parent.mkdir(parents=True, exist_ok=True)
-    known = existing_ledger_ids(events_path)
-    missing: list[Mapping[str, Any]] = []
+    incoming: dict[str, dict[str, Any]] = {}
     for row in rows:
         ledger_id = row.get("ledger_id")
-        if not isinstance(ledger_id, str) or ledger_id in known:
+        if not isinstance(ledger_id, str):
             continue
-        known.add(ledger_id)
-        missing.append(row)
-    if not missing:
+        incoming[ledger_id] = unified_event(row)
+
+    existing = read_unified_events(events_path)
+    retained: list[dict[str, Any]] = []
+    current_rows: list[dict[str, Any]] = []
+    for row in existing:
+        if row.get("kind") == KIND and row.get("source") == SOURCE:
+            current_rows.append(row)
+        else:
+            retained.append(row)
+    current = {
+        str(row["ledger_id"]): row
+        for row in current_rows
+        if isinstance(row.get("ledger_id"), str)
+    }
+    exact = (
+        len(current_rows) == len(incoming)
+        and len(current) == len(incoming)
+        and current == incoming
+    )
+    if exact:
         return 0
-    with events_path.open("a", encoding="utf-8") as handle:
-        for row in missing:
-            # Envelope fields are constructed last, matching telemetry-emit.sh's
-            # payload-cannot-override invariant.
-            payload = {
-                key: value
-                for key, value in row.items()
-                if key not in ("ts", "sid", "kind", "source")
-            }
-            envelope = payload | {
-                "ts": row.get("ts") or "unknown",
-                "sid": row.get("sid") or "unknown",
-                "kind": KIND,
-                "source": SOURCE,
-            }
-            handle.write(json.dumps(envelope, ensure_ascii=False, sort_keys=True))
-            handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    return len(missing)
+    changed_ids = {
+        ledger_id
+        for ledger_id in current.keys() | incoming.keys()
+        if current.get(ledger_id) != incoming.get(ledger_id)
+    }
+    unkeyed_or_duplicate = len(current_rows) - len(current)
+    atomic_write_jsonl(events_path, [*retained, *incoming.values()])
+    return len(changed_ids) + unkeyed_or_duplicate
 
 
 def load_ledger(path: Path = LEDGER_PATH) -> tuple[list[dict[str, Any]], int]:
@@ -2582,7 +2704,7 @@ def render_report(report: Mapping[str, Any]) -> str:
     failures = summary.get("calibration_failures") or {}
     corpus_failures = corpus.get("calibration_failures") or {}
     lines.append(
-        f"\nSelected-regime raw estimate overflow n={failures.get('n', 0):,}/"
+        f"\nSelected-regime allocated estimate overflow n={failures.get('n', 0):,}/"
         f"{summary['n']:,}; downscaled n={failures.get('downscaled_n', 0):,}. "
         f"Corpus-wide overflow n={corpus_failures.get('n', 0):,}/"
         f"{corpus.get('boundaries_measured_n', 0):,}; corpus-wide downscaled "
@@ -2802,12 +2924,12 @@ def backfill(
     with LOCK_PATH.open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         atomic_write_jsonl(ledger_path, rows)
-        appended = append_missing_events(rows, events_path)
+        synchronized = append_missing_events(rows, events_path)
     sys.stderr.write(
         f"[done] {len(boundary_rows)} boundary + {len(session_rows)} session rows "
-        f"-> {ledger_path}; {appended} new unified events\n"
+        f"-> {ledger_path}; {synchronized} unified events synchronized\n"
     )
-    return rows, appended
+    return rows, synchronized
 
 
 def analyze_one(path: Path) -> list[dict[str, Any]]:

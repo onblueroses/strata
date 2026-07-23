@@ -571,6 +571,48 @@ class BoundaryTests(unittest.TestCase):
         self.assertEqual(boundary_rows[0]["bucket_chars"]["skill_listing"], 400)
         self.assertEqual(boundary_rows[0]["buckets"]["skill_listing"], 100)
 
+    def test_finding_4_durable_preserved_attachments_are_counted_once(self) -> None:
+        rows = [
+            row(
+                1,
+                type="attachment",
+                sessionId=SID,
+                timestamp=TS,
+                uuid="durable-skills",
+                attachment={
+                    "type": "skill_listing",
+                    "content": "x" * 400,
+                    "skillCount": 1,
+                },
+            ),
+            assistant(2, request_id="pre", prompt_tokens=10_000),
+            boundary(
+                3,
+                "preserved-durable-boundary",
+                {
+                    "trigger": "manual",
+                    "preTokens": 10_010,
+                    "postTokens": 100,
+                    "preservedMessages": {"allUuids": ["durable-skills"]},
+                },
+            ),
+            row(
+                4,
+                type="user",
+                sessionId=SID,
+                timestamp=TS,
+                isCompactSummary=True,
+                message={"content": "s" * 100},
+            ),
+            assistant(5, request_id="post", prompt_tokens=1_000),
+        ]
+        parsed = transcript(rows)
+        boundary_rows, _ = ledger.analyze_transcript(parsed, CALIBRATION)
+        self.assertEqual(boundary_rows[0]["bucket_chars"]["skill_listing"], 400)
+        samples = ledger.calibration_samples(parsed)
+        self.assertEqual(len(samples), 1)
+        self.assertEqual(samples[0].prose_chars, 0)
+
 
 class CalibrationTests(unittest.TestCase):
     def test_exact_two_class_calibration_fit_and_quality(self) -> None:
@@ -587,11 +629,10 @@ class CalibrationTests(unittest.TestCase):
         self.assertAlmostEqual(
             fit["classes"]["structured"]["chars_per_token"], 5.0, places=9
         )
-        self.assertAlmostEqual(fit["combined_validation"]["r2"], 1.0, places=9)
-        self.assertAlmostEqual(
-            fit["combined_validation"]["median_absolute_percentage_error_pct"],
-            0.0,
-            places=9,
+        self.assertIsNone(fit["combined_validation"]["r2"])
+        self.assertEqual(
+            fit["classes"]["prose"]["reliability_state"],
+            "validation_unavailable_no_heldout_sessions",
         )
 
     def test_corpus_sized_fit_uses_a_stable_heldout_partition(self) -> None:
@@ -606,7 +647,7 @@ class CalibrationTests(unittest.TestCase):
             for number in range(30)
         ]
         fit = ledger.fit_calibration(samples)
-        self.assertEqual(fit["split_policy"], "stable_sha256_80_20")
+        self.assertEqual(fit["split_policy"], "stable_sha256_session_80_20")
         self.assertGreater(fit["samples_validation"], 0)
         self.assertLess(fit["samples_validation"], fit["samples_total"])
         self.assertAlmostEqual(
@@ -614,6 +655,36 @@ class CalibrationTests(unittest.TestCase):
         )
         self.assertAlmostEqual(
             fit["classes"]["structured"]["chars_per_token"], 5.0, places=9
+        )
+
+    def test_finding_3_validation_partitions_whole_sessions(self) -> None:
+        samples = [
+            ledger.CalibrationSample(
+                prose_chars=400 * (session_number + 1),
+                structured_chars=500 * (boundary_number + 1),
+                target_tokens=100 * (session_number + boundary_number + 2),
+                sid=f"session-{session_number}",
+                key=f"session-{session_number}:boundary-{boundary_number}",
+            )
+            for session_number in range(30)
+            for boundary_number in range(2)
+        ]
+        fit, heldout, policy = ledger._calibration_partition(samples)
+        fit_sessions = {sample.sid for sample in fit}
+        heldout_sessions = {sample.sid for sample in heldout}
+        self.assertEqual(fit_sessions & heldout_sessions, set())
+        self.assertTrue(fit_sessions)
+        self.assertTrue(heldout_sessions)
+        self.assertEqual(policy, "stable_sha256_session_80_20")
+
+        small_fit, small_heldout, small_policy = ledger._calibration_partition(
+            samples[:6]
+        )
+        self.assertEqual(small_fit, samples[:6])
+        self.assertEqual(small_heldout, [])
+        self.assertEqual(
+            small_policy,
+            "validation_unavailable_below_10_sessions",
         )
 
     def test_overflow_is_exposed_as_negative_residual_without_downscaling(self) -> None:
@@ -647,6 +718,29 @@ class CalibrationTests(unittest.TestCase):
             diagnostics["bucket_estimation_methods"]["user_messages"],
             "pooled_combined:structured_unreliable",
         )
+
+    def test_finding_8_rounding_overflow_uses_allocated_buckets(self) -> None:
+        calibration = {
+            "classes": {
+                "prose": {"chars_per_token": 5.0, "reliable": True},
+                "structured": {"chars_per_token": 5.0, "reliable": True},
+            },
+            "pooled": {"chars_per_token": 5.0, "reliable": True},
+        }
+        buckets, diagnostics = ledger.estimate_and_reconcile(
+            {
+                "user_messages": 3,
+                "assistant_text": 3,
+                "tool_call:Read": 3,
+            },
+            authoritative_tokens=2,
+            calibration=calibration,
+        )
+        self.assertEqual(buckets["system_and_tools"], -1)
+        self.assertAlmostEqual(diagnostics["raw_estimated_tokens"], 1.8)
+        self.assertEqual(diagnostics["raw_estimation_overflow_tokens"], 0.0)
+        self.assertEqual(diagnostics["estimation_overflow_tokens"], 1)
+        self.assertTrue(diagnostics["calibration_failure"])
 
 
 class WindowRegimeAndFloorTests(unittest.TestCase):
@@ -734,6 +828,113 @@ class WindowRegimeAndFloorTests(unittest.TestCase):
         self.assertEqual(boundaries[0]["config_regime"]["id"], "new2222")
         self.assertEqual(boundaries[0]["hooks_fired"]["names"], ["memory-digest.sh"])
 
+    def test_finding_5_missing_boundary_timestamp_stays_local(self) -> None:
+        history = [
+            {
+                "id": "jan1111",
+                "commit": "jan1111",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "timestamp_epoch": _epoch("2026-01-01T00:00:00Z"),
+                "subject": "January",
+            },
+            {
+                "id": "jul2222",
+                "commit": "jul2222",
+                "timestamp": "2026-07-01T00:00:00Z",
+                "timestamp_epoch": _epoch("2026-07-01T00:00:00Z"),
+                "subject": "July",
+                "is_current": True,
+            },
+        ]
+        post = assistant(3, request_id="post", prompt_tokens=40_000)
+        post.value["timestamp"] = "2026-01-02T00:00:00Z"
+        rows = [
+            row(
+                1,
+                type="user",
+                sessionId=SID,
+                timestamp="2026-01-01T12:00:00Z",
+                message={"content": "before"},
+            ),
+            row(
+                2,
+                type="system",
+                subtype="compact_boundary",
+                sessionId=SID,
+                uuid="missing-ts",
+                compactMetadata={"trigger": "manual", "preTokens": 100_000},
+                content="Conversation compacted",
+            ),
+            post,
+            row(
+                4,
+                type="attachment",
+                timestamp="2026-07-23T00:00:00Z",
+                attachment={"type": "notice", "content": "later bookkeeping"},
+            ),
+        ]
+        boundaries, _ = ledger.analyze_transcript(
+            transcript(rows), CALIBRATION, history
+        )
+        self.assertEqual(boundaries[0]["ts"], "2026-01-02T00:00:00Z")
+        self.assertEqual(boundaries[0]["config_regime"]["id"], "jan1111")
+
+        post_without_timestamp = assistant(
+            3, request_id="post-prior", prompt_tokens=40_000
+        )
+        post_without_timestamp.value.pop("timestamp")
+        prior_rows = [*rows[:2], post_without_timestamp, rows[3]]
+        prior_boundaries, _ = ledger.analyze_transcript(
+            transcript(prior_rows), CALIBRATION, history
+        )
+        self.assertEqual(prior_boundaries[0]["ts"], "2026-01-01T12:00:00Z")
+        self.assertEqual(prior_boundaries[0]["config_regime"]["id"], "jan1111")
+
+    def test_finding_6_regime_history_excludes_unmerged_refs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+
+            def git(*arguments: str, timestamp: str | None = None) -> str:
+                environment = os.environ.copy()
+                if timestamp is not None:
+                    environment["GIT_AUTHOR_DATE"] = timestamp
+                    environment["GIT_COMMITTER_DATE"] = timestamp
+                result = subprocess.run(
+                    ["git", *arguments],
+                    cwd=repo,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    env=environment,
+                )
+                return result.stdout.strip()
+
+            git("init", "-b", "main")
+            git("config", "user.name", "Test Author")
+            git("config", "user.email", "test@example.invalid")
+            stack = repo / "stack.sh"
+            stack.write_text("initial\n", encoding="utf-8")
+            git("add", "stack.sh")
+            git("commit", "-m", "initial", timestamp="2026-01-01T00:00:00Z")
+            git("checkout", "-b", "feature")
+            stack.write_text("unmerged\n", encoding="utf-8")
+            git("commit", "-am", "unmerged", timestamp="2026-01-03T00:00:00Z")
+            feature_commit = git("rev-parse", "HEAD")
+            git("checkout", "main")
+            stack.write_text("active\n", encoding="utf-8")
+            git("commit", "-am", "active", timestamp="2026-01-02T00:00:00Z")
+            active_commit = git("rev-parse", "HEAD")
+
+            history = ledger.load_regime_history(repo, ["stack.sh"])
+            commits = [item["commit"] for item in history]
+            self.assertNotIn(feature_commit, commits)
+            self.assertEqual(history[-1]["commit"], active_commit)
+            self.assertEqual(history[-1]["history_scope"], "active_head_ancestry")
+            self.assertEqual(
+                history[-1]["historical_checkout_state"],
+                "unverifiable",
+            )
+
     def test_no_compaction_session_tracks_first_turn_floor_and_regime(self) -> None:
         rows = [
             row(
@@ -752,19 +953,27 @@ class WindowRegimeAndFloorTests(unittest.TestCase):
 
 
 class ToleranceTests(unittest.TestCase):
-    def test_malformed_lines_are_skipped_and_counted(self) -> None:
+    def test_finding_9_invalid_encoding_and_blank_lines_are_counted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "broken.jsonl"
-            path.write_text(
-                '{"type":"user","sessionId":"ok","message":{"content":"hello"}}\n'
-                "{bad json\n"
-                "[]\n",
-                encoding="utf-8",
+            path.write_bytes(
+                b'{"type":"user","sessionId":"ok","message":{"content":"hello"}}\n'
+                b'{"type":"user","message":{"content":"invalid \xff"}}\n'
+                b"\n"
+                b"{bad json\n"
+                b"[]\n"
             )
             parsed = ledger.read_transcript(path)
             self.assertEqual(len(parsed.rows), 1)
+            self.assertEqual(parsed.invalid_encoding_lines, 1)
+            self.assertEqual(parsed.blank_lines, 1)
+            self.assertEqual(parsed.malformed_json_lines, 1)
             self.assertEqual(parsed.malformed_lines, 1)
             self.assertEqual(parsed.non_object_lines, 1)
+            _, session = ledger.analyze_transcript(parsed, CALIBRATION)
+            self.assertEqual(session["invalid_encoding_lines"], 1)
+            self.assertEqual(session["blank_lines"], 1)
+            self.assertEqual(session["malformed_json_lines"], 1)
 
     def test_transcript_without_compactions_produces_one_session_row(self) -> None:
         parsed = transcript(
@@ -809,6 +1018,41 @@ class ToleranceTests(unittest.TestCase):
                     "source": ledger.SOURCE,
                 },
             )
+
+    def test_finding_7_unified_event_sync_replaces_changed_entity(self) -> None:
+        event = {
+            "ts": TS,
+            "sid": SID,
+            "kind": ledger.KIND,
+            "source": ledger.SOURCE,
+            "schema": ledger.SCHEMA,
+            "row_type": "session",
+            "ledger_id": "stable-id",
+            "boundaries_detected": 1,
+        }
+        unrelated = {
+            "ts": TS,
+            "sid": "other",
+            "kind": "other_kind",
+            "source": "other_source",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "events.jsonl"
+            ledger.atomic_write_jsonl(path, [unrelated])
+            self.assertEqual(ledger.append_missing_events([event], path), 1)
+
+            updated = event | {"boundaries_detected": 2}
+            self.assertEqual(ledger.append_missing_events([updated], path), 1)
+            self.assertEqual(ledger.append_missing_events([updated], path), 0)
+            rows = [json.loads(line) for line in path.read_text().splitlines()]
+            context_rows = [
+                row
+                for row in rows
+                if row.get("kind") == ledger.KIND and row.get("source") == ledger.SOURCE
+            ]
+            self.assertEqual(len(context_rows), 1)
+            self.assertEqual(context_rows[0]["boundaries_detected"], 2)
+            self.assertIn(unrelated, rows)
 
 
 class RealCorpusReconciliationTests(unittest.TestCase):
