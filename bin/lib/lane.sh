@@ -50,10 +50,12 @@ dispatches via the strata multi-provider agent.
 Usage:
   $LANE "prompt"
   $LANE --file prompt.md
+  $LANE --resume ID|last "follow-up"
   echo "prompt" | $LANE
 
 Flags:
   --file PATH       Read prompt from file
+  --resume ID|last  Continue a saved lane conversation
   --system TEXT     Override default system prompt
   --timeout SECS    Wall-clock timeout (default 1800)
   --effort VALUE    Accepted for compatibility; ignored
@@ -62,7 +64,7 @@ Flags:
   --max-tokens VAL  Accepted for compatibility; ignored
   --raw             Accepted for compatibility; ignored
 
-Exit codes inherited from agent.py: 0 ok, 1 usage, 2 api, 3 quota, 4 auth, 5 empty.
+Exit codes: 0 ok, 1 usage, 2 api, 3 quota, 4 auth, 5 empty, 130 interrupted.
 EOF
 }
 
@@ -144,9 +146,11 @@ PY
 
 ARGS=()
 PROMPT_FILE=""
+RESUME=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --file) require_operand "$@"; PROMPT_FILE="$2"; shift 2 ;;
+    --resume) require_operand "$@"; RESUME="$2"; shift 2 ;;
     --system) require_operand "$@"; ARGS+=(--system "$2"); shift 2 ;;
     --timeout) require_operand "$@"; TIMEOUT="$2"; shift 2 ;;
     --effort|--reasoning|--cache|--max-tokens) require_operand "$@"; shift 2 ;;
@@ -175,8 +179,28 @@ if [[ -n "$PROMPT_FILE" ]]; then
   ARGS+=(--prompt-file "$PROMPT_FILE")
 fi
 
-timeout "$TIMEOUT" "$VENV_PY" "$STRATA_HOME/bin/lib/agent.py" --model "$MODEL" "${ARGS[@]}"
+[[ -n "$RESUME" ]] && ARGS+=(--resume "$RESUME")
+
+AGENT_PID=""
+# Trap invokes this function indirectly on INT and TERM.
+# shellcheck disable=SC2329
+__lane_interrupt() {
+  trap - INT TERM
+  if [[ -n "$AGENT_PID" ]]; then
+    kill -TERM "$AGENT_PID" 2>/dev/null || true
+    wait "$AGENT_PID" 2>/dev/null || true
+  fi
+  exit 130
+}
+trap '__lane_interrupt' INT TERM
+
+timeout "$TIMEOUT" "$VENV_PY" "$STRATA_HOME/bin/lib/agent.py" \
+  --lane "$LANE" --model "$MODEL" "${ARGS[@]}" <&0 &
+AGENT_PID=$!
+wait "$AGENT_PID"
 EXIT=$?
+AGENT_PID=""
+trap - INT TERM
 if [[ "$EXIT" == "124" ]]; then
   echo "$LANE: timeout after ${TIMEOUT}s; remapping to exit 3 (treat as quota fallback)" >&2
   exit 3

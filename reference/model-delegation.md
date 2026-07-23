@@ -1,4 +1,4 @@
-<!-- keywords: delegate, delegation, dispatch, sub-model, sub-agent, lane, strong, fast, grader, breadth, orchestrator, hand off, handoff, offload, second opinion, parallel review, review panel, tool-use loop, working directory, fallback, quota, rate limit, cache no-op, exit code, wrapper, model-map, routing, background job, long-running -->
+<!-- keywords: delegate, delegation, dispatch, sub-model, sub-agent, lane, strong, fast, grader, breadth, orchestrator, hand off, handoff, offload, second opinion, parallel review, review panel, tool-use loop, working directory, fallback, quota, rate limit, cache no-op, exit code, wrapper, model-map, routing, background job, long-running, resume, steer, progress, session -->
 # Model Delegation
 
 How to delegate sub-tasks to other models from this Claude Code session.
@@ -13,6 +13,7 @@ Each lane runs the same multi-provider agent in the current working directory. T
 |------|---------|
 | Pick which lane for a task | Tier Sketch |
 | See command flag reference | Wrapper Reference |
+| Resume, steer, or watch a run | Dispatches Are Conversations |
 | Chain lanes on quota | Fallback Chain |
 | Read failure exit codes | Exit Code Contract |
 | Write a self-contained prompt | Prompt Template |
@@ -45,6 +46,7 @@ Implemented flags:
 
 ```
 --file PATH       Read prompt from file
+--resume ID|last  Continue a saved lane conversation
 --system TEXT     Override the default system prompt
 --timeout SECS    Max wall time (default 1800 = 30 min)
 ```
@@ -67,6 +69,41 @@ Prompt parsing details:
 - `--` stops flag parsing and captures the remaining words as the prompt.
 - With no argument prompt and no `--file`, the agent reads stdin when stdin is piped.
 
+## Dispatches Are Conversations
+
+Each lane run prints a progress path on stderr when it starts.
+
+Tail this JSONL file to inspect model events, tool calls, tool returns, and final output.
+
+```bash
+tail -f "$STRATA_HOME/.local/progress/<announced-file>.jsonl"
+```
+
+The next lane run deletes progress files older than seven days. Files stay on disk while no lane runs.
+
+The wrapper prints the session ID on stderr when the run ends.
+
+Use that ID to continue the same message history.
+
+```bash
+strong --resume 12345678-1234-4123-8123-123456789abc "Apply the review findings."
+strong --resume last "Run the tests and fix any failures."
+```
+
+`last` selects the newest saved session for that lane. Use one session for incremental builds and review-fix cycles.
+
+Interrupt a drifting run with SIGINT or SIGTERM. The wrapper saves available history and exits 130.
+
+Run the printed resume command with a correction.
+
+```bash
+strong --resume 12345678-1234-4123-8123-123456789abc "Keep the API stable and revise only the parser."
+```
+
+`/harness` generator iterations use fresh context by design. Context isolation provides their anti-bias mechanism.
+
+Use resume for continuity workloads.
+
 ## Exit Code Contract
 
 ```
@@ -76,6 +113,7 @@ Prompt parsing details:
 3   Quota / rate limit; shell timeout 124 is remapped to 3
 4   Auth error
 5   Empty content from the model after one re-prompt attempt
+130 Interrupted; available history is saved for resume
 ```
 
 React to exit code, not message text. The contract is stable across all four lanes.
@@ -95,7 +133,9 @@ Do not fan the same logical request out to all four lanes in parallel; that wast
 
 ## Prompt Template
 
-Sub-models start fresh: no conversation memory and no shared context beyond files they read themselves. Every prompt should be self-contained and open with an outcome block.
+New lane sessions use fresh context. Resumed sessions retain their saved message history.
+
+Give every new session a self-contained prompt. Open it with an outcome block.
 
 ```
 Goal: <one sentence describing the result>
@@ -119,7 +159,11 @@ OUTPUT FORMAT:
 
 ## Long-Running Jobs
 
-Wrappers support 30-minute timeouts via `--timeout`. For jobs that may exceed the foreground Bash tool limit, invoke the wrapper in the background through the surrounding harness and read the captured stdout when the completion notification arrives.
+Wrappers support 30-minute timeouts through `--timeout`.
+
+Run longer jobs through the surrounding harness. Read captured stdout when the harness reports completion.
+
+Tail the announced progress file before interrupting an active run.
 
 Examples:
 

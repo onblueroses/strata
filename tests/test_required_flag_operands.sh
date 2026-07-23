@@ -36,7 +36,7 @@ for flag in --project --slug --agent --brief --branch-from --permission-mode --s
 done
 
 for script in bin/fast bin/strong bin/grader bin/breadth; do
-  for flag in --file --system --timeout --effort --reasoning --cache --max-tokens; do
+  for flag in --file --resume --system --timeout --effort --reasoning --cache --max-tokens; do
     assert_missing_operand "$script" "$flag"
   done
 done

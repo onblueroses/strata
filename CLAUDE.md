@@ -91,6 +91,8 @@ Four layers, pick the right one for the task:
 
 **Match the delegation shape to the work.** Parallel-independent work fans out to concurrent subagents (the parallelism earns its cost). Reserve the sub-model lanes for cross-model review (bias-breaking by construction) and heavy single-shot generation. The real anti-pattern is *sequential generate-then-judge*: dispatch, block, read, fix, re-dispatch, round after serialized round. Hold that loop in one strong thread, or fan it out in parallel against a frozen artifact.
 
+**Dispatches are conversations.** Tail the announced progress file during a lane run. Use the final session ID as the resume handle. Interrupt a drifting run, then resume it with a correction. Keep review-fix cycles in one session.
+
 **Orchestrator pattern** (ignored in field-agent mode): when NOT in a worktree with `.task-brief.md`, this session is the brain. Plan, decide, react here; delegate implementation to sub-models or dmux panes.
 
 **dmux dispatch (field-agent mode)**: if `.task-brief.md` exists in the working directory, you are a dispatched field agent, not an orchestrator. Ignore the orchestrator pattern above. EXECUTE, don't plan or dispatch further. Read the brief as your primary directive. When done: commit, run `/end`. When blocked, write `.task-blocked.md` (frontmatter: id, status: blocked, blocker; body: What's Blocking, Done So Far, What I Need) and go idle. The parent orchestrator reads your result files.

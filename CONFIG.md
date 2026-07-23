@@ -32,10 +32,22 @@ Every lane wrapper exposes the same interface:
 strong "prompt"                  # inline
 strong --file PROMPT.md          # from file
 echo "prompt" | strong           # from stdin
+strong --resume ID "follow-up"   # continue one session
+strong --resume last "follow-up" # continue the newest strong session
 
 strong --system "override system prompt" "prompt"
 strong --timeout 1800 "prompt"   # default 1800s
 ```
+
+Each new run creates a session ID. A resumed run keeps that ID.
+
+Each run announces its progress file on stderr at startup. Tail this JSONL file to watch the run.
+
+Each completed run prints its session ID on stderr. Use this ID as the `--resume` handle.
+
+SIGINT and SIGTERM save the available history. The wrapper prints a resume command and exits 130.
+
+Session files live under `$STRATA_HOME/.local/lane-sessions/`. Progress files live under `$STRATA_HOME/.local/progress/`.
 
 ### Exit codes
 
@@ -47,12 +59,14 @@ strong --timeout 1800 "prompt"   # default 1800s
 | 3 | Rate limit / quota exhausted — caller should fall back per the all-lanes-throttled rule in CLAUDE.md |
 | 4 | Auth error (missing or rejected API key) |
 | 5 | Empty content from model after one re-prompt attempt |
+| 130 | Interrupted run with resumable history saved |
+
 (Internal: `timeout(1)` produces exit 124 when the wall-clock cap fires. The wrappers remap this to exit 3 so callers see a single quota-or-timeout fallback signal. A stderr line names the original timeout so logs preserve the distinction.)
 
 ### What goes to stdout vs stderr
 
 - stdout: the model's final answer text
-- stderr: diagnostics, throttle notices, error messages
+- stderr: progress path, diagnostics, throttle notices, session ID, and resume guidance
 
 Caller code should capture stdout and check the exit code to decide whether to proceed, fall back to a sibling lane, or escalate.
 

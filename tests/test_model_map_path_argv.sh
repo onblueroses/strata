@@ -20,14 +20,23 @@ TOML
 cat >"$home/bin/lib/agent.py" <<'PY'
 #!/usr/bin/env python3
 import argparse
+import sys
 
 parser = argparse.ArgumentParser()
+parser.add_argument("--lane", required=True)
 parser.add_argument("--model", required=True)
 parser.add_argument("--prompt", default="")
 parser.add_argument("--prompt-file")
 parser.add_argument("--system")
+parser.add_argument("--resume")
 args = parser.parse_args()
+stdin_prompt = ""
+if not args.prompt and not args.prompt_file and not sys.stdin.isatty():
+    stdin_prompt = sys.stdin.read().strip()
 print(f"agent model: {args.model}")
+print(f"agent lane: {args.lane}")
+print(f"agent resume: {args.resume or ''}")
+print(f"agent stdin: {stdin_prompt}")
 PY
 
 for lane in fast strong grader breadth; do
@@ -42,6 +51,37 @@ for lane in fast strong grader breadth; do
 
   if ! grep -Fxq "agent model: model-$lane" "$out"; then
     echo "$lane did not pass the model read from model-map.toml" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+
+  if ! grep -Fxq "agent lane: $lane" "$out"; then
+    echo "$lane did not pass its symbolic lane name" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+
+  if ! STRATA_HOME="$home" "$ROOT/bin/$lane" --timeout 5 \
+    --resume 12345678-1234-4123-8123-123456789abc "follow-up" >"$out" 2>"$err"; then
+    echo "$lane failed to pass --resume" >&2
+    cat "$err" >&2
+    exit 1
+  fi
+
+  if ! grep -Fxq "agent resume: 12345678-1234-4123-8123-123456789abc" "$out"; then
+    echo "$lane did not pass the resume handle" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+
+  if ! printf 'piped hello' | STRATA_HOME="$home" "$ROOT/bin/$lane" --timeout 5 >"$out" 2>"$err"; then
+    echo "$lane failed with a piped stdin prompt" >&2
+    cat "$err" >&2
+    exit 1
+  fi
+
+  if ! grep -Fxq "agent stdin: piped hello" "$out"; then
+    echo "$lane did not deliver piped stdin to the agent" >&2
     cat "$out" >&2
     exit 1
   fi

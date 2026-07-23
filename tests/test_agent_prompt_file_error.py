@@ -1,6 +1,8 @@
 import contextlib
 import importlib.util
 import io
+import json
+import os
 import sys
 import tempfile
 import types
@@ -16,23 +18,59 @@ AGENT_PATH = ROOT / "bin" / "lib" / "agent.py"
 def load_agent():
     pydantic_ai = types.ModuleType("pydantic_ai")
     setattr(pydantic_ai, "Agent", object)
+    setattr(pydantic_ai, "RunContext", object)
+    messages = types.ModuleType("pydantic_ai.messages")
+
+    class FakeMessagesTypeAdapter:
+        @staticmethod
+        def dump_json(value, **_kwargs):
+            return json.dumps(value).encode()
+
+        @staticmethod
+        def validate_json(value):
+            return json.loads(value)
+
+    setattr(messages, "AgentStreamEvent", object)
+    setattr(messages, "ModelMessage", object)
+    setattr(messages, "ModelMessagesTypeAdapter", FakeMessagesTypeAdapter)
+    setattr(messages, "ModelRequest", object)
+    setattr(messages, "ModelResponse", object)
+    setattr(messages, "ToolCallPart", object)
+    setattr(messages, "ToolReturnPart", object)
+    pydantic_core = types.ModuleType("pydantic_core")
+    setattr(pydantic_core, "to_jsonable_python", lambda value: value)
 
     spec = importlib.util.spec_from_file_location("agent_under_test", AGENT_PATH)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not load {AGENT_PATH}")
     module = importlib.util.module_from_spec(spec)
-    with mock.patch.dict(sys.modules, {"pydantic_ai": pydantic_ai}):
+    fake_modules = {
+        spec.name: module,
+        "pydantic_ai": pydantic_ai,
+        "pydantic_ai.messages": messages,
+        "pydantic_core": pydantic_core,
+    }
+    with mock.patch.dict(sys.modules, fake_modules):
         spec.loader.exec_module(module)
     return module
 
 
-def call_main(module, argv):
+def call_main(module, argv, *, strata_home=None):
     stdout = io.StringIO()
     stderr = io.StringIO()
     old_argv = sys.argv[:]
     try:
         sys.argv = [str(AGENT_PATH), *argv]
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        environment = (
+            mock.patch.dict(os.environ, {"STRATA_HOME": str(strata_home)})
+            if strata_home is not None
+            else contextlib.nullcontext()
+        )
+        with (
+            environment,
+            contextlib.redirect_stdout(stdout),
+            contextlib.redirect_stderr(stderr),
+        ):
             status = module.main()
     finally:
         sys.argv = old_argv
@@ -61,11 +99,15 @@ class PromptFileErrorTests(unittest.TestCase):
         class FakeResult:
             output = "ok"
 
+            @staticmethod
+            def all_messages():
+                return [{"kind": "response", "content": "ok"}]
+
         class FakeAgent:
             def __init__(self):
                 self.prompts = []
 
-            def run_sync(self, prompt):
+            async def run(self, prompt, **_kwargs):
                 self.prompts.append(prompt)
                 return FakeResult()
 
@@ -75,12 +117,15 @@ class PromptFileErrorTests(unittest.TestCase):
             fake_agent = FakeAgent()
             with mock.patch.object(module, "build_agent", return_value=fake_agent):
                 status, out, err = call_main(
-                    module, ["--model", "gpt-test", "--prompt-file", str(prompt_file)]
+                    module,
+                    ["--model", "gpt-test", "--prompt-file", str(prompt_file)],
+                    strata_home=tmp,
                 )
 
         self.assertEqual(status, 0, err)
         self.assertEqual(out, "ok\n")
-        self.assertEqual(err, "")
+        self.assertIn("agent: progress ", err)
+        self.assertIn("agent: session ", err)
         self.assertEqual(fake_agent.prompts, ["read this\n"])
 
 
