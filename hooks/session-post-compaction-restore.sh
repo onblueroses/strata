@@ -94,20 +94,155 @@ if [ -z "$sessionId" ] && [ -z "$hookSaveFile" ] && [ -f "$stateDir/auto-context
     hookSaveFile="$stateDir/auto-context-save-hook.md"
 fi
 
-# Arm the read-gate: drop a sentinel naming the save file(s) so the PreToolUse
-# hook gate-resume-read.sh blocks consequential tools until one is Read this
-# turn. Reading the save clears it; a 30-min TTL in the gate is the anti-deadlock
-# backstop. Only armed when a save actually exists.
+# Expand declared paths without eval. Relative repo-doc paths resolve from repoRoot;
+# environment variables and ~ use this hook's environment and resolved local roots.
+expandPath() {
+    local raw="$1"
+    RAW_PATH="$raw" REPO_ROOT="$repoRoot" STRATA_HOME="$STRATA_HOME" \
+        KB_DIR="$KB_DIR" STATE_DIR="$STATE_DIR" SPECS_DIR="$SPECS_DIR" \
+        python3 -c 'import os
+p = os.path.expanduser(os.path.expandvars(os.environ["RAW_PATH"]))
+if not os.path.isabs(p):
+    p = os.path.join(os.environ["REPO_ROOT"], p)
+print(os.path.realpath(p))' 2>/dev/null
+}
+
+isVolatilePath() {
+    case "$1" in
+        /tmp|/tmp/*|*/scratchpad|*/scratchpad/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+gatePaths=()
+gateRanges=()
+gateWhys=()
+gateBudgets=()
+droppedNotes=()
+
+addGateEntry() {
+    local path="$1"
+    local rangeStart="${2:-}"
+    local rangeEnd="${3:-}"
+    local why="$4"
+    local existing lineCount budget
+
+    for existing in "${gatePaths[@]}"; do
+        [ "$existing" = "$path" ] && return
+    done
+
+    lineCount=$(wc -l < "$path" 2>/dev/null | tr -d '[:space:]')
+    [[ "$lineCount" =~ ^[0-9]+$ ]] || lineCount=1
+    [ "$lineCount" -gt 0 ] || lineCount=1
+    if [[ "$rangeStart" =~ ^[0-9]+$ ]] && [[ "$rangeEnd" =~ ^[0-9]+$ ]] \
+        && [ "$rangeStart" -gt 0 ] && [ "$rangeEnd" -ge "$rangeStart" ]; then
+        budget=$((rangeEnd - rangeStart + 1))
+    else
+        rangeStart=1
+        rangeEnd="$lineCount"
+        budget="$lineCount"
+    fi
+
+    gatePaths+=("$path")
+    gateRanges+=("$rangeStart-$rangeEnd")
+    gateWhys+=("$why")
+    gateBudgets+=("$budget")
+}
+
+findSessionOwnedSpec() {
+    local spec raw specSession
+    [ -n "$sessionId" ] && [ -d "$specDir" ] || return
+    while IFS= read -r spec; do
+        [ -f "$spec" ] || continue
+        raw=$(cat "$spec" 2>/dev/null)
+        [ -n "$raw" ] || continue
+        echo "$raw" | head -10 | grep -qE 'Status:\s*(in-progress|planning)' || continue
+        specSession=$(echo "$raw" | head -20 | grep -oE 'Session:[[:space:]]*[a-f0-9]{8}' | head -1 | grep -oE '[a-f0-9]{8}$')
+        if [ "$specSession" = "$sessionId" ]; then
+            printf '%s\n' "$spec"
+            return
+        fi
+    done < <(ls -1t "$specDir/"*.md 2>/dev/null)
+}
+
+continuityFile="$STRATA_HOME/reference/context-continuity.md"
+hasNorthStarBlock=0
+if [ -n "$skillSaveFile" ] && grep -q '^## North Star$' "$skillSaveFile" 2>/dev/null; then
+    hasNorthStarBlock=1
+fi
+
+gateMode="declared North Star"
+if [ "$hasNorthStarBlock" = "1" ]; then
+    addGateEntry "$skillSaveFile" "" "" "skill-written session frame, decisions, and declared strategic anchors"
+
+    northStarPattern='^[[:space:]]*[0-9]+\.[[:space:]]+`([^`]+)`([[:space:]]+\(lines[[:space:]]+([0-9]+)-([0-9]+)\))?[[:space:]]+—[[:space:]]+(.+)$'
+    declaredCount=0
+    while IFS= read -r line; do
+        if [[ "$line" =~ $northStarPattern ]]; then
+            declaredCount=$((declaredCount + 1))
+            rawPath="${BASH_REMATCH[1]}"
+            rangeStart="${BASH_REMATCH[3]}"
+            rangeEnd="${BASH_REMATCH[4]}"
+            why="${BASH_REMATCH[5]}"
+            expandedPath=$(expandPath "$rawPath")
+            if [ -z "$expandedPath" ] || [ ! -f "$expandedPath" ] || isVolatilePath "$expandedPath"; then
+                droppedNotes+=("dropped: $rawPath (volatile or missing)")
+            else
+                addGateEntry "$expandedPath" "$rangeStart" "$rangeEnd" "$why"
+            fi
+            [ "$declaredCount" -ge 3 ] && break
+        fi
+    done < <(sed -n '/^## North Star$/,/^## /{ /^## North Star$/d; /^## /d; p; }' "$skillSaveFile")
+
+    if [ -f "$continuityFile" ]; then
+        addGateEntry "$continuityFile" "" "" "context-continuity contract for the gate and recovery pipeline"
+    fi
+else
+    gateMode="deterministic fallback"
+    if [ -n "$hookSaveFile" ]; then
+        addGateEntry "$hookSaveFile" "" "" "fallback mechanical map because no declared North Star is available"
+    fi
+
+    ownedSpecFallback=$(findSessionOwnedSpec)
+    if [ -n "$ownedSpecFallback" ] && [ -f "$ownedSpecFallback" ]; then
+        addGateEntry "$ownedSpecFallback" "" "" "session-owned active spec"
+    fi
+
+    entityDir=""
+    if [ -n "$hookSaveFile" ]; then
+        entityDir=$(grep -m1 -E '^\*{0,2}Entity:\*{0,2}[[:space:]]*' "$hookSaveFile" 2>/dev/null \
+            | sed -E 's/^\*{0,2}Entity:\*{0,2}[[:space:]]*//; s/^`//; s/`$//')
+    fi
+    if [ -n "$entityDir" ] && [ "$entityDir" != "(no entity mapping)" ]; then
+        entityDir=$(expandPath "$entityDir")
+        entitySummary="$entityDir/summary.md"
+        if [ -f "$entitySummary" ] && ! isVolatilePath "$entitySummary"; then
+            addGateEntry "$entitySummary" "" "" "entity summary recovered from the hook map"
+        fi
+    fi
+fi
+
+# Absolute backstop: a compaction gate must never publish an empty sentinel.
+if [ "${#gatePaths[@]}" -eq 0 ]; then
+    if [ -f "$continuityFile" ]; then
+        addGateEntry "$continuityFile" "" "" "continuity contract used as the last-resort orientation anchor"
+    else
+        restoreSelf="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+        addGateEntry "$restoreSelf" "" "" "restore hook used as the last-resort non-empty gate target"
+    fi
+fi
+
+# Arm the read-gate: the declared mode gates orientation, not the mechanical map.
+# The deterministic fallback is used only when the semantic save or North Star block
+# is absent. A 30-min TTL in the gate remains the anti-deadlock backstop.
 # - Keyed on the FULL session id ($sid, not the 8-char $sessionId) so sessions
 #   sharing a prefix can't collide on one gate; gate-resume-read.sh uses the same id.
 # - Written atomically (temp + mv) so a tool call can never observe an empty
 #   half-written sentinel and slip through unenforced.
-if [ -n "$sid" ] && { [ -n "$skillSaveFile" ] || [ -n "$hookSaveFile" ]; }; then
+if [ -n "$sid" ]; then
     sentinelFile="/tmp/claude-needs-resume-read-$sid"
     tmpSentinel="${sentinelFile}.$$.tmp"
-    : >"$tmpSentinel" 2>/dev/null || true
-    [ -n "$skillSaveFile" ] && echo "$skillSaveFile" >>"$tmpSentinel" 2>/dev/null
-    [ -n "$hookSaveFile" ] && echo "$hookSaveFile" >>"$tmpSentinel" 2>/dev/null
+    printf '%s\n' "${gatePaths[@]}" >"$tmpSentinel" 2>/dev/null
     mv -f "$tmpSentinel" "$sentinelFile" 2>/dev/null || rm -f "$tmpSentinel" 2>/dev/null
 fi
 
@@ -118,34 +253,40 @@ Entity: ${entityPath:-(no entity mapping)}
 "
 
 # ============================================================
-# Section 2: MANDATORY READS — point at the save files
+# Section 2: MANDATORY ORIENTATION READS + ADVISORY MAP
 # ============================================================
 
-readSection=""
-if [ -n "$skillSaveFile" ] || [ -n "$hookSaveFile" ]; then
-    readSection="
+readSection="
 ### >> READ EVERY FILE LISTED HERE BEFORE ANY TEXT RESPONSE OR NON-READ TOOL CALL
 
-**This is enforced this turn.** A read-gate blocks Edit / Write / Bash / dispatch tools until you Read the save below; read-only tools (Read / Grep / Glob) stay open, and reading the save clears the gate automatically. Read it first.
+**This is enforced this turn.** A read-gate blocks Edit / Write / Bash / dispatch tools until you Read every gated orientation entry below; read-only tools (Read / Grep / Glob) stay open, and reading every entry clears the gate automatically. Read them first.
 
-The saves below hold the live session state plus the map: paths to canonical docs, specs, and the entity KB, which all live on disk untouched by compaction. Open the saves, then open what their map names. This recovery block deliberately contains no previews; open the files yourself.
+Compaction summaries preserve tactical state well; repeated summarization erodes strategic framing. Gate mode: **$gateMode**.
+
+### Gated Orientation
 "
-    idx=1
-    if [ -n "$skillSaveFile" ]; then
-        readSection+="
-${idx}. \`$skillSaveFile\` — skill-written rich save (Goal, Decisions, In-Flight, Last Outputs, Session-Specific State)"
-        idx=$((idx + 1))
-    fi
-    if [ -n "$hookSaveFile" ]; then
-        readSection+="
-${idx}. \`$hookSaveFile\` — hook-written mechanical snapshot + Frame map (canonical doc paths, git, specs, daily-note summaries)"
-    fi
+for idx in "${!gatePaths[@]}"; do
+    displayIdx=$((idx + 1))
     readSection+="
+${displayIdx}. \`${gatePaths[$idx]}\` (lines ${gateRanges[$idx]}; budget: ${gateBudgets[$idx]} lines) — ${gateWhys[$idx]}"
+done
 
-After reading, also open any file listed in the save's \`## Read On Resume\` block at the specified line ranges. Do not skip this — it's the previous instance telling you exactly where to look first.
-"
-    output+="$readSection"
+if [ "${#droppedNotes[@]}" -gt 0 ]; then
+    for note in "${droppedNotes[@]}"; do
+        readSection+="
+$note"
+    done
 fi
+
+hookAdvisoryPath="${hookSaveFile:-$stateDir/auto-context-save-$sessionId-hook.md}"
+readSection+="
+
+### Advisory Map (not part of the declared North Star gate)
+
+- \`$hookAdvisoryPath\` — hook-written mechanical snapshot + Frame map. In fallback mode it is gated only because the semantic North Star was unavailable.
+- After orientation, use the skill save's \`## Read On Resume\` block for ungated tactical pointers. Point at conclusions, not logs.
+"
+output+="$readSection"
 
 # ============================================================
 # Section 3: Active specs (READ THESE FIRST after Repo Frame)

@@ -39,18 +39,19 @@ def allow() -> NoReturn:
 
 def block(saves) -> NoReturn:
     primary = sorted(saves) if saves else []
-    reads = "\n".join(f"  Read {p}" for p in primary) or "  Read your session save file"
+    reads = (
+        "\n".join(f"  Read {p}" for p in primary) or "  Read your orientation anchors"
+    )
     reason = (
-        "POST-COMPACTION READ-GATE — read your session save before acting.\n"
-        "You just resumed from a compaction. The recovery block injected at "
-        "SessionStart points at a session-specific save that names the active "
-        "spec, the handoff, and the exact files + line ranges to open next. "
-        "Open it now:\n"
+        "POST-COMPACTION READ-GATE — read your orientation anchors before acting.\n"
+        "You just resumed from a compaction. The summary you woke with carries the "
+        "tactical state; these anchors carry the strategic frame it cannot preserve "
+        "across repeated summarization — your session save plus the North Star "
+        "documents it declares. Open them now:\n"
         f"{reads}\n"
-        "Then open the files its `## Read On Resume` / `## Active Specs` "
-        "block lists. This gate clears itself automatically once every listed "
-        "save is Read; read-only tools (Read/Grep/Glob) stay open, and it "
-        "self-expires after 30 minutes regardless."
+        "Read the listed line ranges where given. This gate clears itself "
+        "automatically once every listed anchor is Read; read-only tools "
+        "(Read/Grep/Glob) stay open, and it self-expires after 30 minutes regardless."
     )
     print(json.dumps({"result": "block", "reason": reason}))
     sys.exit(2)

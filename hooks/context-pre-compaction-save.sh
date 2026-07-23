@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Pre-compaction auto-save (v3 — pointer-first edition)
-# Captures the mechanical snapshot (git, owned specs, daily-note summaries) plus a
-# Frame MAP: paths to canonical docs and entity KB, with line counts. It embeds no
+# Captures the advisory mechanical snapshot (git, owned specs, daily-note summaries)
+# plus a Frame MAP: paths to canonical docs and entity KB, with line counts. It embeds no
 # doc content — disk survives compaction untouched; only context-window state dies.
-# The /context-save skill writes the semantic companion (In-Flight, decisions).
+# The /context-save skill writes the gated orientation companion (North Star) plus
+# the semantic state (In-Flight, decisions).
 # Pipeline overview: $STRATA_HOME/reference/context-continuity.md
 # Output: $STATE_DIR/auto-context-save-{sid}-hook.md
 
@@ -255,16 +256,16 @@ Session ID: $sessionId
 Working directory: $cwd
 Repo root: $repoRoot
 
-> Pointer-first save: this file is the MAP. Canonical docs, specs, and the entity KB
-> live on disk at the listed paths — open what the map names. The /context-save skill
-> writes the semantic companion at \`auto-context-save-$sessionId.md\` — read both.
+> Pointer-first save: this file is the advisory MAP. Canonical docs, specs, and the
+> entity KB live on disk at the listed paths. The /context-save skill writes the
+> gated orientation companion at \`auto-context-save-$sessionId.md\`.
 
 $frameMapBlock
 
 ## Active Specs
 $specContent
 
-> READ THESE FIRST after compaction. The \`>> Current Step\` section tells you where you are.
+> ADVISORY after compaction: consult \`>> Current Step\` when tactical state needs reconstruction.
 
 ## Git State
 Branch: $gitBranch
@@ -288,7 +289,7 @@ $gitDiffStat
 $dailyContent
 
 ## Recovery
-This file plus \`auto-context-save-$sessionId.md\` (skill-written, if present) together hold the map and the live session state.
+This advisory map complements \`auto-context-save-$sessionId.md\` (skill-written, if present), whose North Star anchors carry the gated strategic frame.
 Transcript backup: $transcriptPath
 SAVEEOF
 mv -f "$tmpSave" "$saveFile"

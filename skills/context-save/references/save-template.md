@@ -65,9 +65,22 @@ decisions, outputs). Point by path at what lives on disk (specs, canonical docs,
 ## Bridge blocks (always include)
 
 ````markdown
+## North Star
+
+Strategic anchors enforced by the post-compaction read gate. Use at most 3 numbered
+entries with this exact grammar:
+
+1. `$SPECS_DIR/feature.md` (lines 1-60) — the mission: Goal, Boundaries, Decisions
+2. `path/to/entity/summary.md` — durable entity state and strategic constraints
+
+Only durable paths belong here: specs, the knowledge base, or canonical repo docs.
+Anything under `/tmp` or a scratchpad is forbidden. A line range is required for
+any file over approximately 10 KB. Carry entries forward across compactions and
+rewrite them only when the mission genuinely shifts; never re-paraphrase them.
+
 ## Read On Resume
 
-The post-compaction model should open these files first, in this order:
+After gated orientation, these advisory tactical pointers are the suggested order:
 
 1. `path/to/file.py:L120-180` — [one-line why: where the bug is / where the change goes]
 2. `path/to/spec.md` — [why: source of truth for the current frontier]
