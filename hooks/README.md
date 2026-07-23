@@ -1,12 +1,12 @@
 # hooks/
 
-Event-driven scripts wired by `settings.json`. The template registers 31 hook commands across seven events; each hook does one job and exits.
+Event-driven scripts wired by `settings.json`. The template registers 32 hook commands across seven events; each hook does one job and exits.
 
 ## Event matrix
 
 | Event | When it fires | Hooks shipped |
 |-------|---------------|---------------|
-| `SessionStart` | Claude Code session opens | `session-ensure-daily-note`, `session-check-dev-servers`, `session-cleanup-verify-markers`, `session-cleanup-codex`, `session-post-compaction-restore`, `session-sibling-awareness`, `memory-digest`, `memory-entities` |
+| `SessionStart` | Claude Code session opens | `session-ensure-daily-note`, `session-check-dev-servers`, `session-cleanup-verify-markers`, `session-cleanup-codex`, `session-post-compaction-restore`, `session-sibling-awareness`, `session-update-check`, `memory-digest`, `memory-entities` |
 | `Stop` | Session closing | `gate-verify` (blocking), `lifecycle-auto-end-fallback`, `lifecycle-sync-state`, `lifecycle-warn-unpushed` |
 | `SessionEnd` | Session has ended | `memory-access-log` |
 | `UserPromptSubmit` | After each user prompt, before model sees it | `context-nudge` |
@@ -21,7 +21,7 @@ Event-driven scripts wired by `settings.json`. The template registers 31 hook co
 
 ## State and side effects
 
-Hooks read `$CLAUDE_SESSION_ID` from the environment and write state files keyed to the 8-char session id at `$STATE_DIR/.session-edits-<sid>`, `$STATE_DIR/.verify-passed-<sid>`, `$STATE_DIR/session-events-<sid>.jsonl`, and similar. Parallel sessions never collide on the same file. The `session-sibling-awareness` hook injects a summary of other live sessions at SessionStart.
+Hooks read `$CLAUDE_SESSION_ID` from the environment and write state files keyed to the 8-char session id at `$STATE_DIR/.session-edits-<sid>`, `$STATE_DIR/.verify-passed-<sid>`, `$STATE_DIR/session-events-<sid>.jsonl`, and similar. Parallel sessions never collide on the same file. The `session-sibling-awareness` hook injects a summary of other live sessions at SessionStart. One exception is `session-update-check`: its daily stamp lives at `$STRATA_HOME/.local/update-check.stamp` because the once-per-day network check is per-install, not per-session.
 
 ## Telemetry ledgers
 

@@ -39,7 +39,8 @@
           { "type": "command", "command": "bash $STRATA_HOME/hooks/session-post-compaction-restore.sh", "timeout": 5000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/session-sibling-awareness.sh", "timeout": 3000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/memory-digest.sh", "timeout": 5000 },
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/memory-entities.sh", "timeout": 5000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/memory-entities.sh", "timeout": 5000 },
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-update-check.sh", "timeout": 10000 }
         ]
       }
     ],
