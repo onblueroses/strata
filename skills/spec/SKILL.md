@@ -74,7 +74,7 @@ Check `$SPECS_DIR/` for existing specs before creating a new one.
 
 ### Concurrency Guard
 
-The owner runs multiple parallel sessions. Give every active spec one clear owner.
+Concurrent sessions require ownership isolation. Give every active spec one clear owner.
 
 - Every spec has a `Session:` field with the 8-char session ID of the instance working on it.
 - **Before modifying a spec:** check its `Session:` field. If it contains a DIFFERENT session ID AND `Last updated` is within the last 2 hours, leave it unchanged because another instance is actively working on it. Run `date` in bash to get current time for comparison. Warn: "Spec [name] is owned by session [id], last updated [time]. Another instance is working on this."

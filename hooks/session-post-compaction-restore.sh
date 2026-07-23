@@ -292,8 +292,8 @@ output+="$readSection"
 # Section 3: Active specs (READ THESE FIRST after Repo Frame)
 # ============================================================
 
-# Filter specs to OWN session only. The owner runs multiple parallel sessions on
-# different specs; reading another session's spec contaminates this recovery.
+# Filter specs to OWN session only. Concurrent sessions work different specs;
+# reading another session's spec contaminates this recovery.
 # Match criteria (ANY of these passes a spec for inclusion):
 #   1. Spec's `Session:` frontmatter field matches THIS sessionId
 #   2. Spec has no `Session:` field at all (genuinely shared / unowned)
@@ -374,7 +374,7 @@ fi
 # Section 4: Active dmux orchestration
 # ============================================================
 
-# Only look at the CURRENT cwd's orchestration log — scanning ~/Work/* leaks
+# Only look at the CURRENT cwd's orchestration log; scanning every checkout leaks
 # other sessions' parallel dispatches into this recovery.
 orchOutput=""
 orchPath="$repoRoot/.dmux/orchestration.md"

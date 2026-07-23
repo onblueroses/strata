@@ -33,7 +33,7 @@ Save this session's live state as a brief for the next instance, so it resumes t
 ## Step 1: Gather state
 
 1. **Touched repos.** For each: path, branch, entity mapping (`$KB_DIR/projects/{name}` or `$KB_DIR/areas/{name}`), and the canonical docs worth naming (THESIS/STRATEGY/ARCHITECTURE/README class, root + `docs/ notes/ .claude/`). Record paths, one line on why each matters; quote at most the single load-bearing claim.
-2. **Owned specs only (sibling isolation).** The owner runs multiple parallel sessions; a sibling's spec contaminates the resume. For each spec at `$SPECS_DIR/` with header `Status: in-progress` or `planning`: include it only if its `Session:` field matches THIS session, is absent, or the spec was edited here (the same filter the hooks apply). Update each included spec's `>> Current Step` on disk NOW — the spec is the durable pointer; the save only quotes it.
+2. **Owned specs only (sibling isolation).** Concurrent sessions coexist; a sibling's spec contaminates the resume. For each spec at `$SPECS_DIR/` with header `Status: in-progress` or `planning`: include it only if its `Session:` field matches THIS session, is absent, or the spec was edited here (the same filter the hooks apply). Update each included spec's `>> Current Step` on disk NOW — the spec is the durable pointer; the save only quotes it.
 3. **Live loop.** The current hypothesis/approach, last attempt, result, next move, ruled-out paths; the verbatim load-bearing 20-50 lines of the last test/command output; pending background work (agents, dmux panes, codex sessions with their resume ids).
 4. **North Star anchors.** Carry forward at most 3 durable strategic paths unless the mission genuinely shifted; use a line range for files over approximately 10 KB.
 

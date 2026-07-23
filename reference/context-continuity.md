@@ -43,7 +43,7 @@ Literals that tooling greps or matches; change any of them only by updating ever
 - `## North Star` — parsed by the restore hook; numbered backticked durable paths become gated orientation anchors.
 - `## Read On Resume` — the save's ungated advisory tactical-pointer block.
 - Save file **paths** (`auto-context-save-{sid}[-hook].md`) — the read-gate matches Read calls against the exact paths in the sentinel; `/end` recovers the session id from the hook-save filename.
-- Spec `Status:` / `Session:` fields — ownership filters in both compaction hooks (sibling isolation: the owner runs multiple parallel sessions; only owned specs surface in a session's recovery). The shared filter: header `Status: in-progress|planning` (first 10 lines only; body prose can quote historical status), AND (`Session:` matches | absent | spec listed in `.session-edits-{sid}`).
+- Spec `Status:` / `Session:` fields — ownership filters in both compaction hooks (sibling isolation: concurrent sessions coexist, so only owned specs surface in a session's recovery). The shared filter: header `Status: in-progress|planning` (first 10 lines only; body prose can quote historical status), AND (`Session:` matches | absent | spec listed in `.session-edits-{sid}`).
 
 ## Skills
 

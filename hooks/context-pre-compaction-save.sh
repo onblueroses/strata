@@ -170,8 +170,8 @@ dailyContent=""
 dailyDir="$KB_DIR/daily"
 if [ -d "$dailyDir" ]; then
     # This session's own note only. Sibling sessions' summaries cost real context
-    # (measured 2026-07-23: 436 tok of other sessions' work in one save) and carry
-    # nothing this session can act on; their notes stay on disk, one glob away.
+    # and carry nothing this session can act on; their notes stay on disk, one
+    # glob away.
     for note in "$dailyDir/$today-"*"-$sessionId.json"; do
         [ -f "$note" ] || continue
         summary=$(jq -r '.summary // empty' "$note" 2>/dev/null)

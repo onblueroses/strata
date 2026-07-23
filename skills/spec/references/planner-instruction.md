@@ -12,6 +12,6 @@ Send verbatim to the strong lane through `bin/strong`, prepending the task descr
 
 Send to codex in the background (`< /dev/null`), with the frontier text and `references/pdmc-checklist.md`:
 
-> Act as a methodological reviewer focused on PDMC methodology. Leave procedural review to `/codex-review --plan`. Apply PDMC items 1-15 from L4 v5 to this frontier. Classify each item as PASS, FAIL, or N/A with evidence. Return a PASS/FAIL verdict per item plus an aggregate verdict.
+> Act as a methodological reviewer focused on PDMC methodology. Leave procedural review to `/codex-review --plan`. Apply PDMC items 1-15 from `references/pdmc-checklist.md` to this frontier. Classify each item as PASS, FAIL, or N/A with evidence. Return a PASS/FAIL verdict per item plus an aggregate verdict.
 
 Paste the per-item verdicts and `Aggregate verdict: PASS` into the frontier's `#### PDMC Methodological Review` subsection; any applicable FAIL blocks the frontier until reworked and re-passed.
