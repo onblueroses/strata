@@ -137,6 +137,10 @@ if COMMITS="$(git rev-list "$RANGE" 2>/dev/null)" && [ -n "$COMMITS" ]; then
     fi
 fi
 
+# Commit messages publish with the push and are permanent, but no diff contains them
+# (`git show --format=` strips them by construction), so they need their own scan input.
+MESSAGES="$(git log --format=%B "$RANGE" 2>/dev/null || true)"
+
 # ============================================================================
 # 1. PRIVACY SAFETY NET
 # ============================================================================
@@ -144,6 +148,7 @@ fi
 # grep helper: case-insensitive ERE, `-e` so a leading '-' in the pattern (PEM headers) is
 # never parsed as an option, and grep's no-match (1) never aborts under pipefail.
 grepadd() { printf '%s\n' "$ADDED" | grep -inE -e "$1" 2>/dev/null || true; }
+grepmsg() { printf '%s\n' "$MESSAGES" | grep -inE -e "$1" 2>/dev/null || true; }
 # Filters for the FUZZY matchers only (never applied to strong token formats, to avoid
 # false negatives like a real key on a line that happens to contain the word "test").
 drop_placeholder() { grep -viE 'example|placeholder|your[_-]|xxxx+|<[^>]+>|dummy|changeme|redacted|sample|fake|env\[|environ|getenv|process\.env|import\.meta\.env|\$\{|os\.getenv|test[_-]?(key|token)|00000|123456|foo:bar' || true; }
@@ -203,6 +208,24 @@ mask_hits() {
     done <<< "$hits"
 }
 
+# Message hits carry no diff context, and fixing one means rewriting the commit rather
+# than adding a redacting commit, so they are labelled separately from diff findings.
+mask_msg_hits() {
+    local hits="$1" hit lineno content fp
+    while IFS= read -r hit; do
+        [ -n "$hit" ] || continue
+        lineno="${hit%%:*}"
+        content="${hit#*:}"
+        fp="$(printf '%s' "$content" | git hash-object --stdin 2>/dev/null | cut -c1-8)"
+        [ -n "$fp" ] || fp="unavailable"
+        printf 'message line %s [redacted: sha8:%s; length:%d]\n' "$lineno" "$fp" "${#content}"
+    done <<< "$hits"
+}
+
+MSGHITS="$(grepmsg "$SECRET_RE|$SECRET_URL_RE" | head -4 || true)"
+[ -n "$MSGHITS" ] && MSGHITS="$(mask_msg_hits "$MSGHITS")"
+[ -n "$MSGHITS" ] && FINDINGS+=$'[SECRET] credential-shaped string in an outgoing COMMIT MESSAGE (amend or rebase to fix; a later commit cannot redact it):\n'"$MSGHITS"$'\n'
+
 HITS="$(grepadd "$SECRET_RE" | head -6 || true)"
 [ -n "$HITS" ] && HITS="$(mask_hits "$HITS")"
 [ -n "$HITS" ] && FINDINGS+=$'[SECRET] credential-shaped string in outgoing diff:\n'"$HITS"$'\n'
@@ -245,6 +268,10 @@ if [ "$IS_PUBLIC" -eq 1 ]; then
         PHITS="$(printf '%s\n' "$ADDED" | grep -iniF -f <(printf '%s' "$DENY_TOKENS") 2>/dev/null | head -8 || true)"
         [ -n "$PHITS" ] && PHITS="$(mask_hits "$PHITS")"
         [ -n "$PHITS" ] && FINDINGS+=$'[PRIVATE] private identifier from the local denylist in diff to a PUBLIC repo:\n'"$PHITS"$'\n'
+
+        PMHITS="$(printf '%s\n' "$MESSAGES" | grep -iniF -f <(printf '%s' "$DENY_TOKENS") 2>/dev/null | head -6 || true)"
+        [ -n "$PMHITS" ] && PMHITS="$(mask_msg_hits "$PMHITS")"
+        [ -n "$PMHITS" ] && FINDINGS+=$'[PRIVATE] private identifier from the local denylist in an outgoing COMMIT MESSAGE to a PUBLIC repo (amend or rebase to fix):\n'"$PMHITS"$'\n'
     fi
 fi
 
