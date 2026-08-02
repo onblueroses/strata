@@ -10,7 +10,7 @@
 #            (inline --body/--title or a referenced --body-file) carries a
 #            private identifier from the local denylist.
 #
-# Contract: matcher "Bash" (settings.json adds the per-hook gh filter). Input is
+# Contract: matcher "Bash"; this script performs its own relevance check. Input is
 # tool JSON on STDIN. Deny = human-readable reason on stderr + exit 2. Allow =
 # exit 0. Infrastructure failure (no jq/python3) WARNS and allows (fail open); a gate
 # never hard-blocks on its own broken plumbing.
@@ -25,18 +25,104 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 0
 fi
 
+INPUT="$(</dev/stdin)"
+case "$INPUT" in
+    *gh*|*eval*|*sh\ -c*|*sh\ -lc*|*\\*|*\'*|*'`'*|*'$'*) ;;
+    *) exit 0 ;;
+esac
+COMMAND="$(jq -r '.tool_input.command // empty' <<<"$INPUT" 2>/dev/null || true)"
+
+case "$COMMAND" in
+    *gh*|*eval*|*sh\ -c*|*sh\ -lc*|*\\*|*\'*|*\"*) ;;
+    *) exit 0 ;;
+esac
+
+# Start the full parser for command-position gh, common launch wrappers, and any
+# ambiguous quoting. A guarded name passed only to a plainly non-executing data
+# command is irrelevant; uncertain heads still reach the parser.
+plausibly_invokes_gh() {
+    local command="$1"
+    local direct_re wrapper_re gh_any_re gh_fragment_re data_command_re control_re interpreter_re
+    local quote="" character previous following
+    local index
+
+    # shellcheck disable=SC2016  # Backticks and dollar syntax are literal regex input.
+    direct_re='(^|[;&|()`])[[:space:]]*([[:alpha:]_][[:alnum:]_]*=[^[:space:];&|()`]+[[:space:]]+)*["'\'']?([^"'\''[:space:];&|()`]+/)?gh["'\'']?([[:space:];&|()`]|$)'
+    # shellcheck disable=SC2016  # Backticks and dollar syntax are literal regex input.
+    wrapper_re='(^|[;&|()`])[[:space:]]*(sudo|doas|command|builtin|exec|env|nice|ionice|nohup|stdbuf|time|timeout|xargs|setsid|chronic)[[:space:]]+[^;&|()`]*["'\'']?([^"'\''[:space:];&|()`]+/)?gh["'\'']?([[:space:];&|()`]|$)'
+    gh_any_re='(^|[^[:alnum:]_-])gh([^[:alnum:]_-]|$)'
+    gh_fragment_re='(^|[^[:alnum:]_-])["'\'']*g["'\'']*h["'\'']*([^[:alnum:]_-]|$)'
+    data_command_re='^[[:space:]]*([^[:space:];&|()`]+/)?(echo|printf|grep|cat|ls)([[:space:]]|$)'
+    control_re='[;&|()`]'
+    interpreter_re='(^|[;&|()`[:space:]])(eval|([^/[:space:]]+/)?(ba|z|da|k)?sh)([[:space:]]|$)'
+
+    # A guarded name used only as data to one of these commands cannot execute.
+    # Substitutions and later shell segments deliberately bypass this fast path.
+    # shellcheck disable=SC2016  # Match a literal command-substitution opener.
+    if [[ $command =~ $data_command_re && ! $command =~ $control_re &&
+          $command != *$'\n'* && $command != *'$('* ]]; then
+        return 1
+    fi
+
+    if [[ $command =~ $direct_re ]] || [[ $command =~ $wrapper_re ]] || [[ $command =~ $interpreter_re ]]; then
+        return 0
+    fi
+
+    # Find an unquoted gh word without spawning another interpreter. Backslashes
+    # and malformed quotes are ambiguous, so they deliberately reach Python.
+    for ((index = 0; index < ${#command}; index++)); do
+        character="${command:index:1}"
+        if [[ $character == \\ ]]; then
+            return 0
+        fi
+        if [[ -n $quote ]]; then
+            if [[ $character == "$quote" ]]; then
+                quote=""
+            fi
+            continue
+        fi
+        if [[ $character == "'" || $character == '"' ]]; then
+            quote="$character"
+            continue
+        fi
+        if [[ ${command:index:2} == gh ]]; then
+            previous=""
+            following=""
+            if ((index > 0)); then
+                previous="${command:index-1:1}"
+            fi
+            if ((index + 2 < ${#command})); then
+                following="${command:index+2:1}"
+            fi
+            if [[ ! $previous =~ [[:alnum:]_-] && ! $following =~ [[:alnum:]_-] ]]; then
+                return 0
+            fi
+        fi
+    done
+
+    if [[ -n $quote ]]; then
+        return 0
+    fi
+
+    if [[ $command =~ $gh_any_re || $command =~ $gh_fragment_re ]]; then
+        return 0
+    fi
+
+    return 1
+}
+
+plausibly_invokes_gh "$COMMAND" || exit 0
+
 if ! command -v python3 >/dev/null 2>&1; then
     echo "[gate-gh-public-actions] python3 not found; allowing command without gh public-action check." >&2
     exit 0
 fi
 
-INPUT="$(cat)"
-COMMAND="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
-
 # --- Layer 1: public-facing / write actions require explicit approval ---
 public_action_status() {
     GH_GATE_COMMAND="$COMMAND" python3 - <<'PY'
 import os
+import re
 import shlex
 
 PUBLIC_GROUPS = {"issue", "pr", "release", "gist", "repo"}
@@ -60,13 +146,50 @@ PUBLIC_ACTIONS = {
 API_WRITE_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
 API_FIELD_FLAGS = {"-f", "-F", "--field", "--raw-field", "--input"}
 CONTROL_OPERATORS = {"\n", ";", ";;", ";&", ";;&", "&&", "||", "|", "|&", "&", "(", ")"}
+REDIRECT_OPERATORS = {
+    "<", ">", "<<", ">>", "<>", "<<-", "<<<", ">|", "<&", ">&", "&>", "&>>",
+}
 LOOSE_CONTROL_OPERATORS = {";", ";;", ";&", "&&", "||", "|", "|&", "&", "(", ")", "\n"}
 LOOSE_CONTROL_STARTS = {";", "&", "|", "(", ")", "\n"}
 GLOBAL_FLAGS_WITH_VALUES = {"-R", "--repo", "--hostname", "--jq", "--template", "--config-dir"}
 GLOBAL_FLAGS_WITH_ATTACHED_VALUES = ("-R",)
 TERMINAL_GLOBAL_FLAGS = {"-h", "--help", "--version"}
-SHELL_WRAPPERS = {"bash", "sh", "zsh"}
+SHELL_WRAPPERS = {"bash", "sh", "zsh", "dash", "ksh"}
 MAX_NESTING_DEPTH = 32
+WRAPPERS = {
+    "sudo", "doas", "command", "builtin", "exec", "env", "nice", "ionice",
+    "nohup", "stdbuf", "time", "timeout", "setsid", "xargs", "chronic",
+}
+WRAPPER_OPTIONS_WITH_VALUE = {
+    "sudo": {
+        "-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt",
+        "-C", "--close-from", "-T", "--command-timeout", "-R", "--chroot",
+        "-D", "--chdir",
+    },
+    "doas": {"-C", "-u"},
+    "exec": {"-a"},
+    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string", "--argv0"},
+    "nice": {"-n", "--adjustment"},
+    "ionice": {
+        "-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid",
+        "-u", "--uid",
+    },
+    "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
+    "time": {"-f", "--format", "-o", "--output"},
+    "timeout": {"-k", "--kill-after", "-s", "--signal"},
+    "xargs": {
+        "-a", "--arg-file", "-d", "--delimiter", "-E", "--eof", "-I", "--replace",
+        "-L", "--max-lines", "-n", "--max-args", "-P", "--max-procs", "-s",
+        "--max-chars", "--process-slot-var",
+    },
+}
+NO_EXEC_WRAPPER_OPTIONS = {"--help", "--version"}
+COMMAND_INSPECTION_OPTIONS = {"-v", "-V"}
+PLAIN_NON_EXECUTING = {"echo", "printf", "grep", "cat", "ls"}
+KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!"}
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
+GH_WORD = re.compile(r"(?:^|[^A-Za-z0-9_/-])gh(?:[^A-Za-z0-9_-]|$)")
 
 
 def shell_tokens(command):
@@ -138,6 +261,21 @@ def simple_commands(tokens):
         current.append(token)
     if current:
         yield current
+
+
+def argv_words(words):
+    argv = []
+    index = 0
+    while index < len(words):
+        token = words[index]
+        if token.isdigit() and index + 1 < len(words) and words[index + 1] in REDIRECT_OPERATORS:
+            index += 3
+        elif token in REDIRECT_OPERATORS:
+            index += 2
+        else:
+            argv.append(token)
+            index += 1
+    return argv
 
 
 def command_args_after_global_flags(args):
@@ -338,26 +476,102 @@ def nested_commands(command):
 
 
 def status_from_command_words(command_words, depth):
-    found = False
-    for index, token in enumerate(command_words):
-        if not is_gh_word(token):
-            continue
-        found = True
-        args = command_args_after_global_flags(command_words[index + 1 :])
+    if depth >= MAX_NESTING_DEPTH:
+        return "parse_error"
+    argv = argv_words(command_words)
+    index = 0
+    ambiguous = False
+    while index < len(argv) and (argv[index] in KEYWORDS or ASSIGNMENT.match(argv[index])):
+        index += 1
+
+    while index < len(argv) and os.path.basename(argv[index]) in WRAPPERS:
+        wrapper = os.path.basename(argv[index])
+        index += 1
+        while index < len(argv):
+            token = argv[index]
+            if token == "--":
+                index += 1
+                break
+            if token in NO_EXEC_WRAPPER_OPTIONS or (
+                wrapper == "command" and token in COMMAND_INSPECTION_OPTIONS
+            ):
+                return "none"
+            if wrapper == "env" and token in {"-S", "--split-string"}:
+                if index + 1 >= len(argv):
+                    return "parse_error"
+                try:
+                    split_argv = shlex.split(argv[index + 1], posix=True)
+                except ValueError:
+                    return "parse_error"
+                return status_from_command_words(split_argv + argv[index + 2 :], depth + 1)
+            if wrapper == "env" and token.startswith("--split-string="):
+                try:
+                    split_argv = shlex.split(token.split("=", 1)[1], posix=True)
+                except ValueError:
+                    return "parse_error"
+                return status_from_command_words(split_argv + argv[index + 1 :], depth + 1)
+            if wrapper == "env" and token.startswith("-S") and token != "-S":
+                try:
+                    split_argv = shlex.split(token[2:], posix=True)
+                except ValueError:
+                    return "parse_error"
+                return status_from_command_words(split_argv + argv[index + 1 :], depth + 1)
+            if not token.startswith("-") or token == "-":
+                break
+            if token in WRAPPER_OPTIONS_WITH_VALUE.get(wrapper, set()):
+                if index + 1 >= len(argv):
+                    return "parse_error"
+                index += 2
+            else:
+                index += 1
+
+        if wrapper == "timeout":
+            if index < len(argv) and DURATION.match(argv[index]):
+                index += 1
+            else:
+                ambiguous = True
+        if wrapper == "env":
+            while index < len(argv) and ASSIGNMENT.match(argv[index]):
+                index += 1
+
+    if index >= len(argv):
+        return "parse_error" if ambiguous else "none"
+
+    head = os.path.basename(argv[index])
+    if head == "gh":
+        args = command_args_after_global_flags(argv[index + 1 :])
         if len(args) >= 2 and args[0] in PUBLIC_GROUPS and args[1] in PUBLIC_ACTIONS:
             return "blocked"
         if args and args[0] == "api" and api_write_requested(args):
             return "blocked"
+        return "allowed"
+    if head in PLAIN_NON_EXECUTING:
+        return "none"
+    if head in SHELL_WRAPPERS:
+        script = inline_shell_script(argv[index:])
+        if script is None:
+            return "parse_error" if ambiguous else "none"
+        return check_command(script, depth + 1)
+    if head == "eval":
+        if index + 1 >= len(argv):
+            return "none"
+        return check_command(" ".join(argv[index + 1 :]), depth + 1)
 
-    script = inline_shell_script(command_words)
-    if script is not None:
-        status = check_command(script, depth + 1)
-        if status in {"blocked", "parse_error"}:
-            return status
-        if status == "allowed":
-            found = True
-
-    return "allowed" if found else "none"
+    found = False
+    for candidate_index in range(index + 1, len(argv)):
+        if not is_gh_word(argv[candidate_index]):
+            continue
+        found = True
+        args = command_args_after_global_flags(argv[candidate_index + 1 :])
+        if len(args) >= 2 and args[0] in PUBLIC_GROUPS and args[1] in PUBLIC_ACTIONS:
+            return "blocked"
+        if args and args[0] == "api" and api_write_requested(args):
+            return "blocked"
+    if found:
+        return "allowed"
+    if ambiguous or GH_WORD.search(" ".join(argv[index + 1 :])):
+        return "parse_error"
+    return "none"
 
 
 def raw_parse_error_status(command, depth):

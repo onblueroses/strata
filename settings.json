@@ -25,8 +25,7 @@
       "Bash(rm -fr /*)",
       "EnterPlanMode",
       "ExitPlanMode"
-    ],
-    "defaultMode": "bypassPermissions"
+    ]
   },
   "hooks": {
     "SessionStart": [
@@ -97,37 +96,37 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-pre-push.sh", "if": "Bash(git push*)", "timeout": 10000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-pre-push.sh", "timeout": 10000 }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-nested-clone.sh", "if": "Bash(git clone*)", "timeout": 2000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-nested-clone.sh", "timeout": 2000 }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-gh-public-actions.sh", "if": "Bash(gh *)", "timeout": 3000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-gh-public-actions.sh", "timeout": 3000 }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-rm-guard.sh", "if": "Bash(rm *)", "timeout": 3000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-rm-guard.sh", "timeout": 3000 }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-codex-exec.sh", "if": "Bash(codex *)", "timeout": 2000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-codex-exec.sh", "timeout": 2000 }
         ]
       },
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-destructive-git.sh", "if": "Bash(git *)", "timeout": 3000 }
+          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-destructive-git.sh", "timeout": 3000 }
         ]
       },
       {
