@@ -816,7 +816,7 @@ class WindowRegimeAndFloorTests(unittest.TestCase):
                 attachment={
                     "type": "hook_success",
                     "hookName": "SessionStart",
-                    "command": "bash /tmp/memory-digest.sh",
+                    "command": "bash /tmp/session-update-check.sh",
                     "content": "digest",
                 },
             ),
@@ -826,7 +826,9 @@ class WindowRegimeAndFloorTests(unittest.TestCase):
             transcript(rows), CALIBRATION, history
         )
         self.assertEqual(boundaries[0]["config_regime"]["id"], "new2222")
-        self.assertEqual(boundaries[0]["hooks_fired"]["names"], ["memory-digest.sh"])
+        self.assertEqual(
+            boundaries[0]["hooks_fired"]["names"], ["session-update-check.sh"]
+        )
 
     def test_finding_5_missing_boundary_timestamp_stays_local(self) -> None:
         history = [

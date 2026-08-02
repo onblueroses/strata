@@ -285,19 +285,6 @@ def hook_script_name(attachment: Mapping[str, Any]) -> str:
     return str(attachment.get("hookName") or "unknown")
 
 
-def additional_context_hook_name(attachment: Mapping[str, Any]) -> str:
-    """Recover actionable producer names where old records only stored the event."""
-    text = content_text(attachment.get("content"))
-    upper = text[:300].upper()
-    if upper.startswith("## ENTITIES") or "ENTITY TABLE" in upper:
-        return "memory-entities.sh"
-    if "MEMORY DIGEST" in upper:
-        return "memory-digest.sh"
-    if upper.startswith("MEMORY ROUTER"):
-        return "context-doc-router.sh"
-    return str(attachment.get("hookName") or "unknown")
-
-
 def tool_name_map(rows: Sequence[TranscriptRow]) -> dict[str, str]:
     names: dict[str, str] = {}
     for row in rows:
@@ -341,7 +328,7 @@ def attachment_buckets(
             content = stdout.rstrip("\n") if isinstance(stdout, str) else stdout
         buckets[f"hook:{hook_script_name(attachment)}"] += textual_chars(content)
     elif attachment_type == "hook_additional_context":
-        name = additional_context_hook_name(attachment)
+        name = str(attachment.get("hookName") or "unknown")
         buckets[f"hook:{name}"] += textual_chars(attachment.get("content"))
     elif attachment_type == "nested_memory":
         buckets["claude_md"] += textual_chars(attachment.get("content"))
@@ -1349,7 +1336,7 @@ def hooks_fired(rows: Sequence[TranscriptRow], start: int, stop: int) -> dict[st
         if attachment_type == "hook_success":
             counts[hook_script_name(attachment)] += 1
         elif attachment_type == "hook_additional_context":
-            counts[additional_context_hook_name(attachment)] += 1
+            counts[str(attachment.get("hookName") or "unknown")] += 1
     names = sorted(counts)
     return {
         "names": names,
