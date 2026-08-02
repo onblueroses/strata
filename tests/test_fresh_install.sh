@@ -65,8 +65,29 @@ for raw_path in tracked:
     if source_path.is_symlink():
         target_path.symlink_to(os.readlink(source_path))
     else:
-        shutil.copy2(source_path, target_path)
+        try:
+            shutil.copy2(source_path, target_path)
+        except FileNotFoundError:
+            # The listing and the copy are two moments. A file removed between them
+            # means the checkout moved under us, so the staged tree is not the tree
+            # under test.
+            raise SystemExit(f"source changed during staging: {relative}")
 PY
+stage_status=$?
+
+# Every later assertion runs the staged copy. When staging is incomplete they all
+# fail for one reason, which reads as many broken behaviours instead of one broken
+# setup. Stop here and say which it is.
+if [[ "$stage_status" -ne 0 ]]; then
+  echo "ERROR: could not stage the source checkout into $INSTALL_ROOT" >&2
+  exit 1
+fi
+for required in bin/strata-init bin/strata-doctor settings.json; do
+  if [[ ! -e "$INSTALL_ROOT/$required" ]]; then
+    echo "ERROR: staged tree is missing $required; refusing to run install checks" >&2
+    exit 1
+  fi
+done
 
 PASSED=0
 FAILED=0
