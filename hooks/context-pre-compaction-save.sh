@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Pre-compaction auto-save (v3 — pointer-first edition)
-# Captures the advisory mechanical snapshot (git, owned specs, daily-note summaries)
-# plus a Frame MAP: paths to canonical docs and entity KB, with line counts. It embeds no
-# doc content — disk survives compaction untouched; only context-window state dies.
+# Captures the advisory mechanical snapshot (git and owned specs) plus a Frame
+# MAP of canonical document paths and line counts. It embeds no document content:
+# disk survives compaction untouched; only context-window state dies.
 # The /context-save skill writes the gated orientation companion (North Star) plus
 # the semantic state (In-Flight, decisions).
 # Pipeline overview: $STRATA_HOME/reference/context-continuity.md
@@ -93,16 +93,6 @@ if [ -d "$repoRoot/.git" ] || [ -f "$repoRoot/.git" ]; then
 fi
 [ -z "$gitRemote" ] && gitRemote="(no remote / local only)"
 
-# Entity mapping ($KB_DIR/projects/{name} or $KB_DIR/areas/{name} matching repoName)
-entityPath=""
-for kind in projects areas; do
-    candidate="$KB_DIR/$kind/$repoName"
-    if [ -d "$candidate" ]; then
-        entityPath="$candidate"
-        break
-    fi
-done
-
 # List a file as a pointer: "- `path` (N lines)". Args: path, label
 pointFile() {
     local path="$1"
@@ -118,7 +108,6 @@ buildFrameMap() {
     echo ""
     echo "**Path:** \`$repoRoot\`"
     echo "**Git remote:** $gitRemote"
-    echo "**Entity:** ${entityPath:-(no entity mapping)}"
     echo ""
     echo "### Canonical Docs (on disk — open the load-bearing ones)"
 
@@ -138,18 +127,12 @@ buildFrameMap() {
     done
     [ "$foundAny" = "0" ] && echo "(no canonical docs found at repo root or docs/ notes/ .claude/)"
 
-    if [ -n "$entityPath" ]; then
-        echo ""
-        echo "### Entity Knowledge Base (on disk)"
-        pointFile "$entityPath/summary.md" "$entityPath/summary.md"
-        pointFile "$entityPath/items.json" "$entityPath/items.json"
-    fi
 }
 
 frameMapBlock=$(buildFrameMap)
 
 # ============================================================
-# Mechanical state: git, daily notes, active specs
+# Mechanical state: git and active specs
 # ============================================================
 
 gitBranch=""
@@ -163,25 +146,6 @@ if [ -d "$repoRoot/.git" ] || [ -f "$repoRoot/.git" ]; then
     gitDiffStat=$(git -C "$repoRoot" diff --stat 2>/dev/null | head -20)
 fi
 [ -z "$gitBranch" ] && gitBranch="(not a git repo)"
-
-# Daily notes: one summary line per completed session today; full JSON stays on disk.
-today=$(date +%Y-%m-%d)
-dailyContent=""
-dailyDir="$KB_DIR/daily"
-if [ -d "$dailyDir" ]; then
-    # This session's own note only. Sibling sessions' summaries cost real context
-    # and carry nothing this session can act on; their notes stay on disk, one
-    # glob away.
-    for note in "$dailyDir/$today-"*"-$sessionId.json"; do
-        [ -f "$note" ] || continue
-        summary=$(jq -r '.summary // empty' "$note" 2>/dev/null)
-        if [ -n "$summary" ]; then
-            dailyContent+="- \`$note\`: $summary"$'\n'
-        fi
-    done
-    [ -n "$dailyContent" ] && dailyContent+="_Sibling sessions' notes: \`ls $dailyDir/$today-*.json\`_"$'\n'
-fi
-[ -z "$dailyContent" ] && dailyContent="(no completed sessions today)"
 
 specDir="$SPECS_DIR"
 specContent="(no active specs for this session)"
@@ -256,8 +220,8 @@ Session ID: $sessionId
 Working directory: $cwd
 Repo root: $repoRoot
 
-> Pointer-first save: this file is the advisory MAP. Canonical docs, specs, and the
-> entity KB live on disk at the listed paths. The /context-save skill writes the
+> Pointer-first save: this file is the advisory MAP. Canonical docs and specs live
+> on disk at the listed paths. The /context-save skill writes the
 > gated orientation companion at \`auto-context-save-$sessionId.md\`.
 
 $frameMapBlock
@@ -284,9 +248,6 @@ $gitLog
 \`\`\`
 $gitDiffStat
 \`\`\`
-
-## Today's Daily Notes (summaries; full JSON on disk)
-$dailyContent
 
 ## Recovery
 This advisory map complements \`auto-context-save-$sessionId.md\` (skill-written, if present), whose North Star anchors carry the gated strategic frame.

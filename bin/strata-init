@@ -373,7 +373,7 @@ install_copy "$DESIRED_SETTINGS" "$CLAUDE_SETTINGS" "Claude settings"
 rm -f -- "$RENDERED_SETTINGS" "$DESIRED_SETTINGS"
 
 # === Claude Code surfaces (CLAUDE.md + skills/commands/agents/hooks/reference) ===
-# Symlinked so updates to $STRATA_HOME propagate without re-running this script.
+# Discovery directories are symlinked. The copied CLAUDE.md refreshes on rerun.
 
 echo ""
 echo "=== Claude Code surfaces ==="
@@ -426,7 +426,7 @@ echo "Dependencies installed from $REQ"
 echo ""
 echo "=== Workspace seed ==="
 WS="$STRATA_HOME/workspace"
-mkdir -p "$WS"/{areas,projects,resources,daily,inbox,archives,state/specs,state/handoffs}
+mkdir -p "$WS"/{state/specs,state/handoffs}
 
 seed_readme() {
   local path="$1" body="$2"
@@ -436,61 +436,14 @@ seed_readme() {
   echo "  seeded $path"
 }
 
-seed_readme "$WS/areas/README.md" "# areas/
-
-Ongoing responsibilities. One directory per area, each with a summary.md."
-
-seed_readme "$WS/projects/README.md" "# projects/
-
-One directory per entity: summary.md (architecture, sessions, gotchas) +
-items.json (structured details). Read and written by /pickup, /end,
-and knowledge-lookup."
-
-seed_readme "$WS/projects/example-entity/summary.md" "# example-entity
-
-\`status\`: active | scoping | shipped | deprecated
-\`last_verified\`: YYYY-MM-DD
-
-## Architecture
-
-## Deploy
-
-## Gotchas
-
-## Recent sessions
-Reverse-chronological one-liners. Pruned by /end."
-
-seed_readme "$WS/projects/example-entity/items.json" '{
-  "rules": [],
-  "values": {},
-  "gotchas": []
-}'
-
-seed_readme "$WS/resources/README.md" "# resources/
-
-Reusable references not tied to a single project."
-
-seed_readme "$WS/daily/README.md" "# daily/
-
-One JSON file per session. Filename: YYYY-MM-DD-<slug>-<session-id>.json.
-The session-id suffix (8 chars) lets parallel sessions coexist without collisions."
-
-seed_readme "$WS/inbox/README.md" "# inbox/
-
-Unsorted captures. Sweep periodically into areas/projects/resources or archive."
-
-seed_readme "$WS/archives/README.md" "# archives/
-
-Deprecated entities. Moved here instead of deleted so history stays searchable."
-
 seed_readme "$WS/state/specs/README.md" "# state/specs/
 
 Active implementation specs, one file per feature. Specs survive context
-compaction; the Status field controls visibility from /pickup and /context-resume."
+compaction; the Status field controls visibility during recovery."
 
 seed_readme "$WS/state/handoffs/README.md" "# state/handoffs/
 
-Session-to-session handoff notes. Written when ending mid-task, read by /pickup."
+Session-to-session handoff notes. Read the relevant handoff before resuming work."
 
 # === Done ===
 

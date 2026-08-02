@@ -1,5 +1,5 @@
 ---
-description: "Autonomous process monitoring with minimal token cost; generates bash health-check scripts, cron-based watchdog, and prescribed repair playbooks. Three-layer architecture: bash does mechanical checks (zero tokens), cron invokes it, Claude only reasons when problems exist. Triggers on: 'monitor this process', 'watch the training run', 'set up health checks', 'watchdog', 'keep an eye on', 'autonomous oversight', 'check periodically', 'monitor a long-running task'. Also triggers when: user asks for unattended supervision of a long-running job; user mentions thermal/disk/GPU health monitoring; user wants a cron-based watcher with formulaic repairs. Pairs with /status (one-shot cross-project health check vs. monitor's persistent watchdog), /overnight (cousin — unattended long-running pattern). Manual: /monitor, /monitor start, /monitor stop, /monitor status."
+description: "Build or operate a local watchdog for a long-running process. Triggers on: 'monitor this process', 'watch the training run', 'set up health checks', 'watchdog', 'keep an eye on', 'autonomous oversight', 'check periodically', 'monitor a long-running task'. Also triggers for unattended process or hardware-health supervision. Manual: /monitor, /monitor start, /monitor stop, /monitor status."
 ---
 
 # Monitor
@@ -38,7 +38,7 @@ Arguments via `$ARGUMENTS`. Parse for subcommand before anything else:
 
 ### Single-Monitor Guard
 
-Before starting a new monitor, check `$KB_DIR/areas/infrastructure/monitors/` for directories
+Before starting a new monitor, check `$STATE_DIR/monitors/` for directories
 with a `config.json` whose `session` field matches this session ID. If found:
 "Active monitor '{name}' already running in this session. Stop it first with `/monitor stop`."
 
@@ -69,10 +69,7 @@ with a `config.json` whose `session` field matches this session ID. If found:
 | Complete | ~100 | Exit 2 - announce + delete cron |
 | Escalate | ~100 | Exit 3 - alert user |
 
-<details>
-<summary>Circuit Breaker Design</summary>
-
-### Circuit Breaker Design
+## Circuit Breaker Design
 
 State file at `monitors/{name}/state.kv` tracks per-problem repair attempts:
 
@@ -94,8 +91,6 @@ thermal_crit.attempts=0
 **Backoff enforcement**: health_check.sh checks `last_repair` timestamp against current time.
 If within backoff window, skip the repair report for that problem (still log it, don't re-trigger Claude).
 
-</details>
-
 ## Check Taxonomy
 
 | Category | Check | Local | SSH | HTTP | Default Threshold |
@@ -112,9 +107,6 @@ If within backoff window, skip the repair report for that problem (still log it,
 | Completion | Process exited | x | x | | exit = complete |
 | Completion | Output file exists | x | x | | exists = complete |
 | Completion | Idle (no log writes) | x | x | | 60min = complete |
-
-<details>
-<summary>Interview Flow</summary>
 
 ## Interview Flow
 
@@ -230,11 +222,6 @@ Based on interview results, Claude generates:
 
 See Generate Stage for health_check.sh requirements.
 
-</details>
-
-<details>
-<summary>Generate Stage</summary>
-
 ## Generate Stage
 
 ### config.json Schema
@@ -307,7 +294,7 @@ Claude writes this script tailored to the workload. It MUST:
 #!/usr/bin/env bash
 set -euo pipefail
 
-MONITOR_DIR="$KB_DIR/areas/infrastructure/monitors/training-run"
+MONITOR_DIR="$STATE_DIR/monitors/training-run"
 STATE_FILE="$MONITOR_DIR/state.kv"
 LOG_FILE="$MONITOR_DIR/log.jsonl"
 PROBLEMS=()
@@ -374,11 +361,6 @@ exit 1
 This is a structural example. Claude generates the actual script with real check logic
 tailored to the interview results.
 
-</details>
-
-<details>
-<summary>Cron Prompt Template</summary>
-
 ## Cron Prompt Template
 
 The cron prompt is assembled during the Generate stage. Template:
@@ -425,16 +407,11 @@ The `{repair_table}` is generated from config.json repairs:
 Each line is a direct command. Claude pattern-matches the JSON check field to the repair line
 and executes the command. No reasoning required.
 
-</details>
-
-<details>
-<summary>Stop Subcommand</summary>
-
 ## Stop Subcommand
 
 `/monitor stop` tears down the active monitor.
 
-1. **Find active monitor**: Scan `$KB_DIR/areas/infrastructure/monitors/*/config.json` for one matching this session ID
+1. **Find active monitor**: Scan `$STATE_DIR/monitors/*/config.json` for one matching this session ID
 2. **Delete cron**: Use CronDelete with the job ID from config.json `cron_job_id` field
 3. **Parse log**: Read `log.jsonl`, compute summary stats:
    - Total ticks (lines in log)
@@ -452,12 +429,7 @@ Artifacts moved to ~/to-delete/monitors-{name}-{date}/
 ```
 5. **Move artifacts**: Move the entire `monitors/{name}/` directory to `~/to-delete/monitors-{name}-{date}/` and log in `~/to-delete/manifest.txt`
 
-**If no active monitor found**: "No active monitor in this session. Check `$KB_DIR/areas/infrastructure/monitors/` for monitors from other sessions."
-
-</details>
-
-<details>
-<summary>Status Subcommand</summary>
+**If no active monitor found**: "No active monitor in this session. Check `$STATE_DIR/monitors/` for monitors from other sessions."
 
 ## Status Subcommand
 
@@ -490,8 +462,6 @@ Monitor '{name}': COMPLETE|ESCALATE
 
 4. **Show circuit breaker state**: Parse state.kv, show attempt counts for any non-zero entries
 5. **Show recent log**: Last 5 entries from log.jsonl with timestamps
-
-</details>
 
 ## DO NOT
 

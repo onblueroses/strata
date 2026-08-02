@@ -24,7 +24,7 @@ Gating legend: **external-OK** = works in stock binary; **gated** = external-rea
 
 | Capability | Native trigger | Gating | Notes |
 |---|---|---|---|
-| Custom subagents as files | `$STRATA_HOME/agents/<name>.md` frontmatter: `description`(→whenToUse), `prompt`, `tools`, `disallowedTools`, `model`, `permissionMode`, `isolation`, `maxTurns` | external-OK | This install ships a handful under `$STRATA_HOME/agents/` (e.g. orchestrator, code-reviewer, knowledge-lookup, quick-research, planner); the schema supports much more |
+| Custom subagents as files | `$STRATA_HOME/agents/<name>.md` frontmatter: `description`(→whenToUse), `prompt`, `tools`, `disallowedTools`, `model`, `permissionMode`, `isolation`, `maxTurns` | external-OK | This install ships a small set under `$STRATA_HOME/agents/`; the schema supports more |
 | Run MAIN session as an agent | `claude --agent <name>` (or `--agents '<json>'`) | external-OK | Replaces the system prompt with that agent's. The real way to express an "orchestrator" identity |
 | Agent teams + peer message bus | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` or `--agent-teams`; then `TeamCreate` + `SendMessage` | gated (GrowthBook default) | Teammates **share the leader's cwd** (do NOT auto-isolate); plain output is invisible to peers |
 | Worktree-isolated agent | Agent param `isolation:'worktree'` (or agent-file `isolation: worktree`) | external-OK | Auto-creates + GCs a temp git worktree, returns the changed branch. Separate mechanism from teams |
@@ -64,16 +64,16 @@ Five hook types in `settings.json` `hooks`: `command` (shell), `prompt` (forced-
 <details>
 <summary>Hook-Event Table</summary>
 
-This install wires 7 of ~27 events. Wired now (from `$STRATA_HOME/settings.json`): **SessionStart, SessionEnd, Stop, UserPromptSubmit, PreCompact, PreToolUse, PostToolUse**.
+Read `$STRATA_HOME/settings.json` for the events wired by this install; the binary's event surface changes across releases.
 
 | Event | In recent build | Wired | Worth wiring | Idea |
 |---|---|---|---|---|
 | PreToolUse | yes | ✅ | — | (already heavy: gates) |
 | PostToolUse | yes | ✅ | — | (already heavy: observe + lint) |
 | UserPromptSubmit | yes | ✅ | — | (context nudge) |
-| SessionStart | yes | ✅ | — | (restore + daily note) |
-| SessionEnd | yes | ✅ | — | (memory access reconciliation) |
-| Stop | yes | ✅ | — | (teardown — overloaded) |
+| SessionStart | yes | ✅ | — | (restore + session setup) |
+| SessionEnd | yes | — | — | |
+| Stop | yes | ✅ | — | (opt-in state sync + unpushed-work warning) |
 | PreCompact | yes | ✅ | — | (pre-compaction save) |
 | Notification | yes | — | maybe | surface idle / permission notifications |
 | PostToolUseFailure | yes | — | ✅ | react to a failed Bash/Edit (retry/capture) |
@@ -91,7 +91,7 @@ This install wires 7 of ~27 events. Wired now (from `$STRATA_HOME/settings.json`
 | ConfigChange | yes | — | maybe | |
 | WorktreeCreate / WorktreeRemove | yes | — | maybe | observe native worktree agents |
 | InstructionsLoaded | yes | — | maybe | react to CLAUDE.md load |
-| CwdChanged | yes | — | maybe | auto-load entity context on dir change |
+| CwdChanged | yes | — | maybe | refresh current-project context on directory change |
 | FileChanged | yes | — | ✅ | react to a job writing a result file (pairs with asyncRewake) |
 
 </details>
@@ -115,8 +115,8 @@ Verified against the bundle:
 ## Tier 2 - Memory self-maintenance
 | Capability | Trigger | Gating | Notes |
 |---|---|---|---|
-| Background dream consolidation | `settings.json autoDreamEnabled: true` | external-OK | Writes a **flat** MEMORY.md → 2nd writer vs the `consolidate-memories` hook; port the pattern, don't flip blind |
-| Auto-memory master switch | `autoMemoryEnabled` / `CLAUDE_CODE_DISABLE_AUTO_MEMORY` | external-OK (default on) | This is the MEMORY.md mechanic |
+| Background dream consolidation | `settings.json autoDreamEnabled: true` | external-OK | Writes native project memory; smoke-test before enabling |
+| Auto-memory master switch | `autoMemoryEnabled` / `CLAUDE_CODE_DISABLE_AUTO_MEMORY` | external-OK (default on) | Controls native project memory |
 | Auto-compaction (9-section summary) | `autoCompactEnabled` (default on) / `DISABLE_AUTO_COMPACT=1`; window `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | external-OK | |
 | Verification agent / extractMemories / native memory commands | — | internal-only / flag-gated | Not cleanly switchable externally |
 
@@ -141,11 +141,11 @@ Verified against the bundle:
 </details>
 
 ## Don't-port (this layer is richer)
-verification (`/verify` tiered + `codex review --uncommitted`); planning (recon/hammock/spec); cross-model review (`/codex-review`); the `$KB_DIR` entity knowledge base (`summary.md`/`items.json` vs the native flat MEMORY.md); context save/resume. Porting the native flatter versions over these would be a regression.
+verification (`/verify` tiered + `codex review --uncommitted`); planning (recon/hammock/spec); cross-model review (`/codex-review`); context save/resume. These workflows add structure beyond the native levers.
 
 ## Standing caveats
 - **Presence ≠ enabled.** GrowthBook defaults can leave a present feature off. Smoke-test in a scratch `CLAUDE_CONFIG_DIR`.
 - **`CLAUDE_CODE_COORDINATOR_MODE` is inert** (feature DCE'd). Run the main session as an agent instead (`--agent <name>`).
-- **`autoDreamEnabled` writes a flat MEMORY.md** — a second, unsynchronized writer against the `consolidate-memories` hook's store.
+- **Native memory is platform-owned.** Keep Strata from adding a second writer or schema around it.
 - **Native teams share the leader's cwd**; isolation is a separate `isolation:'worktree'` mechanism. Don't conflate them (collision risk).
 - **Version drift**: tables verified against a recent build (the binary auto-updates). Re-check gating after any minor bump — presence of a flag in `--help` survives bumps, but GrowthBook defaults can flip.

@@ -24,6 +24,6 @@ Thin redirect to the canonical skill body at `$STRATA_HOME/skills/harness/SKILL.
 
 ## Runtime contract (read before running)
 
-Strata's harness uses the symbolic lanes `bin/strong` and `bin/grader` for evaluator dispatch. Where the skill body references a "codex-companion task helper," substitute `$STRATA_HOME/bin/strong --file PROMPT`. The wrappers accept `--file`, `--system`, and `--timeout`; older `--effort`, `--cache`, `--max-tokens`, and `--raw` flags are accepted as no-ops for backward compatibility with skill bodies that still set them. Bind a different model family to `strong` in `config/model-map.toml` than your generator model uses; that asymmetry is the load-bearing mechanism.
+Strata's harness dispatches both evaluator stages through `$STRATA_HOME/bin/strong --file PROMPT`. The wrappers accept `--file`, `--system`, and `--timeout`; older `--effort`, `--cache`, `--max-tokens`, and `--raw` flags are accepted as no-ops for skill bodies that still set them. Before starting, confirm `config/model-map.toml` binds `strong` to a different model family than your generator model; that asymmetry is the load-bearing mechanism. When the lane is unbound, stop and bind it per `CONFIG.md`, and label an accepted same-family fallback as degraded.
 
 For the full loop semantics, framings rotation, convergence detectors, and termination rules, read `$STRATA_HOME/skills/harness/SKILL.md` start-to-finish.

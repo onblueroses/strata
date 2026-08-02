@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PostToolUse hook: tracks which files were edited this session.
 # Appends file paths to $STATE_DIR/.session-edits-{sessionId} (deduped).
-# Used by gate-verify.sh Stop hook to enforce /verify before stopping.
+# Used by /verify, /review, and the pre-push receipt check.
 
 stdinContent=""
 if [ ! -t 0 ]; then
@@ -16,7 +16,7 @@ filePath=$(echo "$data" | jq -r '.tool_input.file_path // empty' 2>/dev/null)
 
 # Skip files that are session bookkeeping, not implementation work.
 # These should never trigger re-verification.
-if echo "$filePath" | grep -qE '\.session-edits-|\.verify-passed-|autoend-state\.json|skill-runs\.jsonl|session-events-.*\.jsonl|daily/[0-9].*\.json'; then
+if echo "$filePath" | grep -qE '\.session-edits-|\.verify-passed-|skill-runs\.jsonl|session-events-.*\.jsonl'; then
     exit 0
 fi
 
@@ -39,7 +39,7 @@ jsonlFile="$stateDir/.session-edits-$sessionId.jsonl"
 # Extract tool name for JSONL
 toolName=$(echo "$data" | jq -r '.tool_name // "unknown"' 2>/dev/null)
 
-# Plain-text: append if not already listed (gate-verify.sh reads this)
+# Plain-text: append if not already listed (/verify reads this)
 alreadyListed=false
 if [ -f "$editsFile" ]; then
     if grep -qxF "$filePath" "$editsFile" 2>/dev/null; then

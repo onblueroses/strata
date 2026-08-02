@@ -7,13 +7,13 @@ Strata is a skeleton for coding agents. Skills, hooks, commands, references; one
 ```
 bin/        symbolic model lanes (strong | fast | grader | breadth) + dispatch + init
 skills/     procedural knowledge the agent loads on demand (spec, recon, harness, ...)
-commands/   user-invoked slash commands (verify, review, end, best-of-n, commit, pickup)
-agents/     subagent definitions (orchestrator, planner, quick-research, code-reviewer, knowledge-lookup)
-hooks/      event-driven scripts (Stop, PreToolUse, PostToolUse, SessionStart, ...)
+commands/   user-invoked slash commands (verify, review, end, best-of-n, commit)
+agents/     subagent definitions (orchestrator, planner, quick-research, code-reviewer)
+hooks/      event-driven scripts (PreToolUse, PostToolUse, SessionStart, ...)
 reference/  long-form docs with a complete INDEX and per-doc Quick Navs
 config/     model-map.toml (symbolic-lane bindings) + private-tokens.example.txt
 telemetry/  opt-in delegation/cost telemetry (off by default; STRATA_TELEMETRY=1)
-workspace/  PARA-flavored knowledge-base tree (areas | projects | resources | daily | inbox | archives)
+workspace/  runtime continuity (state/specs | state/handoffs)
 ```
 
 CLAUDE.md at the repo root is the operating doctrine the agent reads first.
@@ -27,14 +27,13 @@ git clone https://github.com/onblueroses/strata.git ~/.strata
 ~/.strata/bin/strata-init
 ```
 
-`strata-init` writes a shell-rc block, populates the workspace tree, and prompts you to fill `config/model-map.toml` with the strongest models you currently have access to. See [SETUP.md](SETUP.md) for the walkthrough.
+`strata-init` writes a shell-rc block, creates the runtime workspace, and prompts you to fill `config/model-map.toml` with the strongest models you currently have access to. See [SETUP.md](SETUP.md) for the walkthrough and [MIGRATION.md](MIGRATION.md) after upgrading an existing install.
 
 ## Operating model
 
 - **Delegate.** The orchestrator session dispatches code, reviews, and probes to lane wrappers (`bin/strong`, `bin/fast`, `bin/grader`, `bin/breadth`). Your context stays free for synthesis.
-- **Gate completion.** The Stop hook enforces that `/verify` passes before the session can end on any tier above Skip. Run `/verify` after editing files; the hook blocks session close otherwise. Knowledge-base markdown auto-passes; code edits run inline or Codex checks.
-- **Persist to files.** Specs at `workspace/state/specs/` survive context compaction. Sessions resume by reading `>> Current Step`.
-- **Parallel-safe.** Every state file is session-id-keyed (`$CLAUDE_SESSION_ID`); concurrent sessions never clobber each other.
+- **Persist to files.** Specs at `workspace/state/specs/` survive context compaction. Sessions resume from `>> Current Step`; handoffs and post-compaction pointer maps carry the rest.
+- **Session-aware.** Edit receipts and compaction pointers use `$CLAUDE_SESSION_ID`; specs record ownership so concurrent sessions can detect overlap.
 - **Harness for hard problems.** `/harness` generates N candidates, grades against a frozen rubric, iterates until aggregate PASS. `/best-of-n` runs the same shape for design-space questions.
 - **Telemetry is opt-in.** Lane dispatches and session metrics emit nothing unless you `export STRATA_TELEMETRY=1`. When enabled, enveloped JSONL lands under `$STATE_DIR/telemetry` (never the tracked tree); `telemetry/` ships only the scripts. See [telemetry/README.md](telemetry/README.md).
 

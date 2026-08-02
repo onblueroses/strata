@@ -16,8 +16,8 @@ checklist live in `README.md`.
 - **No repo-controlled execution in PostToolUse.** These run automatically after
   every edit. Keep them to tools that inspect files (linters, formatters);
   running code from the edited tree on each write is a code-execution path.
-- **Blocking hooks fail only on a real gate.** `gate-verify`,
-  `quality-lint-on-write`, and `gate-pre-push` surface a nonzero exit as an
+- **Blocking hooks fail only on a real gate.** `quality-lint-on-write` and
+  `gate-pre-push` surface a nonzero exit as an
   error to the user. Exit 0 (silent) unless the gate genuinely trips; loud false
   positives train people to bypass.
 - **Telemetry ledgers are fail-open and invisible.** `lib-ledger.sh`
@@ -29,9 +29,5 @@ checklist live in `README.md`.
 ## Local checks
 
 Most hooks are shell with no unit suite; smoke-test by piping a sample event
-JSON on stdin and reading the exit code. The memory hook wrappers have a wiring
-test:
-
-```
-python3 -m pytest memory/tests_deep/test_wiring_hooks.py -q
-```
+JSON on stdin and reading the exit code. Validate the registered command paths
+directly from `settings.json` after adding or removing a hook.

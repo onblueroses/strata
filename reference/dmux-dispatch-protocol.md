@@ -22,13 +22,13 @@ Claude Code's parallel work model has three costs: (1) subagent output inflates 
 - dmux's status detection polls tmux pane content via LLM (small fast models racing)
 - dmux supports 11 agent CLIs with per-agent prompt transport and permission flags
 - Claude Code subagents share the parent context window - output compounds
-- a substantial skill/hook system: skills, hooks, entity summaries, MEMORY.md, daily notes
+- a substantial skill/hook system: skills, hooks, specs, handoffs, and compaction pointers
 
 ### Context
 - No existing framework handles independent CLI session handoffs (CrewAI/AutoGen/LangGraph work in-process)
 - The community pattern for parallel AI coding is raw worktrees with no formalized protocol
 - the skill/hook system travels with CLAUDE.md and settings.json (global config)
-- Entity summaries contain project context that code exploration alone can't surface
+- Project rules and parent decisions contain context that code exploration alone cannot surface
 
 ### Constraints
 - Must work from any terminal (not just inside dmux session)
@@ -40,11 +40,11 @@ Claude Code's parallel work model has three costs: (1) subagent output inflates 
 ### Unknowns (Resolved)
 - [x] Does dmux detect externally-created panes? > Status detection polls ALL panes in its tmux session
 - [x] How to create panes without API? > tmux + git commands directly, using dmux's directory conventions
-- [x] What context do children need most? > Entity summaries + project CLAUDE.md sections (things code can't reveal)
+- [x] What context do children need most? > Verified project context, parent decisions, and project CLAUDE.md sections
 
 ### Unknowns (Open)
 - [ ] Will dmux's TUI correctly display externally-created panes in its sidebar?
-- [ ] Performance impact of embedded entity context in every brief (~70 lines)
+- [ ] Measure the performance impact of embedding project context in every brief
 - [ ] Whether dmux's autopilot works on externally-created panes
 
 ## Research & Input
@@ -131,7 +131,7 @@ parent_session: f5419cfb
 dispatched: 2026-04-13T21:45:00Z
 agent: claude
 permission_mode: acceptEdits
-entity: example-project
+project: example-project
 branch_from: main
 scratchpad: true
 siblings:
@@ -165,8 +165,8 @@ siblings:
 ## Coordination
 [What siblings are doing, shared boundaries, merge order dependencies]
 
-## Entity Context
-[Embedded: first ~40 lines of entity summary.md via /pickup]
+## Project Context
+[Verified project purpose, relevant paths, and current constraints]
 
 ## Project Rules
 [Embedded: relevant constraint/quality sections from project CLAUDE.md]
@@ -174,7 +174,7 @@ siblings:
 
 **Design principles**: Outcome on top (Goal / Success means / Stop when), directional body underneath. Prescriptive about WHAT, descriptive about WHY, silent about HOW. Every sentence in Objective / Acceptance Criteria leads with the positive verb of the correct action. Negation survives only in Constraints, and only in the four legitimate cases. A brief drives an autonomous loop, so name the persistence policy and the exit test in Constraints: work through reversible in-scope decisions, surface before anything irreversible or outside granted authority, and treat a route that yields no new evidence as exhausted. See global CLAUDE.md `## Prompt Authoring` and `/directional-prompting` skill.
 
-Contains things the child CAN'T discover (entity context, sibling coordination). Points to things it CAN discover (key files, not code snippets).
+Contains things the child cannot discover (sibling coordination and parent decisions). Points to project files the child can inspect directly.
 
 #### .task-result.md (Child writes via /end, Parent reads)
 
@@ -320,7 +320,7 @@ Two contemplative-reasoning journeys across 13 steps.
 
 **Journey 1** (begin -> open -> examine -> direct -> integrate -> meditate -> sudden -> embody):
 Domains: process_flow -> meta_cognitive -> skillful_means -> non_dual -> meditation -> skillful_means -> non_dual.
-Key turns: (1) The brief is a mission briefing, not a recipe. (2) During meditation, realized result format should converge with /end output. (3) Entity summaries are the critical context gap.
+Key turns: (1) The brief is a mission briefing, not a recipe. (2) The result format converges with `/end` output. (3) Parent decisions and project rules are the critical context gap.
 
 **Journey 2** (begin -> direct -> verify -> refine -> complete):
 Domains: skillful_means -> meta_cognitive.
@@ -370,19 +370,10 @@ With tiled layout, 3 panes get ~80x11 each (workable), 5 panes get ~40x8 (tight 
 
 ### Non-Claude Agents (Codex, Gemini)
 Codex and Gemini lack Claude Code's /end skill. The bootstrap prompt is agent-specific:
-- **Claude**: "run /end" - handles daily note, .task-result.md, entity reconciliation
+- **Claude**: "run /end" - runs checks, updates the active spec, and writes .task-result.md
 - **Codex/Gemini**: explicit instructions to write .task-result.md directly with template
 - /collect has fallback: if no .task-result.md exists but worktree has new commits, infer task completed
 - Codex plan mode falls back to default (interactive approval) - no Codex equivalent
-
-### Field Agent Daily Notes
-Each dispatched field agent creates its own daily note via /end step 3 (Claude agents only).
-This is by design - provides per-task audit trail and session tracking. For 3-task dispatches,
-expect 3 child daily notes + 1 parent daily note = 4 total.
-
-### Sync Conflict Prevention
-Field agents skip /end step 6 ($KB_DIR git sync) to avoid concurrent push conflicts.
-Only the parent session syncs $KB_DIR/ after /collect completes.
 
 ### Token Budget (per dispatch cycle)
 - /dispatch command load: ~800 tokens
@@ -424,7 +415,7 @@ The bootstrap prompt embeds the slug directly in a shell string that tmux passes
 ### Nested Dispatch (dispatch-within-dispatch)
 Field agents CAN dispatch sub-tasks. Git worktrees can be created from within other worktrees.
 The inner dispatch must use the PROJECT ROOT path (not the outer worktree path) for `--project`.
-The entity field in .task-brief.md resolves to the project root via MEMORY.md entity table.
+The project field in `.task-brief.md` is a label; the `--project` argument supplies the project root.
 Not yet tested with real agents but the git mechanics work.
 
 ### Concurrent Parents
@@ -440,4 +431,3 @@ Tested: 2 concurrent worktree creations + cross-scratchpad reads via symlinks.
 - ~~Should Codex panes use a different brief format?~~ Resolved: agent-specific bootstrap prompt
 - Does Codex actually follow the inline .task-result.md template? (Untested with real Codex agent)
 - Field agent compaction recovery: if a child agent compacts mid-task, does it recover from the brief? (Untested)
-

@@ -1,5 +1,5 @@
 ---
-description: "Dispatch independent tasks to dmux panes — decomposes a goal into parallel tasks, writes task briefs (.task-brief.md), and launches agent sessions in isolated git worktrees. The parent orchestrates, dmux executes. For 2+ independent tasks, decompose and dispatch in parallel. For a single task, dispatch solo. Pre-check: a dmux tmux session must exist (`tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -q '^dmux'`). If no session, falls back to inline implementation. Triggers on: 'dispatch this to dmux', 'dispatch', 'send to dmux', 'parallel tasks', 'split this work', 'fan out the work', 'parallelize this', 'work in worktrees', 'isolate these tasks', 'multi-pane work'. Also triggers when: the user requests implementation work ('build X', 'add Y', 'fix Z', 'refactor W', 'write tests for X') and a dmux session exists; planning reveals 2+ independent work streams that can run in parallel without sharing state; the user explicitly mentions dmux, worktrees, or pane-based execution. Pairs with /collect (downstream — gather results from dispatched panes), /spec (upstream — spec phases tagged for dispatch get fanned out here), /best-of-n (different parallelism — BoN runs N candidates of the same task; dispatch runs N different tasks)."
+description: "Dispatch independent tasks to isolated dmux worktrees. Triggers on: 'dispatch this to dmux', 'dispatch', 'send to dmux', 'parallel tasks', 'split this work', 'fan out the work', 'parallelize this', 'work in worktrees', 'isolate these tasks', 'multi-pane work'. Also triggers for implementation requests ('build X', 'add Y', 'fix Z', 'refactor W', 'write tests for X') when a dmux session exists, or when planning finds independent work streams. Pairs with /collect, /spec, and /best-of-n."
 ---
 
 # Dispatch
@@ -25,7 +25,7 @@ Arguments via `$ARGUMENTS`.
 Verify before proceeding:
 1. `which dmux-dispatch.sh` returns a path
 2. `tmux list-sessions -F '#{session_name}' | grep '^dmux'` finds a session
-3. Current directory is a git repo (or entity's repo path is known)
+3. Current directory is a git repository
 
 If any fail, tell the user what's missing and how to fix it.
 
@@ -33,12 +33,9 @@ If any fail, tell the user what's missing and how to fix it.
 
 ## Steps
 
-### 1. Identify the entity and project
+### 1. Identify the project
 
-Determine which entity/project the work targets:
-- If in a known repo directory, use the corresponding entity from MEMORY.md
-- If user specifies an entity, resolve via the `/pickup` entity resolution table
-- Read the entity's `summary.md` (first ~40 lines) - this will be embedded in every brief
+Resolve the current git root or the project path the user supplied. Read the project's README, build manifest, and relevant source paths so each brief carries verified local context.
 
 Also locate the project's CLAUDE.md if one exists (at the repo root). Extract the Constraints and Code Quality sections for embedding.
 
@@ -72,8 +69,7 @@ Use AskUserQuestion:
 
 For each confirmed task, write a `.task-brief.md` file to a staging area at `{project}/.dmux/tasks/{slug}.md`.
 
-<details>
-<summary>Brief template</summary>
+#### Brief template
 
 ```markdown
 ---
@@ -82,7 +78,7 @@ parent_session: {session-id}
 dispatched: {ISO-timestamp}
 agent: {claude|codex|gemini}
 permission_mode: {acceptEdits|bypassPermissions|plan}
-entity: {entity-name}
+project: {project-name}
 branch_from: {main|branch-name}
 scratchpad: true
 siblings:
@@ -110,20 +106,18 @@ siblings:
 - Sibling "{slug}" owns {files} - do not touch
 - {Merge order dependencies if any}
 
-## Entity Context
-{Embedded: first ~40 lines of entity summary.md}
+## Project Context
+{Verified project purpose, relevant paths, and current constraints}
 
 ## Project Rules
 {Embedded: relevant Constraints/Code Quality sections from project CLAUDE.md, if one exists}
 ```
 
-</details>
-
 **Brief writing rules:**
 - Objective: prescriptive about WHAT, descriptive about WHY, silent about HOW
 - Constraints: hard boundaries only (not preferences)
 - Acceptance criteria: observable outcomes, not vague ("works correctly" is banned)
-- Entity context: copy from summary.md, not paraphrased
+- Project context: cite current project files and paths
 - Siblings: list ALL other tasks in this dispatch, with their file ownership
 
 ### 4. Dispatch tasks
@@ -175,7 +169,7 @@ If any brief has `scratchpad: true`:
 
 ## Session ID
 
-Your session ID is the 8-character suffix of your daily note filename. Extract it from the SessionStart hook output or from `ls $KB_DIR/daily/*$(date +%Y-%m-%d)*.json | tail -1`.
+Read the current session id from `$CLAUDE_SESSION_ID` and use its first eight characters. If it is unavailable, stop before writing briefs because their ownership ids would be ambiguous.
 
 ---
 
@@ -195,7 +189,7 @@ Default to `claude` unless there's a reason to choose otherwise.
 - **Codex/Gemini**: No /end skill. The dispatch script gives them inline instructions to write .task-result.md directly. Results may be less structured than Claude's. /collect has fallback handling for missing result files.
 - **Codex**: No `plan` permission mode. Falls back to interactive approval (most restrictive).
 - **Gemini**: No `plan` permission mode. Falls back to default approval.
-- **All non-Claude agents**: Won't create daily notes, reconcile entities, or sync $KB_DIR/. Only Claude field agents produce full audit trail.
+- **All field agents**: Must leave `.task-result.md` or `.task-blocked.md`; `/collect` uses that file as the handoff contract.
 
 ---
 
@@ -218,7 +212,7 @@ These are real failure patterns from multi-agent systems. The protocol has speci
 | Failure mode | How it manifests | Our defense |
 |-------------|-----------------|-------------|
 | Semantic conflict | Two agents make incompatible design choices | File ownership in brief prevents touching same code. Scratchpad carries decisions between siblings. /collect checks for overlap before merge. |
-| Goal drift | Agent strays from objective over long sessions | Acceptance criteria in brief are testable checkboxes. /verify gate blocks completion without passing checks. |
+| Goal drift | Agent strays from objective over long sessions | Acceptance criteria in the brief are testable checkboxes, and `/end` runs the repository checks before stopping. |
 | Orchestrator amnesia | Parent forgets what it dispatched after compaction | orchestration.md logs every wave. Spec tracks phase state. Restore hook injects orchestration status. |
 | Reasoning loop | Agent retries same failed action endlessly | set -e in dispatch script aborts on failure. /end has priority mode for stuck sessions. .task-blocked.md is the escape valve. |
 | Context explosion | Results flood parent context | Results stay in .task-result.md files (filesystem). Parent reads summaries only. Implementation details never enter parent context. |

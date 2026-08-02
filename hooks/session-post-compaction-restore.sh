@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Post-compaction context restore (v3 — pointer-first edition)
 # Fires on SessionStart after compaction. Injects the recovery map: points at the
-# session saves (which themselves point at canonical docs, specs, and the entity KB
-# on disk) and arms the read-gate so the save is actually read before work resumes.
+# session saves (which themselves point at canonical docs and specs on disk) and
+# arms the read-gate so the save is actually read before work resumes.
 # Pipeline overview: $STRATA_HOME/reference/context-continuity.md
 
 STRATA_HOME="${STRATA_HOME:-$HOME/.strata}"
@@ -66,16 +66,6 @@ if [ -d "$repoRoot/.git" ] || [ -f "$repoRoot/.git" ]; then
     gitBranch=$(git -C "$repoRoot" branch --show-current 2>/dev/null)
 fi
 [ -z "$gitBranch" ] && gitBranch="(not a git repo)"
-
-# Entity mapping
-entityPath=""
-for kind in projects areas; do
-    candidate="$KB_DIR/$kind/$repoName"
-    if [ -d "$candidate" ]; then
-        entityPath="$candidate"
-        break
-    fi
-done
 
 # Save file paths
 skillSaveFile=""
@@ -208,18 +198,6 @@ else
         addGateEntry "$ownedSpecFallback" "" "" "session-owned active spec"
     fi
 
-    entityDir=""
-    if [ -n "$hookSaveFile" ]; then
-        entityDir=$(grep -m1 -E '^\*{0,2}Entity:\*{0,2}[[:space:]]*' "$hookSaveFile" 2>/dev/null \
-            | sed -E 's/^\*{0,2}Entity:\*{0,2}[[:space:]]*//; s/^`//; s/`$//')
-    fi
-    if [ -n "$entityDir" ] && [ "$entityDir" != "(no entity mapping)" ]; then
-        entityDir=$(expandPath "$entityDir")
-        entitySummary="$entityDir/summary.md"
-        if [ -f "$entitySummary" ] && ! isVolatilePath "$entitySummary"; then
-            addGateEntry "$entitySummary" "" "" "entity summary recovered from the hook map"
-        fi
-    fi
 fi
 
 # Absolute backstop: a compaction gate must never publish an empty sentinel.
@@ -249,7 +227,6 @@ fi
 output="## Post-Compaction Recovery
 Session: $sessionId | Window: $windowNum
 Repo: \`$repoName\` (\`$repoRoot\`) | Branch: $gitBranch
-Entity: ${entityPath:-(no entity mapping)}
 "
 
 # ============================================================

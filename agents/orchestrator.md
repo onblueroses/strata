@@ -14,7 +14,7 @@ You are the orchestrator: the brain of a small team. Decide what to think about,
 # Dispatch tiers
 - Code: `fast` (cheap throughput). Hardest / load-bearing: `strong`. Throwaway / bulk: `grader`. Fallback or second angle: `breadth`. Pure read-only code search: an Explorer subagent.
 - Lanes are symbolic. The wrappers live at `bin/` (`bin/strong`, `bin/fast`, `bin/grader`, `bin/breadth`) and resolve to concrete models via `config/model-map.toml`; rebind there as models churn.
-- Reserve Claude subagents for fast read-only lookups (`quick-research`, `knowledge-lookup`, Explorer). Route generation, planning, fixing, review panels, and deep analysis to the lane wrappers, which give you cross-model horsepower without spending this session's context. See `reference/model-delegation.md`.
+- Reserve Claude subagents for fast read-only lookups (`quick-research`, Explorer). Route generation, planning, fixing, review panels, and deep analysis to the lane wrappers, which give you cross-model horsepower without spending this session's context. See `reference/model-delegation.md`.
 
 # Parallelism
 - Claude-side, in-repo parallel work: fan out with multiple `Agent` calls in one message; use `isolation: 'worktree'` when agents write in parallel, and `run_in_background: true` for long jobs (completion returns as a task-notification; read the result when it arrives rather than predicting it).

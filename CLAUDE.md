@@ -2,7 +2,7 @@
 
 Operating doctrine for a strata install. Loaded first every session.
 
-`$STRATA_HOME` is where this file lives. `$KB_DIR` is your knowledge-base root (default `$STRATA_HOME/workspace`). `$STATE_DIR` holds session-keyed runtime state (default `$KB_DIR/state`). `$SPECS_DIR` holds active specs (default `$STATE_DIR/specs`).
+`$STRATA_HOME` is where this file lives. `$KB_DIR` is the workspace root retained by the public path contract (default `$STRATA_HOME/workspace`). `$STATE_DIR` holds session-keyed runtime state (default `$KB_DIR/state`). `$SPECS_DIR` holds active specs (default `$STATE_DIR/specs`).
 
 ---
 
@@ -52,7 +52,7 @@ Lane wrappers live at `$STRATA_HOME/bin/`. The model bound to each lane is set i
 
 **Adversarial lens panels require a named failure cost**: use them for risks such as a production deploy, public release, irreversible migration, or money path. When warranted, dispatch every lens against the same frozen version in parallel and merge the findings into one rework brief.
 
-**Codex review**: for plans, debugging hypotheses, and architecture decisions, use `/codex-review --plan|--hypothesis|--arch`. It encapsulates the cross-model adversarial review pattern with the right defaults: high reasoning + fast service tier, no chat-history leak, privacy preprocessing, anti-bias AGREE notes, file-based prompt to avoid Bash timeout caps. For diff/code review, `/verify` Full/Deep and `/review` already invoke `codex review --uncommitted`; do not duplicate. Skip Codex review only for single-file fixes, trivial edits, obvious bugs, and knowledge-base maintenance. When unsure, default to reviewing; cross-model review catches blind spots single-model planning misses.
+**Codex review**: for plans, debugging hypotheses, and architecture decisions, use `/codex-review --plan|--hypothesis|--arch`. It encapsulates the cross-model adversarial review pattern with the right defaults: high reasoning + fast service tier, no chat-history leak, privacy preprocessing, anti-bias AGREE notes, file-based prompt to avoid Bash timeout caps. For diff/code review, `/verify` Full/Deep and `/review` already invoke `codex review --uncommitted`; do not duplicate. Skip Codex review only for single-file fixes, trivial edits, and obvious bugs. When unsure, default to reviewing; cross-model review catches blind spots single-model planning misses.
 
 **Cross-check load-bearing claims**: verify assumptions, recon claims, benchmark numbers, paper findings, and long-compute results against primary sources before they propagate, ideally cross-model.
 
@@ -95,7 +95,7 @@ Four layers, pick the right one for the task:
 |-------|------|---------|
 | **Sub-model delegation** | `bin/strong`, `bin/fast`, `bin/grader`, `bin/breadth` | Asking another model to think: code, analysis, design questions, writeups. See `reference/model-delegation.md`. |
 | **dmux dispatch** | `/dispatch` + `/collect` | Parallel implementation work in isolated git worktrees. Multi-file changes, refactors, test writing where you don't need the result in working memory. |
-| **Inline subagents** | Explorer, Planner, knowledge-lookup via the Agent tool | Quick lookups and targeted exploration where you need the answer right now to gate the next decision. Short, low-token. |
+| **Inline subagents** | Explorer and Planner via the Agent tool | Quick lookups and targeted exploration where you need the answer right now to gate the next decision. Short, low-token. |
 | **Parallel sub-agent fan-out** | multiple concurrent Agent-tool subagents | Breadth analysis, review panels, per-item pipelines, and independent research. Send the calls in one message so they run concurrently. |
 
 **Autonomous goals are the preferred dispatch shape.** Begin a lane prompt with `/goal <objective>` whenever the task has a checkable end state. Add `Goal`, `Success means`, explicit boundaries, and `Stop when` so the lane can own the work through completion.
@@ -168,7 +168,7 @@ Pair this with whatever slop-removal pass you run on external drafts; the voice 
 
 ## Progressive Disclosure
 
-Long human-browsed markdown, including `$KB_DIR` documents, specs, and reference docs, uses `<details>`/`<summary>`. Keep `## Heading` above the block and make `<summary>` match the heading. Model-facing instruction files, including `SKILL.md` bodies, `commands/*.md`, and agent prompts, skip this pattern because their bodies load whole. Do not collapse short sections, Quick Nav tables, intros, MEMORY.md, daily notes, short configs, or this file.
+Long human-browsed markdown, including specs and reference docs, uses `<details>`/`<summary>`. Keep `## Heading` above the block and make `<summary>` match the heading. Model-facing instruction files, including `SKILL.md` bodies, `commands/*.md`, and agent prompts, skip this pattern because their bodies load whole. Do not collapse short sections, Quick Nav tables, intros, short configs, or this file.
 
 ---
 
@@ -212,7 +212,7 @@ Run via `/review` (mandatory before commit); it invokes Codex first, then mechan
 
 After editing files, run `/verify` as a self-check before reporting completion. Skip-tier work needs no verification:
 
-- **Skip**: markdown skill, command, and reference definitions; all CLAUDE.md files; memory files; knowledge-base markdown and JSON; specs.
+- **Skip**: markdown skill, command, and reference definitions; all CLAUDE.md files; native project-memory files; specs.
 - **Light**: 1-3 code files in a single project; inline checks (re-read, debris scan, tests). No subagent.
 - **Full**: 4+ files, cross-project, or cross-referencing files; Codex review (`codex review --uncommitted`) + inline mechanical checks.
 - **Deep**: explicit `--deep` flag for spec-driven multi-frontier work; Codex review + extended inline checks (cross-project consistency, config-affects-runtime trace, doc currency, import graph).
@@ -268,21 +268,16 @@ Telemetry ledgers (`lib-ledger.sh` → `hook-firings.jsonl`, `observe-track-mcp-
 
 ## Post-Compaction Recovery
 
-Automatic recovery runs through `session-post-compaction-restore.sh` at SessionStart. The read gate blocks consequential tools until every declared orientation anchor has been read since compaction: the semantic save, its `## North Star` paths, and `reference/context-continuity.md`. When that declaration is absent, the gate uses the hook snapshot, the session-owned spec, and the mapped entity summary as deterministic fallbacks. Read-only tools stay open, and the gate expires after 30 minutes. The hook-written snapshot and `## Read On Resume` are advisory after orientation. Run `/context-resume` when recovery still seems incomplete. Never modify a spec owned by another session; save files are session-specific.
+Automatic recovery runs through `session-post-compaction-restore.sh` at SessionStart. The read gate blocks consequential tools until every declared orientation anchor has been read since compaction: the semantic save, its `## North Star` paths, and `reference/context-continuity.md`. When that declaration is absent, the gate uses the hook snapshot and the session-owned spec as deterministic fallbacks. Read-only tools stay open, and the gate expires after 30 minutes. The hook-written snapshot and `## Read On Resume` are advisory after orientation. Run `/context-resume` when recovery still seems incomplete. Never modify a spec owned by another session; save files are session-specific.
 
 ---
 
-## Session Naming
+## Workspace Continuity
 
-After the first substantive response, rename today's daily note JSON (visible in SessionStart output) to a 2-3 word descriptive name, keeping the session ID suffix.
+Use `$SPECS_DIR` for non-trivial work that must survive compaction. Keep `>> Current Step` accurate and preserve settled choices in the Decisions table. Put session-to-session handoffs under `$STATE_DIR/handoffs/`; after compaction, follow the session-keyed pointer map and read-gate. Claude Code owns project memory. Strata does not maintain a parallel store.
 
 ---
 
-## Knowledge Persistence
+## Public-Core Drift
 
-- **Source of truth**: `summary.md` owns entity state. `items.json` holds structured details not in `summary.md` (specific values, gotchas, rules). No duplication.
-- **Read before write**: before changing deployed state, read the entity's `summary.md` and `items.json`. Update what's wrong.
-- **Load entity context**: before working on any project, check the Entities table in `MEMORY.md` and load the entity's `summary.md` (via `/pickup` or Read). Entity summaries contain architecture, deploy procedures, gotchas, and recent session history that `MEMORY.md` intentionally omits to save hot-tier tokens.
-- **Priority**: update existing > append new > ignore. Never create duplicates.
-- **At session end**: run `/end` to write the daily note JSON and finalize summaries.
-- **Staleness check**: when starting work that touches a known entity, read its `summary.md`. When `last_verified` is old enough to doubt, warn the owner and verify the summary against current ground truth before acting on it.
+Ship a file only when it is actively run by its maintainer **and** runnable by a stranger. When the private side stops using something, it is cut here, not updated. There is no sync tool: shared bodies have diverged by hundreds of lines and a diff-based sync would mislead every time it ran.

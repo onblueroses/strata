@@ -52,6 +52,7 @@ ahead=$(git -C "$STRATA_HOME" rev-list --count "$upstream..HEAD" 2>/dev/null || 
 [ "$behind" -gt 0 ] && [ "$ahead" -eq 0 ] || exit 0
 
 echo "strata update available: this install is $behind commit(s) behind $upstream."
-echo "Update with: git -C \"\$STRATA_HOME\" pull --ff-only"
+echo "Read \$STRATA_HOME/MIGRATION.md, then update copied settings and doctrine:"
+echo "git -C \"\$STRATA_HOME\" pull --ff-only && \"\$STRATA_HOME/bin/strata-init\""
 
 exit 0

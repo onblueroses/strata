@@ -1,4 +1,4 @@
-<!-- keywords: subagent, spawn agent, which agent type, agent for the job, model selection, model tier, observability schema, agent logging, agent-log jsonl, ad-hoc agent pattern, cross-skill state, skill cache, delegate, dispatch, parallel subagents -->
+<!-- keywords: subagent, spawn agent, which agent type, agent for the job, model selection, model tier, observability schema, agent logging, agent-log jsonl, ad-hoc agent pattern, delegate, dispatch, parallel subagents -->
 # Agent Taxonomy
 
 Central reference for all agent types available in the agent harness. Covers formal definitions
@@ -15,7 +15,6 @@ wastes tokens and produces worse results.
 |------|---------|
 | Choose which agent type to spawn | Agent Types |
 | Understand ad-hoc agent patterns in commands | Ad-Hoc Patterns |
-| Share findings between skills | Cross-Skill State |
 | Log agent invocations | Observability |
 | Handle agent failures | Error Recovery (in `reference/agent-architecture.md`) |
 
@@ -27,7 +26,6 @@ Formal agent definitions live in `$STRATA_HOME/agents/`. Each has YAML frontmatt
 
 | Agent | Model | Tools | Spawned by | Use when |
 |-------|-------|-------|------------|----------|
-| `knowledge-lookup` | small | Read, Grep, Glob | Any command needing entity data | Fast lookup in the `$KB_DIR/` knowledge base: entity summaries, items.json, daily notes, PARA structure. Not for analysis. |
 | `quick-research` | small | WebSearch, WebFetch, Read | `/research` Simple tier, any quick lookup | Simple factual web lookups: docs, versions, definitions. Not for multi-step reasoning. |
 | `code-reviewer` | mid | Read, Grep, Glob | Manual-only maintainability review | Apply the Fowler code-smell lens in `code-smell-baseline.md` with read/grep context. Complements the independent `breadth` review; correctness, security, and tests stay with `/review` and `/verify` F0. |
 
@@ -98,55 +96,6 @@ These aren't formal agent definitions but recurring patterns where commands spaw
 
 ---
 
-## Cross-Skill State
-
-<details>
-<summary>Cross-Skill State</summary>
-
-Skills can share findings via `$STATE_DIR/skill-cache.json`. This lets patterns extracted by one skill inform another.
-
-### Schema
-
-```json
-{
-  "version": 1,
-  "patterns": [
-    {
-      "source": "url-or-description",
-      "patterns": ["pattern-name: one-line description"],
-      "timestamp": "2026-03-25T22:00:00Z",
-      "verdict": "adopt|adapt|learn|pass",
-      "skill": "/evaluate"
-    }
-  ],
-  "last_updated": "2026-03-25T22:00:00Z"
-}
-```
-
-### Who writes
-
-| Skill | What it writes |
-|-------|---------------|
-| `/evaluate` | Extracted patterns from repos/articles (Phase 3) |
-| `/learn` | Patterns captured mid-session |
-
-### Who reads
-
-| Skill | How it uses patterns |
-|-------|---------------------|
-| `/harness` | Reads patterns relevant to the task type, includes them in the generator's PROJECT CONSTRAINTS |
-| Future agents | Can query for domain-specific grounding before starting work |
-
-### Convention
-
-- Append only. Never delete entries.
-- Keep entries under 50. If over 50, the next writer should prune entries older than 90 days or with verdict `pass`.
-- Always include the `skill` field so readers know the source context.
-
-</details>
-
----
-
 ## Observability
 
 <details>
@@ -175,7 +124,7 @@ Commands log agent invocations to `$STATE_DIR/agent-log.jsonl` for analysis. One
 |-------|------|--------|
 | `timestamp` | ISO 8601 | When the agent completed |
 | `command` | string | Which command spawned this agent |
-| `agent_type` | string | `knowledge-lookup`, `quick-research`, `code-reviewer`, `general-purpose`, `Explore`, `Plan` (use `dmux-pane` as a label when logging dispatches, even though it isn't a formal agent) |
+| `agent_type` | string | `quick-research`, `code-reviewer`, `general-purpose`, `Explore`, `Plan` (use `dmux-pane` as a label when logging dispatches, even though it isn't a formal agent) |
 | `model` | string | `small`, `mid`, `large` (the configured tier the agent ran on) |
 | `purpose` | string | One-line description of what this agent was doing |
 | `duration_estimate` | string | `fast` (<30s), `medium` (30s-2min), `slow` (>2min) |

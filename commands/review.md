@@ -1,8 +1,8 @@
 ---
 name: review
-description: "Pre-commit code review — checks staged changes against project constraints. Automatically adds privacy checks when the current repo is public (per the public-repo commit-message discipline in CLAUDE.md). Invokes Codex first as the primary adversarial reviewer (`codex review --uncommitted`), then runs mechanical checks (privacy sweep, secrets scan, debris check). MANDATORY before any git commit — runs first, then commit. Triggers on: 'review my changes', 'review what we did', 'critically review all the changes', 'critique your changes', 'pre-commit review', 'check before commit', 'review before pushing', 'self-critique', 'audit my work', 'go over the changes', 'sanity check this diff', 'final review', 'ready to commit', 'review what you did'. Also triggers when: the user says 'commit this' or 'let's commit' (review runs first, then commit); the user says 'critically review all the changes you've made' or similar self-critique requests (runs in self-critique mode, see the Self-Critique Mode section in the body); git diff shows staged or unstaged code changes that haven't been reviewed this session. Pairs with /verify (upstream — verify runs before review, marker file required), /codex-review (different scope — codex-review handles non-diff artifacts like plans; /review handles diffs), /commit (downstream — review must pass first), /ship (downstream for frontend — ship runs after review on frontend changes), /security-review (downstream — for explicit security audit). Self-critique mode applies when the user invokes review on Claude's own work in the same session."
+description: "Run the mandatory pre-commit diff review with Codex, project rules, and public-repo privacy checks. Triggers on: 'review my changes', 'review what we did', 'critically review all the changes', 'critique your changes', 'pre-commit review', 'check before commit', 'review before pushing', 'self-critique', 'audit my work', 'go over the changes', 'sanity check this diff', 'final review', 'ready to commit', 'review what you did'. Also triggers for 'commit this', 'let's commit', requests to review Claude's own work, or an unreviewed diff. Pairs with /verify, /codex-review, /commit, /ship, and /security-review."
 tier: core
-predecessors: [verify]
+predecessors: []
 conflicts_with: [commit]
 cost_hint: medium
 parallelizable: false
@@ -40,10 +40,10 @@ Arguments via `$ARGUMENTS`.
 
 ## Instructions (pre-commit review)
 
-Follow the pre-commit sequence from prerequisite check through final recommendation.
-### 0. Check /verify prerequisite
+Follow the pre-commit sequence through the final recommendation.
+### 0. Read optional /verify receipt
 
-Derive `{sessionId}` from the first 8 characters of the current session id and read `$STATE_DIR/.verify-passed-{sessionId}`. Treat the receipt as current only when neither `$STATE_DIR/.session-edits-{sessionId}` nor `$STATE_DIR/.session-edits-{sessionId}.jsonl` is newer. The JSONL log advances on every edit, including repeat edits to an already-listed file; the plain list remains the fallback when event logging is absent. When the receipt is missing or stale and the plain edit list has entries, tell Claude to run `/verify` first. For Skip-tier sessions, the Stop hook writes the same receipt and completes the prerequisite. `/verify` checks correctness and consistency; `/review` checks commit readiness.
+Derive `{sessionId}` from the first eight characters of the current session id and read `$STATE_DIR/.verify-passed-{sessionId}` when it exists. Treat the receipt as current only when neither edit tracker is newer. Record a fresh receipt as prior self-check evidence. Continue the full review when it is absent or stale; `/verify` is voluntary and never a prerequisite for `/review`.
 
 ### 1. Get the diff
 
@@ -258,8 +258,6 @@ Also flag banned private project names (from the CLAUDE.md privacy section), pri
 ### 4e. Fan-out review (threshold exceeded only)
 
 Run fan-out review when the threshold gate selects specialist review.
-<details>
-<summary>Fan-out review (threshold exceeded only)</summary>
 
 Use `$STRATA_HOME/reference/review-fanout.md` as the specialist execution, fallback, and merge protocol; the inline table and prompt below remain the command-local checklist.
 
@@ -314,8 +312,6 @@ Trace the impact of each issue through the changed code before reporting it.
 **Quality gate for specialists:** If a specialist returns more than 20 findings, it's likely being too noisy. Truncate to the 10 highest-severity findings and note "[N additional LOW/MEDIUM findings omitted]".
 
 Steps 4, 4a-4d still run in fan-out mode but their findings merge with specialist output. The Codex pass (Step 1a) always runs regardless of fan-out - it sees the whole diff.
-
-</details>
 
 ### 5. Report
 

@@ -32,11 +32,11 @@ The init script:
 2. Symlinks `$HOME/.claude/{skills,commands,agents,hooks,reference}` to `$STRATA_HOME/` (backing up conflicting entries first). This is how Claude Code discovers strata's content at session start.
 3. Refreshes `$HOME/.claude/settings.json` and `$HOME/.claude/CLAUDE.md`, backing up changed copies before replacement. It leaves the existing permission mode untouched. `--enable-bypass-permissions` is an explicit opt-in that disables Claude Code permission prompts globally for this user.
 4. Seeds the gitignored `config/private-tokens.txt` from its example when absent and prints the file to edit; reruns never overwrite it.
-5. Populates `workspace/` with PARA-flavored seed templates: `areas/`, `projects/`, `resources/`, `daily/`, `inbox/`, `archives/`. Each directory ships a README explaining the pattern; entity directories include a `summary.md` schema and an `items.json` example. This is the substrate your agent reads, writes, and grows over time.
+5. Creates `workspace/state/specs/` and `workspace/state/handoffs/` for compaction-safe specs and session handoffs.
 6. Reminds you to fill `config/model-map.toml` with the strongest models you currently have access to (see step 3 of this document).
 7. Prints a one-line check command to verify the install: `strong --help && fast --help && grader --help && breadth --help`.
 
-Re-run `strata-init` after `git pull` as the safe upgrade step. It refreshes copied files, leaves current symlinks alone, and reports every unchanged, refreshed, linked, seeded, and backed-up path.
+Re-run `strata-init` after `git pull` as the safe upgrade step. It refreshes copied files, leaves current symlinks alone, and reports every unchanged, refreshed, linked, seeded, and backed-up path. Read [MIGRATION.md](MIGRATION.md) before upgrading across a release that removes hooks or commands.
 
 Source the generated rc file named in the install output, or open a new shell, before continuing.
 
@@ -70,22 +70,18 @@ Inside a Claude Code session, type:
 
 The skill walks you through recon → plan → spec-on-disk. The spec lives at `$SPECS_DIR/example-feature.md` and survives compaction. Read its `>> Current Step` after any context reset.
 
-## 6. Build your knowledge base
+## 6. Use the workspace for continuity
 
-`workspace/` is where your operating context accumulates. As you work, the agent reads and writes:
+`workspace/` holds runtime artifacts that coding agents must recover after context loss:
 
-- `areas/` — ongoing responsibilities you maintain over time
-- `projects/<entity>/summary.md` — architecture, recent sessions, gotchas per project
-- `resources/` — reusable references not tied to a project
-- `daily/` — session journals named `YYYY-MM-DD-<slug>-<session-id>.json`
-- `inbox/` — unsorted captures
-- `archives/` — deprecated entities you've stopped touching
+- `state/specs/` — active implementation specs with `>> Current Step` and recorded decisions
+- `state/handoffs/` — explicit notes for work that continues in another session
 
-The `summary.md` + `items.json` per entity is the pattern. Skills like `/pickup`, `/end`, and `knowledge-lookup` read and write this tree. Over time it becomes the persistent memory the orchestrator dispatches off.
+The compaction hooks also write session-keyed pointer maps under `$STATE_DIR`. Claude Code supplies native project memory; Strata does not maintain a second memory store. See `reference/knowledge-management.md` for a compact note discipline that works with the native feature.
 
 ## 7. Read the doctrine
 
-`CLAUDE.md` at the install root is the operating doctrine the agent reads first every session. Skim it once. The patterns it encodes (orchestrator delegation, gated completion, harness-as-composition, privacy as the immovable rail) are the working OS.
+`CLAUDE.md` at the install root is the operating doctrine the agent reads first every session. Skim it once. It covers orchestrator delegation, file-backed continuity, harness composition, and privacy.
 
 ## 8. (Optional) Enable telemetry
 

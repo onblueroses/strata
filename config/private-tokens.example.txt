@@ -23,9 +23,9 @@
 # Mesh VPN IPs on your private network
 # Hostnames that resolve to private services
 
-# === Knowledge base hints ===
+# === Local structure hints ===
 # Directory names that reveal personal structure (life/, my-notes/, etc.)
-# Specific summary.md entity names that would dox a project
+# Project or client code names that appear in your notes and paths
 
 # === Vendor identifiers ===
 # Team IDs, organization slugs, billing account names

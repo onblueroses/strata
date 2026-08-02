@@ -25,19 +25,6 @@ Arguments via `$ARGUMENTS`:
 - **Skip if** the target path doesn't exist - tell the user and stop
 - **Skip if** the target was already explored this session (check if you wrote a scratchpad for it in recent context)
 
-## Entity Freshness Gate (run before Phase 0)
-
-Before spawning any agents, check if the target maps to a known entity with a recent summary.
-
-1. Normalize the target: lowercase, strip path prefix, strip common suffixes (`-vault`, etc.)
-2. Scan MEMORY.md entities table for a name match (fuzzy ok: `proj` matches `project-alpha`, `stg` matches `staging-service`)
-3. If a match is found, read the entity's `summary.md` first line block to get `last_verified`
-4. **If `last_verified` is within 14 days**: stop and say:
-   > "[entity] has a summary from [date]. Use `/pickup [entity]` to load it (much cheaper). Run `/deep-understand [entity]` only if you need a full re-scan."
-   Do not proceed unless the user explicitly confirms they want the full scan.
-5. **If `last_verified` is older than 14 days or missing**: proceed normally, but note "Summary is stale ([date]) - running full scan."
-6. **If no entity match**: proceed normally.
-
 ## Priority Mode
 
 **When to use:** `--quick` flag, or user just needs a fast overview before starting work.
@@ -55,7 +42,7 @@ Before spawning any agents, check if the target maps to a known entity with a re
 - Overwrite an existing target-specific scratchpad without asking - the user may have annotated it
 - Explore `node_modules/`, `.git/`, `dist/`, `build/`, `.next/`, `__pycache__/` - always exclude these
 - Report the raw agent outputs to the user - synthesize into the scratchpad format first
-- Run deep-understand on a project you already know well (e.g., `calc-app` after 10+ sessions) - use `/pickup` instead
+- Re-scan a project when the current session already has enough verified context to answer the question.
 
 ---
 

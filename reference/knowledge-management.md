@@ -1,87 +1,60 @@
-<!-- keywords: life directory, entity, knowledge base, summary.md, items.json, knowledge management, daily note json, para structure -->
-# Knowledge Management
+<!-- keywords: Claude Code native memory, note discipline, stable tokens, append-only corrections, pointers -->
+# Native Memory Notes
 
-Three-layer system at `$KB_DIR/`:
-
-| Layer | Location | Purpose |
-|-------|----------|---------|
-| Knowledge Graph | `$KB_DIR/{projects,areas,resources}/` | Entity-centric state |
-| Daily Notes | `$KB_DIR/daily/YYYY-MM-DD-{name}-{session-id}.json` | Session timeline (JSON) |
-| Tacit Knowledge | `$KB_DIR/tacit.md` | User patterns, constraints |
+Claude Code ships project memory. Strata uses it and does not maintain a second memory backend.
 
 ## Quick Nav
 
-| Task | Section |
-|------|---------|
-| Create or update an entity | Entity Structure |
-| Decide where data belongs (summary vs items) | Source of Truth |
-| Write a daily note JSON | Daily Note JSON Schema |
-| Choose storage location for new info | Where to Store What |
-| Add a person entity | People Pattern |
+| Need | Read |
+|------|------|
+| Check what exists | Verify the backend |
+| Write a useful record | Record shape |
+| Keep retrieval reliable | Stable anchors |
+| Correct an old claim | Append corrections |
 
-## Entity Structure
+## Verify the backend
 
-```
-entity-name/
-  summary.md    # State, decisions, links (authoritative for entity state)
-  items.json    # Structured facts for queries (details not in summary.md)
-```
+Inspect `$HOME/.claude/projects/*/memory/` to see the native project-memory files
+that exist on the current installation. Resolve the active project through the
+current session transcript; encoded directory names are an implementation detail,
+so a guessed path is not evidence.
 
-### Entity Conventions
+Read the target file before appending. The file on disk is the check for what the
+platform retained and whether a proposed record already exists.
 
-- **`last_verified`**: First line after `## Status` in every summary.md. Format: `last_verified: YYYY-MM-DD`. Updated by /end on every session that touches the entity. Used by /status for staleness alerts (7+ days = STALE, 14+ days = URGENT).
+## Record shape
 
-- **`## Recent Sessions`**: Table in summary.md before `## Links`. Capped at 10 rows (oldest removed). Each row: date, session name (session_id), one-line summary. This is the entity's reverse index to sessions - lets you answer "what happened to X?" without grepping daily notes. Updated by /end automatically.
+Keep one record on one line. Begin it with a type prefix:
 
-- **Entity-history query**: read the Recent Sessions table, then scan daily notes for the full timeline.
-
-- **Ground-truth reconcile**: Periodic deep verification of all entities against remote (e.g. a VPS) and local ground truth. Checks that documented claims (auth status, ports, versions, domains, etc.) match actual system state. Fixes clear-cut mismatches, flags ambiguous ones. Updates `last_verified` on all checked entities. Use when /status shows STALE entities or as a weekly review.
-
-## Source of Truth
-
-summary.md and items.json serve different purposes. Don't duplicate between them.
-
-| What | Where | Example |
-|------|-------|---------|
-| Entity state, status, architecture | summary.md | "optimize-app.immo is live, password-protected" |
-| Structured detail for lookup | items.json | specific port numbers, workflow IDs, credentials, gotchas |
-
-**items.json entries must add detail that summary.md doesn't cover.** If summary.md already states a fact clearly, don't repeat it in items.json. Good items.json entries: version numbers, port bindings, credential references, workflow IDs, file paths for specific configs, gotchas, rules.
-
-## Daily Note JSON Schema
-
-```json
-{
-  "date": "YYYY-MM-DD",
-  "session_id": "first 8 chars of CLAUDE_SESSION_ID",
-  "session_name": "descriptive-name",
-  "project_dir": "$HOME/Work/example",
-  "started": "HH:mm",
-  "ended": "HH:mm",
-  "summary": "2-5 sentences",
-  "decisions": ["choice made and why"],
-  "outputs": ["files created or modified"],
-  "entities_touched": ["$KB_DIR/projects/example"],
-  "tags": ["cleanup", "hooks"],
-  "takeaway": "One-sentence key learning"
-}
+```text
+F <stable-token> <durable fact>
+S <stable-token> <current state>
+E <stable-token> <event and outcome>
+P <stable-token> <path to richer content>
 ```
 
-**Normalization**: `entities_touched` entries must always be directory paths (e.g. `$KB_DIR/projects/myapp`), never file paths (`$KB_DIR/projects/myapp/summary.md`). /end step 3 enforces this by mapping modified paths to MEMORY.md's Entities table. An entity-history scan uses prefix matching when reading older notes that may have the file-path format.
+Use `F` for a fact expected to remain true, `S` for replaceable current state,
+`E` for something that happened, and `P` for a filesystem pointer.
 
-## Where to Store What
+Write the claim so another session can test it against a file, command, commit,
+issue, or observed result. If no such check exists, label the uncertainty in the
+record instead of turning it into a fact.
 
-- Entity state (status, architecture, decisions) - **summary.md** (authoritative)
-- Structured detail for lookup (specific values, IDs, gotchas) - **items.json** (no duplicates of summary.md)
-- Existing fact changed - **update in place** (never append a duplicate)
-- Session happened, what was done - **Daily note JSON** (at /end)
-- User preference or constraint observed - **tacit.md** (keep under 20 lines)
-- Technical paths, stack, decisions - **MEMORY.md** (auto-memory)
+## Stable anchors
 
-## People Pattern
+Anchor records with literals that survive paraphrase: project slugs, file paths,
+config keys, command names, issue ids, schema fields, or commit ids. Reuse the
+same token when the same subject appears again.
 
-`$KB_DIR/resources/people/` - Relationship context for recurring clients, collaborators, stakeholders. Same entity format (summary.md + items.json).
+Do not rely on semantic similarity for identity. A literal search for the stable
+token should find the relevant history even when wording changes.
 
-## Cross-linking
+Keep explanations, logs, designs, and long evidence in ordinary project files.
+Store a `P` record with the exact path and a short statement of why it matters.
 
-Use relative paths: `../projects/x/summary.md`
+## Append corrections
+
+Correct a record by appending a line that repeats its stable token and states what
+it supersedes. Leave the old line in place so the change remains visible.
+
+Before relying on current state, read all matching lines and use the newest supported correction. Verify consequential claims against their pointed-to source.

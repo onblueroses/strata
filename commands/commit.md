@@ -7,7 +7,7 @@ description: |
   Auto-trigger: MANDATORY when committing work with multiple unrelated changes.
   Use instead of manual git add/commit when the session touched 3+ unrelated concerns.
 tier: core
-predecessors: [verify, review]
+predecessors: [review]
 conflicts_with: [deploy]
 cost_hint: low
 parallelizable: false
@@ -31,10 +31,6 @@ Arguments via `$ARGUMENTS`.
 ---
 
 ## Instructions
-
-### 0. Check /verify prerequisite
-
-Look for `$STATE_DIR/.verify-passed-{sessionId}`. If the file doesn't exist but `$STATE_DIR/.session-edits-{sessionId}` has entries, stop and tell the user to run `/verify` first. Committing unverified changes defeats the purpose.
 
 ### 1. Gather changes
 

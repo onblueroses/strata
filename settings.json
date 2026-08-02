@@ -31,7 +31,6 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/session-ensure-daily-note.sh", "timeout": 5000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/session-check-dev-servers.sh", "timeout": 5000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/session-cleanup-verify-markers.sh", "timeout": 2000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/session-cleanup-codex.sh", "timeout": 3000 },
@@ -44,8 +43,6 @@
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/gate-verify.sh", "timeout": 3000 },
-          { "type": "command", "command": "bash $STRATA_HOME/hooks/lifecycle-auto-end-fallback.sh", "timeout": 5000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/lifecycle-sync-state.sh", "timeout": 10000 },
           { "type": "command", "command": "bash $STRATA_HOME/hooks/lifecycle-warn-unpushed.sh", "timeout": 8000 }
         ]

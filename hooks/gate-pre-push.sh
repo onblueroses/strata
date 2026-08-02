@@ -407,7 +407,7 @@ fi
 
 git rev-parse --is-inside-work-tree &>/dev/null || exit 0
 
-# The knowledge base is expected to contain private identifiers and is not a public code repo.
+# The configured runtime workspace is local state, not a public code repository.
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 case "$ROOT" in
     "$KB_DIR"|"$KB_DIR/"*) exit 0 ;;

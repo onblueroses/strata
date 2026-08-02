@@ -226,44 +226,6 @@ Offer 2-3 specific deeper dives based on gaps or interesting threads that emerge
 
 ---
 
-## Export
-
-If `--export` flag or user requests, save to `$KB_DIR/resources/research/[topic-slug]-[YYYY-MM-DD].md`. This files the research as a permanent wiki page that compounds in the knowledge base.
-
-```markdown
----
-source: [original query or URL that prompted the research]
-date: YYYY-MM-DD
-type: research
-complexity: [Simple/Moderate/Complex]
-agents: [count]
-patterns: []
-entities_mapped:
-  - [entity names referenced in findings, if any]
----
-
-# Research: [Topic]
-
-## Executive Summary
-[Key takeaway]
-
-## Findings
-[Full synthesized findings]
-
-## Sources
-[All URLs]
-
-## Follow-up Questions
-[Unanswered or deeper questions]
-```
-
-After writing the page, append one row to `$KB_DIR/resources/INDEX.md`:
-```
-| [research/slug.md](research/slug.md) | research | YYYY-MM-DD | [query or topic] | entity1, entity2 |
-```
-
----
-
 ## Examples
 
 ```

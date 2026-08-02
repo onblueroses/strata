@@ -116,7 +116,7 @@ Each notification type fires reactively (not polled). No central event bus - not
 **Local harness application:**
 
 Route through `notify.sh` with urgency levels:
-- `critical`: permission denials, stop gate blocks, deployment failures
+- `critical`: permission denials and deployment failures
 - `normal`: compaction suggestions, idle prompts, skill completions
 - `low`: tracking events, observability, status updates
 
@@ -147,9 +147,9 @@ Three clean categories: **notifications** (what to tell the user), **permissions
 **Local harness application:**
 
 Name hooks with concern prefixes:
-- `session-*`: session lifecycle (ensure-daily-note, check-dev-servers, cleanup-verify-markers, post-compaction-restore)
-- `gate-*`: guards and gates (verify, pre-push, rm-guard)
-- `lifecycle-*`: session end and sync (auto-end-fallback, sync-state, warn-unpushed)
+- `session-*`: session lifecycle (check-dev-servers, cleanup-verify-markers, post-compaction-restore)
+- `gate-*`: guards and gates (pre-push, rm-guard, destructive-git)
+- `lifecycle-*`: session end and sync (sync-state, warn-unpushed)
 - `context-*`: context management (nudge, pre-compaction-save)
 - `quality-*`: code-quality checks (lint-on-write, resource-sizing)
 - `observe-*`: tracking and observability (track-edits, track-session-events, track-skill-runs, track-mcp-tools)
@@ -268,9 +268,9 @@ Stage 6 (mode routing) determines whether this is a local session, remote bridge
 **Local harness application:**
 
 Local equivalent bootstrap:
-1. SessionStart hooks fire (ensure-daily-note, check-dev-servers, cleanup-verify-markers)
+1. SessionStart hooks fire (check-dev-servers, cleanup-verify-markers, post-compaction-restore)
 2. CLAUDE.md loads (system prompt with all constraints)
-3. MEMORY.md loads (auto-memory with entity index)
+3. Claude Code loads its native project memory
 4. Skills list loads (from settings.json descriptions)
 5. MCP servers initialize (all at once - this is where deferred init would help)
 6. First user prompt triggers UserPromptSubmit hook (context-nudge)

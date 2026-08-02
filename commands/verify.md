@@ -1,6 +1,6 @@
 ---
 name: verify
-description: "Post-implementation integrity gate with risk-based tiers. Classifies edited files by risk (Skip/Light/Full/Deep) and runs proportional checks. Skip auto-passes for knowledge-base files (`$STRATA_HOME/skills/**/*.md`, `$STRATA_HOME/reference/**/*.md`, `.claude/projects/*/memory/**/*.md`, `$KB_DIR/**/*.md`, etc.). Light runs inline checks for 1-3 code files in a single project (re-read, debris scan, tests). Full uses Codex review (`codex review --uncommitted`) plus inline mechanical checks for 4+ files or multi-project work. Deep requires explicit --deep flag for spec-driven multi-phase work (extended doc-currency, import-graph, config-affects-runtime trace). MANDATORY after editing files, before reporting task completion — the Stop hook (gate-verify.sh) auto-passes Skip-tier sessions and blocks all others until /verify passes. Triggers on: 'verify', '/verify', 'verify the changes', 'check the work', 'integrity check', 'before I close out', 'pre-completion check', 'did everything pass'. Also triggers when: files have been edited this session and the user is about to report task completion or end the session; the Stop hook fires with 'VERIFICATION REQUIRED' or 'FILES EDITED AFTER VERIFICATION' messages; /end is about to run (verify must pass first). Pairs with /review (downstream — review runs after verify), /end (downstream — end requires verify marker), /spec (Deep tier checks spec currency). Marker file at $STATE_DIR/.verify-passed-{sessionId} is the receipt the Stop hook checks. Manual invocation: /verify or /verify --deep."
+description: "Run a risk-based post-implementation self-check and write the receipt consumed by /review and the pre-push gate. Triggers on: 'verify', '/verify', 'verify the changes', 'check the work', 'integrity check', 'before I close out', 'pre-completion check', 'did everything pass'. Pairs with /review, /end, and /spec. Manual: /verify or /verify --deep."
 tier: core
 cost_hint: medium
 parallelizable: false
@@ -9,7 +9,7 @@ when_to_use: After editing files, before reporting task completion
 
 # Verify
 
-Goal: Validate edited files by risk tier and emit a deterministic `/verify` result for the stop gate.
+Goal: Validate edited files by risk tier and emit a deterministic `/verify` result for downstream review.
 Success means:
   - Tier classification follows the existing Skip/Light/Full/Deep rules and the highest-risk file controls the session tier.
   - Selected tier checks run with current file-path patterns, command examples, marker path, and pass/fail semantics unchanged.
@@ -46,13 +46,11 @@ Read `$STATE_DIR/.session-edits-{sessionId}` and classify every path with the ca
 
 Classify as Skip when all edited files match these patterns (every file matches one listed pattern; one mismatch escalates):
 
-- `$KB_DIR/**/*.md` - knowledge base markdown
-- `$KB_DIR/**/*.json` - knowledge base data (daily notes, items.json)
 - `$SPECS_DIR/**` - spec files
 - `$STRATA_HOME/commands/**/*.md` - skill/command definitions (not hooks or scripts)
 - `$STRATA_HOME/skills/**/*.md` - skill definitions (SKILL.md + reference markdown inside skill dirs)
 - `.claude/memory/**` - memory files
-- `.claude/projects/*/memory/**/*.md` - per-project auto-memory (MEMORY.md and pointer files)
+- `.claude/projects/*/memory/**/*.md` - Claude Code native project-memory files
 - `**/CLAUDE.md` - project instructions
 - `$STRATA_HOME/reference/**/*.md` - reference docs
 
@@ -94,8 +92,7 @@ Classify as Deep when the `--deep` flag was passed explicitly.
 
 ---
 
-<details>
-<summary>Light Tier Checks (inline, no subagent)</summary>
+## Light Tier Checks (inline, no subagent)
 
 Run these checks directly; keep the process inline for 1-3 files in a single project.
 
@@ -131,10 +128,7 @@ VERIFY: [N files] LIGHT
 
 Write the marker file on PASS. Fix issues and re-run on FAIL.
 
-</details>
-
-<details>
-<summary>Full Tier Checks (Codex first, then inline)</summary>
+## Full Tier Checks (Codex first, then inline)
 
 Run Codex as the primary adversarial reviewer, then run mechanical checks inline.
 
@@ -212,10 +206,7 @@ INLINE CHECKS
 
 Write the marker file on PASS. Fix issues yourself and re-run /verify on FAIL.
 
-</details>
-
-<details>
-<summary>Deep Tier Checks (Codex first, then inline extended)</summary>
+## Deep Tier Checks (Codex first, then inline extended)
 
 Run Full tier checks (Codex + inline), then run these additional inline checks:
 
@@ -233,20 +224,18 @@ _Frontier-format compatibility: use `### Success means` plus the open Frontier's
 
 Report using the Full verdict format with `DEEP` label and D1-D5 items in the report.
 
-</details>
-
 ---
 
 ## Marker File
 
-Use the marker file exactly as the Stop hook expects.
+Write the marker file as the receipt shared by verification consumers.
 
 **Path:** `$STATE_DIR/.verify-passed-{sessionId}`
 **Content:** ISO timestamp on a single line (e.g., `2026-03-25T14:30:00`)
 **Session key:** `{sessionId}` is the first 8 characters of the current session id.
-**Purpose:** `gate-verify.sh`, `/review`, and `gate-pre-push.sh` consume this receipt. Treat a missing receipt or one older than either edit tracker as stale.
+**Purpose:** `/review` and `gate-pre-push.sh` consume this receipt. Treat a missing receipt or one older than either edit tracker as stale.
 
-Write the receipt exactly once per real PASS, including Skip, and never write it on FAIL. `session-cleanup-verify-markers.sh` removes this session's prior receipt at SessionStart; `gate-verify.sh` may write it for a Skip-tier session. The session-keyed path keeps concurrent sessions isolated.
+Write the receipt exactly once per real PASS, including Skip, and never write it on FAIL. `session-cleanup-verify-markers.sh` removes this session's prior receipt at SessionStart. The session-keyed path keeps concurrent sessions isolated.
 
 ---
 
@@ -256,43 +245,33 @@ Apply these verification rules after tier classification.
 
 - Classify any code edit, including a single `.ts`, at least as Light and reserve Skip for non-code files.
 - Run Light tier checks inline in this session; reserve subagent dispatch for Full and Deep tiers where the cost is justified.
-- Scope verify checks to edited files only and leave entity summaries to /end and a ground-truth reconcile.
-- DO NOT write the marker file on FAIL. The Stop hook checks for this. Writing on FAIL defeats the system.
+- Scope verify checks to edited files only.
+- DO NOT write the marker file on FAIL. Review and pre-push checks treat the receipt as proof of a real pass.
 - Treat warnings as non-blocking; for example, `as any` casts and missing tests remain warnings, and PASS remains valid when actual errors are absent.
 - Verify only files from the session edit list.
-- Stop after 3 failed /verify attempts on the same issue and ask the user.
-- For /verify infrastructure edits (`gate-verify.sh` or this skill file), write the marker manually.
+- Stop when retries reproduce the same failure without new evidence, then ask the user for the missing decision or input.
+- For edits to this command's own verification logic, write the marker manually after the applicable checks pass.
 - Report only concrete findings and keep PASS for clean code.
 
-<details>
-<summary>Integration with Other Skills</summary>
+## Integration with Other Skills
 
 Use these integration points with other skills.
 
-- **/review**: Run /verify first; /review checks that /verify passed before proceeding (marker file exists).
-- **/end**: Run /verify before /end. /end records session state that should be verified first.
-- **Ground-truth reconcile**: Keep deep entity verification against ground truth in a separate ground-truth reconcile pass, not /verify.
+- **/review**: A fresh `/verify` receipt supplies prior self-check evidence; review continues when the receipt is absent or stale.
+- **/end**: `/end` runs applicable checks and may invoke `/verify` before committing.
 - **/spec**: Check that active specs are up to date in Full/Deep tiers.
 
-</details>
-
-<details>
-<summary>Session Lifecycle</summary>
+## Session Lifecycle
 
 Use this session lifecycle:
 
 ```
-Implement -> /verify (MANDATORY) -> /review -> git commit -> /end -> stop
-                ^                                                    |
-                |_______ Stop hook blocks if /verify not passed _____|
+Implement -> /verify -> /review -> git commit -> /end -> stop
 ```
 
-Use Stop hook auto-write for Skip-tier sessions (only .md/.json in $KB_DIR/, .claude/ config); Skip-tier sessions pass without explicit /verify.
+`/verify` is a voluntary self-check. `/review` and the pre-push gate can use its session-keyed receipt when it exists.
 
-</details>
-
-<details>
-<summary>Quality Self-Check</summary>
+## Quality Self-Check
 
 Apply this self-check before reporting the verdict.
 
@@ -301,5 +280,3 @@ Apply this self-check before reporting the verdict.
 3. **Mechanically check cross-file references with Glob** for imports before reporting. (Full/Deep only.)
 4. **Write findings with specific file path and line number** and name the concrete failure mode.
 5. **Reclassify the tier** against the session edit list and classifier rules.
-
-</details>

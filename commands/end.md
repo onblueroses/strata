@@ -1,188 +1,86 @@
 ---
 description: |
-  End session. Writes daily note JSON, commits work, updates entity summaries, syncs.
+  Close a session: run checks, update the active spec, commit and push, and write a field-agent result when dispatched.
   Auto-trigger: MANDATORY when session is ending, user says goodbye/done/wrap up/thanks/
   that's all/signing off/goodnight, or before closing. Invoke even for short sessions.
 ---
 
 # End Session
 
-Goal: Close the session by capturing daily note state, committing work, reconciling entities, syncing, and writing field-agent results when dispatched.
+Goal: Leave the work tested, restartable, committed, and pushed.
 
 Success means:
-  - Steps 1-7 run in order, with Priority Mode applying only where specified.
-  - Daily note `$KB_DIR/daily/YYYY-MM-DD-{slug}-{sessionId}.json` uses the Step 3 JSON schema and carries accurate summary, outputs, entities, tags, takeaway, and commit hashes.
-  - `/commit` handles work from this session, entity summaries reflect changed state, sync behavior follows Step 6, and field-agent sessions write `.task-result.md` (when status is complete | partial | failed) or `.task-blocked.md` (when status is blocked).
 
-Stop when: The daily note is written or verified, applicable commits and pushes finish, entities and sync are handled, and the required final confirmation line is returned.
+- Applicable tests and checks pass, or the unresolved failure is reported without committing broken work.
+- The active spec's `>> Current Step` matches the repository state.
+- Session-owned changes are committed and pushed; pre-existing work remains untouched.
+- A dispatched field agent leaves the result file that `/collect` expects.
 
-Execute steps 1-7 in order. Apply each step whose condition matches. Low context or trivial session? Use Priority Mode (end).
+Stop when: The checks, spec update, repository handoff, and any field-agent result are complete, then return a concise status and stop.
 
-## 1. Find and name daily note
+## 1. Inspect the work
 
-Find the note in `$KB_DIR/daily/` using the path shape `$KB_DIR/daily/YYYY-MM-DD-{slug}-{sessionId}.json`. Resolve it in this order:
+Run `git status --short` and `git status -sb` in every repository touched this session. Use the session edit list and current working directory to find those repositories.
 
-1. Use the session ID emitted by the SessionStart hook.
-2. Match today's daily notes by that session ID: `$KB_DIR/daily/YYYY-MM-DD-*-{sessionId}.json`.
-3. After compaction, if the session ID is unavailable, recover it from the newest `$STATE_DIR/auto-context-save-{sid}-hook.md`, then repeat step 2.
-4. Last resort: use the most recent `*-unnamed-*.json`, or create a stub with today's date using the step 3 schema when hooks are disabled.
+Separate session-owned changes from pre-existing or sibling-owned changes. Leave changes you do not own untouched.
 
-**Name** (if `unnamed` present): choose 2-3 words, `{noun}-{verb}` format (e.g. vault-move, api-deploy). Rename file and update `session_name` field inside.
+## 2. Run checks
 
-## 2. Commit and push work
+Run the project's documented tests, linters, type checks, or build checks that cover the changed behavior. Include a fresh `/verify` receipt when the user ran that self-check.
 
-Run `git status --short` and `git status -sb` in all repos you touched this session (parallel).
+If a required check fails, report the command and failure. Stop before commit or push unless the user explicitly accepts the failure.
 
-For each repo with uncommitted changes from your work:
-1. Invoke `/commit` to group and commit them atomically. Save hashes for step 3.
-2. Run `git push` immediately after committing. Report failure once and continue.
+## 3. Update the active spec
 
-Also check for repos already ahead of origin (`[ahead X]` in `git status -sb`) and push those too, including repos with only earlier session commits. This catches commits made during the session that remain unpushed.
+Find the session-owned in-progress spec under `$SPECS_DIR`. If one exists:
 
-Mention pre-existing changes and leave them uncommitted. Skip repos with a clean worktree that are synced with origin.
+- Re-read its goal, decisions, `>> Current Step`, and newest trail entry.
+- Update `>> Current Step` to the first action that remains true after the checks.
+- Record completed work and verification in the trail.
+- Mark the spec complete only when its stated goal and acceptance checks are satisfied.
 
-## 3. Write daily note
+Do not edit a spec owned by another session. Skip this step when no active spec belongs to this work.
 
-Write or verify the daily note before ending; **MUST** complete this step because the daily note preserves session state across closures.
+## 4. Commit and push
 
-**Guard:** Read existing. If `summary` non-null and accurate, skip to step 4. If incomplete, merge (detailed summary wins, union arrays, keep specific takeaway).
+For each repository with session-owned changes:
 
-Schema:
-```json
-{
-  "date": "YYYY-MM-DD", "session_id": "...", "session_name": "...",
-  "project_dir": "...", "started": "...", "ended": "HH:mm",
-  "summary": "2-5 sentences", "decisions": ["choice + why"],
-  "outputs": ["path (what changed)"], "entities_touched": ["$KB_DIR/projects/x"],
-  "tags": ["2-3"], "takeaway": "one sentence"
-}
-```
+1. Invoke `/commit` so review and logical grouping happen before the commit.
+2. Run `git status --short` again and confirm only intended changes entered the commit.
+3. Run `git push`.
 
-**Fields:**
+Also push a repository that is already ahead of its upstream because of this session. Report a push failure and preserve the local commit.
 
-- `summary`: 400-600 chars. Use an action-complications-resolution arc with specifics (numbers, paths). No "In this session" opening - lead with what happened.
-- `decisions`: Record choices where alternatives existed. Formats: "Chose X over Y because Z" / "Left X unchanged because Y" / "Deferred X because Z". Exclude methods ("used subagents for speed", "ran tests in parallel") - those are process details outside the decision list.
-- `outputs`: List paths + parentheticals. 10+: summarize by area. End with `"Git: repo-name abc1234"`. `[]` ok for research.
-- `entities_touched`: Map modified paths to entities via the Entities table in MEMORY.md (in context) - match the `Local` column to files changed. Cross-check: Deployed to VPS? +`$KB_DIR/areas/infrastructure`. Changed `.claude/`? +`$KB_DIR/areas/agent-config`.
-- `tags`: Free-form (3-7 tags). Suggested vocab: deploy, security, frontend, skill, infrastructure, content, knowledge-system, git, design, research, automation.`
-- `takeaway`: **Test:** cover the summary with your hand and read the takeaway alone - does it teach something useful on its own? When it reads as a compressed restatement, rewrite it. Routine sessions: state the main outcome.
+## 5. Field agent result
 
-**Verify:** Confirm takeaway independent? Entities complete? Outputs have descriptions? Commit hashes present?
-
-## 4. Reconcile entities
-
-Reconcile entity summaries when Step 3 touched entity-scoped files. Apply the three gates below in order; the first gate that matches short-circuits the rest.
-
-<details>
-<summary>Reconcile entities</summary>
-
-**Apply gates in this order. First match wins:**
-
-**Gate 1 — Empty-entities fast skip.** Check `entities_touched` from Step 3. If it is empty (zero entity-scoped files modified this session), skip Step 4 entirely — autoend-state gate, lock gate, and 4.1-4.6 included. Jump to Step 5. Preserve existing `last_run` because the session contributed zero entity state. This is the cheap path for pure Q&A or knowledge-base sessions.
-
-**Gate 2 — Auto-end skip.** Read `$STATE_DIR/autoend-state.json` (create parent dir if needed). If missing, treat as `{ "last_run": null, "sessions_since": 0 }`. Increment `sessions_since` by 1 immediately. Then apply the skip if all three conditions hold:
-- `last_run` is not null
-- fewer than 4 hours since `last_run` (strict less-than; exactly 4 hours fails the skip)
-- `sessions_since` < 5
-
-If skipping: write `{ "last_run": "<existing value>", "sessions_since": <incremented value> }` back to `autoend-state.json`. Jump to Step 5.
-
-**Gate 3 — Lock gate.** Check `$STATE_DIR/autoend.lock`. If it exists and was modified within the last 5 minutes, a concurrent session is reconciling — skip, write incremented `sessions_since`, jump to Step 5. Otherwise: create the lock file (write current ISO timestamp as contents). Proceed with 4.1-4.6 below. Delete the lock file after 4.6 completes (even if steps error).
-
-**Reconcile path (gates 1-3 passed).** Proceed with steps 4.1-4.6. After 4.6, write `{ "last_run": "<ISO timestamp>", "sessions_since": 0 }` to `autoend-state.json`.
-
-**Schema:** `{ "last_run": "ISO-8601 or null", "sessions_since": integer }`
-
-Read all `entities_touched` summaries in parallel. Leave summaries unchanged when the session left documented state unchanged.
-
-**4.1 Update summary.md:** Fix stale status/progress, arch/tech, tables, paths. Edit actual inaccuracies only.
-
-**4.2 Update items.json:** Read when session produced structured facts (values, gotchas, ports, versions) absent from summary. New entries: next ID in sequence. Schema: `[{"id","type","subject","fact","date","source"}]`.
-
-**4.3 Set last_verified:** `last_verified: YYYY-MM-DD` after `## Status`. Warn if previous >7 days.
-
-**4.4 Recent Sessions:** Add `| YYYY-MM-DD | session-name (session_id) | one-line |`. Then enforce the 10-row cap actively: count rows AFTER your insert; if >10, delete oldest rows (bottom of table) until exactly 10 remain. This applies even if the prior table was already over the cap (it can drift via direct edits). Ensure blank line before `## Links`.
-
-**4.5 Cross-entity consistency (2+ entities only):** Check shared facts (auth status, PM2, ports, versions, domains, crons) between site entities + `infrastructure`. Fix stale side.
-
-**4.6 Create if missing:** Make directory + `summary.md` (`# Name`, `## Status`, `## Details`, `## Recent Sessions`, `## Links`) + `items.json` as `[]`.
-
-</details>
-
-## 5. Tacit knowledge
-
-Append to `$KB_DIR/tacit.md` (cap 20, prune oldest) when a new preference/constraint was observed.
-
-## 6. Sync
-
-Sync `$KB_DIR` with the exact command below.
-
-```bash
-cd $KB_DIR && git add -A && { git diff --cached --quiet && echo "Nothing to sync" || { git commit -m "Auto-sync: SESSION_NAME (YYYY-MM-DD HH:mm)" && git push; }; }
-```
-Replace SESSION_NAME, use current time. When push fails, report once and continue (Stop hook backs up).
-
-**Confirm:** Report session name, entities updated (what changed), sync status, warnings. Keep it brief. Final line: `Session closed cleanly. No issues. You can close this terminal.` OR `Session closed with issues: [list]. Address these before closing.`
-
----
-
-## Field Agent Mode (dmux dispatch)
-
-Detect field agent mode before step 1 by checking whether `.task-brief.md` exists in the current working directory. If yes, activate field agent mode for this dispatched field agent session.
-
-**Read the brief:** Parse the YAML frontmatter to extract `id`, `entity`, `scratchpad`, and `siblings`.
-
-**Execute normal /end steps (1-5)** as usual. Leave step 6 (sync) for the parent session because multiple field agents finishing simultaneously would cause git conflicts in `$KB_DIR/`. The parent session syncs after `/collect`. Then execute the additional step below.
-
-### 7. Write task result
-
-Write `.task-result.md` in the current working directory after all normal /end steps complete:
+When `.task-brief.md` exists, write `.task-result.md` for `/collect` after the repository checks finish. Copy the task id from the brief and record:
 
 ```markdown
 ---
-id: {id from .task-brief.md}
-status: {complete|partial|failed}    # blocked sessions write .task-blocked.md instead — see Status determination below
+id: {task id}
+status: {complete|partial|failed}
 completed: {ISO timestamp}
 files_changed:
-  - {from git diff --name-only against branch_from}
+  - {path}
 tests_passed: {true|false|unknown}
 merge_order_hint: {merge-first|no-dependency|merge-after:{slug}}
 ---
 
 ## Summary
-{Reuse the summary from the daily note (step 3) - same 2-5 sentences}
+{What changed and why}
 
 ## Decisions
-{Reuse decisions array from daily note, one per line with bullet}
+{Choices the parent must preserve}
 
 ## Surprises
-{Things discovered that the parent orchestrator didn't anticipate.
-If nothing surprising: "None - task executed as briefed."}
+{Unexpected facts, or "None"}
 
 ## Integration Notes
-{What the parent needs to know for merge:
-- Env vars that need to be set
-- Config changes required
-- Files that other tasks may need to update after merge
-- Suggested merge order rationale
-If straightforward: "Clean merge expected, no special handling needed."}
+{Merge order, configuration, or follow-up work}
 ```
 
-**Status determination:**
-- `complete`: all acceptance criteria from the brief are met
-- `partial`: some criteria met, work is usable but incomplete
-- `blocked`: write only `.task-blocked.md`; blocker prevents meaningful progress
-- `failed`: attempt made and meaningful progress remained out of reach
+Write `.task-blocked.md` instead when an external blocker prevents meaningful progress. Name the blocker, work completed, and input required.
 
-**merge_order_hint:**
-- `merge-first`: this task changes interfaces/types that siblings depend on
-- `no-dependency`: independent, can merge in any order
-- `merge-after:{slug}`: depends on another task's changes being merged first
+## 6. Stop
 
-**Scratchpad reminder:** When the brief had `scratchpad: true` and sibling-useful discoveries exist, ensure `.dmux/scratchpad/{your-slug}.md` contains them before ending.
-
----
-
-## Priority Mode
-
-Execute only: 1 (find+name), 2 (commit), 3 (write note), 6 (sync) when context is low, session <15min, or rush applies. Defer 4-5 - caught by the next staleness check or Stop hook fallback. In field agent mode, still write `.task-result.md` (step 7) even in priority mode - the parent needs it.
+Report checks, active-spec state, commit hashes, push state, and field-agent result path when present. Then stop; do not begin new work during session close.

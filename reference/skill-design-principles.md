@@ -38,7 +38,7 @@ Multiple format templates cover more real-world cases than a single abstract ins
 Side-by-side field-level comparison is the highest-impact few-shot format. 2-3 good examples + 1-2 bad ones. Bad examples should be things the AI would plausibly write, not strawmen.
 
 ### Controlled vocabularies prevent drift
-When a field has a finite set of good values (tags, status codes, entity types), enumerate them. Open-ended fields drift - 69% of /end's tags were unique before adding a vocabulary, making them useless for search.
+When a field has a finite set of good values, such as status codes or result states, enumerate them. Open-ended fields drift and become unreliable search anchors.
 
 ### Leading words and the two loads
 
@@ -64,7 +64,7 @@ A skill's `Triggers on:` / `Auto-trigger when` phrasing is advisory authoring me
 <summary>Structure</summary>
 
 ### Ordered by recoverability
-The most valuable artifact should be written first. If the session crashes mid-/end, the daily note (step 3) is saved. Entity reconciliation (step 4) can be recovered later. Structure steps so that partial execution still produces the most valuable output.
+Write the most valuable durable artifact first. If a session ends mid-command, a current spec pointer or completed output should already exist. Structure steps so partial execution preserves the work needed to resume.
 
 ### Skip conditions first
 Put "**Skip if** [condition]" as the first line of optional steps, not buried in the middle. The model reads top-down - if skip conditions come after the instructions, it may start executing before discovering it should skip, wasting tokens and sometimes producing side effects.
@@ -119,7 +119,7 @@ Each cut spends one of the two loads, so split only when the cut earns it:
 ## Quality Assurance
 
 ### Quality self-check after the main output
-Add a 3-5 point checklist that the AI verifies after writing but before moving on. Target the highest error rates. For /end: takeaway independence (60%+ overlap rate), entity completeness (19% miss rate), output descriptions, commit hashes.
+Add a short checklist that the AI verifies after writing but before moving on. Target observed failure modes. For `/end`: checks reported, active-spec pointer current, commit and push state recorded, and field-agent result present when required.
 
 ### Measure from real data, not intuition
 The 135-note analysis drove every /end improvement. Before optimizing a skill:
@@ -134,13 +134,13 @@ After writing the skill, re-read it as a hostile reviewer. Check: do cross-refer
 ## Token Efficiency
 
 ### Conditional reads save the most tokens
-"**Only read items.json if** this session produced new structured facts" saves ~2,000 tokens per entity. Always ask: does this step need to read this file for THIS session, or just in general?
+Make supporting reads conditional on the current task. Always ask whether this step needs the file now or merely in a hypothetical future run.
 
 ### Parallel tool call hints
-"Read all needed entity summaries in a single parallel tool call." The AI can parallelize, but explicitly saying so ensures it does.
+"Read all independent inputs in a single parallel tool call." The AI can parallelize, but explicit grouping makes the opportunity visible.
 
 ### Trim rarely-used templates
-A 27-line entity creation template used once a month costs tokens every session. Replace with "Model structure after existing entities in X/" - 2 lines, same outcome.
+A long template used rarely costs tokens every session. Point to a current example when that gives the model the same recoverable structure.
 
 ### Skill text budget
 Only the description (~100 words) is always in context. The SKILL.md body loads only when the skill triggers - so body size matters for per-invocation cost, not idle cost. Budget for the SKILL.md body:
@@ -158,21 +158,21 @@ Keep each meaning in a **single source of truth**: one authoritative place, so a
 ### Naming patterns with examples
 "Format: `{noun}-{verb}` or `{target}-{action}` - e.g. vault-move, api-deploy, devserver-cleanup" is far more effective than "Pick a descriptive name." The pattern + 4 examples create a strong prior.
 
-### Explicit scope-to-entity mapping
-When the skill touches a knowledge system, provide a lookup table. Don't rely on the AI inferring which entity owns which directory. Include a cross-check: "Deployed to VPS? Include `infrastructure`."
+### Explicit scope mapping
+When a skill routes work by path or category, provide the lookup rule. Do not rely on the AI to infer ownership from an unfamiliar directory name.
 
 ## Meta-Process
 
 ### Three-track research for critical skills
 For skills used daily, invest in parallel research:
 1. **Quality analysis** - Analyze real outputs for patterns and failure rates
-2. **Best practices** - External research on the skill's domain (session journaling, structured output, etc.)
+2. **Best practices** - External research on the skill's domain (structured output, field-agent handoffs, etc.)
 3. **Edge cases** - Failure modes, race conditions, data loss scenarios
 
 Compile findings into a permanent reference document the skill can cite.
 
 ### Iterate against real data
-Each iteration should fix measurable problems. "Feels better" is not a metric. "entities_touched miss rate dropped from 19% to 0%" is.
+Each iteration should fix measurable problems. "Feels better" is not a metric; a before-and-after activation miss count is.
 
 ## Skill Architecture (from Anthropic's skill-creator)
 
@@ -258,13 +258,13 @@ Skills only trigger for tasks Claude can't easily handle on its own. Simple one-
 `eval-viewer/generate_review.py` serves a browser-based comparison UI. Shows with-skill vs without-skill (or old vs new) outputs side by side. Use `--static <path>` for environments without a browser. Always get human eyes on outputs before revising.
 
 ### Grading beyond assertions
-The grader agent (`agents/grader.md`) goes beyond pass/fail on predefined assertions:
+An independent grading pass goes beyond pass/fail on predefined assertions:
 - **Extract and verify implicit claims** from outputs (catches things assertions miss)
 - **Critique the evals themselves** (flags assertions that would pass for wrong outputs)
 - **Report execution metrics** (tool calls, timing, tokens)
 
 ### Blind A/B comparison
-For rigorous comparison between skill versions, use the comparator agent (`agents/comparator.md`). Gives two outputs to an independent judge without revealing which is which. Prevents bias toward the newer version. Optional - human review is usually sufficient.
+For rigorous comparison between skill versions, give two outputs to an independent judge without revealing which is which. This prevents bias toward the newer version. Human review is sufficient when independence is unnecessary.
 
 ### Iteration loop
 1. Improve the skill based on feedback (generalize, don't overfit)
