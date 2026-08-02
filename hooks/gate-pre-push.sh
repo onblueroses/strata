@@ -28,6 +28,15 @@ COMMAND="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/nu
 SESSION_ID="$(printf '%s' "$INPUT" | jq -r '.session_id // "unknown"' 2>/dev/null || echo unknown)"
 SID8="${SESSION_ID:0:8}"
 
+# Plain data commands cannot launch git. Keep this common path Bash-only while
+# sending quoting, substitution, and control syntax to the tokenizer below.
+plain_data_command='^[[:space:]]*(echo|printf|grep)([[:space:]]|$)'
+# shellcheck disable=SC2016  # Literal shell construction markers are matched here.
+if [[ $COMMAND =~ $plain_data_command &&
+      $COMMAND != *[';&|()`$\']* && $COMMAND != *$'\n'* ]]; then
+    exit 0
+fi
+
 emit_block() {  # $1 = reason slug; additive, fail-open telemetry (no command/identifier leak)
     local B S
     B=$(jq -cn --arg h pre-push --arg t Bash --arg r "$1" --arg d deny '{hook:$h,tool:$t,reason:$r,decision:$d}' 2>/dev/null)
@@ -87,6 +96,7 @@ COMMAND_INSPECTION_OPTIONS = {"-v", "-V"}
 # These commands are explicit negative controls whose operands are data, not an executable.
 # Everything else with plausible git/push operands stays ambiguous and therefore gets scanned.
 NON_LAUNCHERS = {"echo", "grep", "printf"}
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 GIT_OPTIONS_WITH_VALUE = {
     "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix",
     "--config-env",
@@ -95,6 +105,9 @@ GIT_TERMINAL_OPTIONS = {"-h", "--help", "--version", "--exec-path", "--html-path
 ASSIGNMENT = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", re.DOTALL)
 VARIABLE_REFERENCE = re.compile(
     r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)"
+)
+GIT_RETARGET_ASSIGNMENT = re.compile(
+    r"^(?:GIT_DIR|GIT_WORK_TREE|GIT_COMMON_DIR|GIT_NAMESPACE)="
 )
 DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$", re.IGNORECASE)
 
@@ -205,7 +218,7 @@ def consume_wrapper(argv, index, wrapper):
 
 
 def git_push_target(args):
-    target = ""
+    target_steps = []
     index = 0
     while index < len(args):
         arg = args[index]
@@ -213,22 +226,26 @@ def git_push_target(args):
             index += 1
             break
         if arg in GIT_TERMINAL_OPTIONS:
-            return "none", ""
+            return "none", []
         if arg in GIT_OPTIONS_WITH_VALUE:
             if index + 1 >= len(args):
-                return "ambiguous", target
+                return "ambiguous", target_steps
             if arg == "-C":
-                target = args[index + 1]
+                target_steps.append(args[index + 1])
+            elif arg in {"--git-dir", "--work-tree", "--namespace"}:
+                target_steps.append(None)
             index += 2
             continue
         option = arg.split("=", 1)[0]
         if "=" in arg and option in GIT_OPTIONS_WITH_VALUE:
             if option == "-C":
-                target = arg.split("=", 1)[1]
+                target_steps.append(arg.split("=", 1)[1])
+            elif option in {"--git-dir", "--work-tree", "--namespace"}:
+                target_steps.append(None)
             index += 1
             continue
         if arg.startswith("-C") and arg != "-C":
-            target = arg[2:]
+            target_steps.append(arg[2:])
             index += 1
             continue
         if arg.startswith("-c") and arg != "-c":
@@ -240,8 +257,8 @@ def git_push_target(args):
         break
 
     if index < len(args) and args[index] == "push":
-        return "match", target
-    return "none", ""
+        return "match", target_steps
+    return "none", []
 
 
 def resolve_target(target, assignments):
@@ -259,6 +276,18 @@ def resolve_target(target, assignments):
     return None if "$" in result or "`" in result else result
 
 
+def resolve_directory(base, target, assignments):
+    resolved = resolve_target(target, assignments)
+    if resolved is None:
+        return None
+    if not resolved:
+        return base
+    expanded = os.path.expanduser(resolved)
+    return os.path.realpath(
+        expanded if os.path.isabs(expanded) else os.path.join(base, expanded)
+    )
+
+
 def literal_assignment(word):
     match = ASSIGNMENT.fullmatch(word)
     if not match:
@@ -269,20 +298,61 @@ def literal_assignment(word):
     return name, value
 
 
-def resolve_segment(words, assignments):
+def resolve_segment(words, assignments, cwd):
     argv = argv_words(words)
     index = 0
     while index < len(argv) and ASSIGNMENT.fullmatch(argv[index]):
         index += 1
 
     while index < len(argv):
-        executable = basename(argv[index])
+        executable_word = resolve_target(argv[index], assignments)
+        expansion_is_ambiguous = (
+            executable_word is None
+            or not re.fullmatch(r"[A-Za-z0-9_./+-]+", executable_word)
+        )
+        if expansion_is_ambiguous:
+            if any(argument == "push" for argument in argv[index + 1 :]):
+                return "ambiguous", "", True
+            executable = basename(argv[index])
+        else:
+            executable = basename(executable_word)
         if executable == "git":
-            status, target = git_push_target(argv[index + 1 :])
-            if target:
-                resolved = resolve_target(target, assignments)
-                return ("ambiguous", "", True) if resolved is None else (status, resolved, False)
-            return status, target, False
+            status, target_steps = git_push_target(argv[index + 1 :])
+            retargeted_by_environment = any(
+                GIT_RETARGET_ASSIGNMENT.match(token)
+                for token in argv[:index]
+            )
+            if status != "none" and retargeted_by_environment:
+                return "ambiguous", "", True
+            target = cwd
+            for step in target_steps:
+                if step is None:
+                    return "ambiguous", "", True
+                target = resolve_directory(target, step, assignments)
+                if target is None:
+                    return "ambiguous", "", True
+            return status, target if target_steps else "", False
+        if executable == "eval" or executable in SHELLS:
+            nested_words = []
+            nested_unresolved = False
+            for argument in argv[index + 1 :]:
+                resolved_argument = resolve_target(argument, assignments)
+                if resolved_argument is None:
+                    nested_unresolved = True
+                    resolved_argument = argument
+                nested_words.append(resolved_argument)
+            nested_text = " ".join(nested_words)
+            mentions_push = bool(
+                re.search(r"(?<![A-Za-z0-9_-])push(?![A-Za-z0-9_-])", nested_text)
+            )
+            mentions_git = bool(
+                re.search(
+                    r"(?<![A-Za-z0-9_-])(?:[^\s;&|()]+/)?git(?![A-Za-z0-9_-])",
+                    nested_text,
+                )
+            )
+            if mentions_push and (mentions_git or nested_unresolved):
+                return "ambiguous", "", True
         if executable not in WRAPPERS:
             if executable in NON_LAUNCHERS:
                 return "none", "", False
@@ -322,7 +392,9 @@ def direct_cd_target(words):
             index += 1
             continue
         break
-    return argv[index] if index < len(argv) else None
+    if index >= len(argv):
+        return "$HOME"
+    return argv[index] if index + 1 == len(argv) else ""
 
 
 command = os.environ.get("PUSH_GATE_COMMAND", "")
@@ -336,10 +408,18 @@ except ValueError:
     print(json.dumps({"status": "ambiguous" if raw_plausible else "none", "target": ""}))
     raise SystemExit
 
-cwd_target = ""
+current_cwd = os.getcwd()
 match_targets = []
 ambiguous_targets = []
-unresolved_target = False
+# A parenthesized group has subshell-local cwd and assignment state. Do not let
+# either escape into a later push unless this parser grows explicit scope tracking.
+unresolved_target = any(
+    "(" in separator or ")" in separator for separator, _ in parsed_segments
+) or any(
+    GIT_RETARGET_ASSIGNMENT.match(word)
+    for _, words in parsed_segments
+    for word in words
+) or "`" in command
 assignments = {"HOME": os.environ.get("HOME", "")}
 for segment_index, (separator, words) in enumerate(parsed_segments):
     outgoing_separator = (
@@ -362,20 +442,27 @@ for segment_index, (separator, words) in enumerate(parsed_segments):
 
     cd_target = direct_cd_target(words)
     if cd_target is not None:
-        resolved_cd = resolve_target(cd_target, assignments)
+        cd_scope_is_safe = (
+            separator in ("", ";", "\n")
+            and outgoing_separator in (";", "&&", "\n")
+        )
+        resolved_cd = (
+            resolve_directory(current_cwd, cd_target, assignments)
+            if cd_target and cd_scope_is_safe
+            else None
+        )
         if resolved_cd is None:
             unresolved_target = True
-            cwd_target = ""
         else:
-            cwd_target = resolved_cd
+            current_cwd = resolved_cd
         continue
 
-    status, target, target_unresolved = resolve_segment(words, assignments)
+    status, target, target_unresolved = resolve_segment(words, assignments, current_cwd)
     unresolved_target = unresolved_target or target_unresolved
     if status == "match":
-        match_targets.append(target or cwd_target)
+        match_targets.append(target or current_cwd)
     if status == "ambiguous":
-        ambiguous_targets.append(target or cwd_target)
+        ambiguous_targets.append(target or current_cwd)
     if status == "none":
         assignments = {"HOME": assignments.get("HOME", os.environ.get("HOME", ""))}
 
@@ -411,6 +498,14 @@ if [ -n "$PARSE_RESULT" ]; then
     TARGET_DIR="$(printf '%s' "$PARSE_RESULT" | jq -r '.target // empty' 2>/dev/null || true)"
     UNRESOLVED_TARGET="$(printf '%s' "$PARSE_RESULT" | jq -r '.unresolved_target // false' 2>/dev/null || true)"
 fi
+if [ "$UNRESOLVED_TARGET" = "true" ]; then
+    case "$PARSER_STATUS" in
+        match|ambiguous|multi) ;;
+        *) plausibly_mentions_git_push || exit 0 ;;
+    esac
+    echo "gate-pre-push: could not resolve the repository target safely; refusing to let a plausible push bypass scanning." >&2
+    exit 2
+fi
 case "$PARSER_STATUS" in
     match|ambiguous|multi) ;;
     none) exit 0 ;;
@@ -419,11 +514,6 @@ case "$PARSER_STATUS" in
         PARSER_STATUS="ambiguous"
         ;;
 esac
-
-if [ "$UNRESOLVED_TARGET" = "true" ]; then
-    echo "gate-pre-push: could not resolve the repository target safely; refusing to let a plausible push bypass scanning." >&2
-    exit 2
-fi
 
 # Need git and a work tree.
 command -v git &>/dev/null || exit 0

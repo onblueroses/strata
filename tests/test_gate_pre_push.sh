@@ -185,6 +185,57 @@ record_status 'same-command literal repository assignment' 2
 run_hook "repo=$CLEAN_REPO; git -C \"\$repo\" push" 'assign02' "$UNRELATED_DIR"
 record_status 'same-command literal clean repository assignment' 0
 
+: > "$STATE_DIR/.verify-passed-cmdvar01"
+run_hook 'cmd=git; "$cmd" push' 'cmdvar01' "$FLAGGED_REPO"
+record_status 'literal executable assignment cannot hide a push' 2
+
+: > "$STATE_DIR/.verify-passed-cmdvar02"
+run_hook 'MID=; g${MID}it push' 'cmdvar02' "$FLAGGED_REPO"
+record_status 'unresolved executable expansion cannot hide a push' 2
+
+: > "$STATE_DIR/.verify-passed-cmdvar03"
+run_hook 'CMD=git; eval "$CMD push"' 'cmdvar03' "$FLAGGED_REPO"
+record_status 'eval expansion cannot hide a push' 2
+
+: > "$STATE_DIR/.verify-passed-cmdvar04"
+run_hook 'CMD=git; bash -c "$CMD push"' 'cmdvar04' "$FLAGGED_REPO"
+record_status 'shell command expansion cannot hide a push' 2
+
+: > "$STATE_DIR/.verify-passed-relcd001"
+run_hook "cd $TMP_DIR && git -C flagged push" 'relcd001' "$UNRELATED_DIR"
+record_status 'relative git -C resolves after a preceding cd' 2
+assert_output '[PRIVATE]' 'relative git -C scans the repository actually reached'
+
+: > "$STATE_DIR/.verify-passed-stack001"
+run_hook "git -C $TMP_DIR -C flagged push" 'stack001' "$UNRELATED_DIR"
+record_status 'stacked git -C paths resolve sequentially' 2
+assert_output '[PRIVATE]' 'stacked git -C scans the repository actually reached'
+
+: > "$STATE_DIR/.verify-passed-gitdir01"
+run_hook "git --git-dir=$FLAGGED_REPO/.git push" 'gitdir01' "$CLEAN_REPO"
+record_status 'explicit git-dir cannot retarget the push scan' 2
+assert_output 'could not resolve the repository target' 'explicit git-dir fails closed'
+
+: > "$STATE_DIR/.verify-passed-gitdir02"
+run_hook "GIT_DIR=$FLAGGED_REPO/.git git push" 'gitdir02' "$CLEAN_REPO"
+record_status 'GIT_DIR assignment cannot retarget the push scan' 2
+assert_output 'could not resolve the repository target' 'GIT_DIR assignment fails closed'
+
+: > "$STATE_DIR/.verify-passed-gitdir03"
+run_hook "GIT_DIR=$FLAGGED_REPO/.git; git push" 'gitdir03' "$CLEAN_REPO"
+record_status 'separate GIT_DIR assignment cannot retarget the push scan' 2
+assert_output 'could not resolve the repository target' 'separate GIT_DIR assignment fails closed'
+
+: > "$STATE_DIR/.verify-passed-gitns001"
+run_hook 'git --namespace=tenant push' 'gitns001' "$CLEAN_REPO"
+record_status 'git namespace cannot select unscanned refs' 2
+assert_output 'could not resolve the repository target' 'git namespace fails closed'
+
+: > "$STATE_DIR/.verify-passed-gitns002"
+run_hook 'GIT_NAMESPACE=tenant git push' 'gitns002' "$CLEAN_REPO"
+record_status 'GIT_NAMESPACE cannot select unscanned refs' 2
+assert_output 'could not resolve the repository target' 'GIT_NAMESPACE fails closed'
+
 : > "$STATE_DIR/.verify-passed-dynamic1"
 run_hook 'git -C "$repo" push' 'dynamic1' "$UNRELATED_DIR"
 record_status 'unresolved repository variable fails closed' 2
@@ -197,6 +248,20 @@ record_status 'combined shell flags preserve push target' 2
 : > "$STATE_DIR/.verify-passed-shell002"
 run_hook "bash --login -c 'git -C $FLAGGED_REPO push'" 'shell002' "$UNRELATED_DIR"
 record_status 'long shell option preserves push target' 2
+
+: > "$STATE_DIR/.verify-passed-subst001"
+run_hook 'echo `git push`' 'subst001' "$FLAGGED_REPO"
+record_status 'backtick command substitution cannot hide a push' 2
+assert_output 'could not resolve the repository target' 'backtick push fails closed'
+
+: > "$STATE_DIR/.verify-passed-scope001"
+run_hook "(cd $CLEAN_REPO && echo ready); git push" 'scope001' "$FLAGGED_REPO"
+record_status 'subshell cd does not retarget a later push' 2
+
+: > "$STATE_DIR/.verify-passed-cond0001"
+run_hook "false && cd $CLEAN_REPO; git push" 'cond0001' "$FLAGGED_REPO"
+record_status 'conditional cd does not retarget a later push' 2
+assert_output 'could not resolve the repository target' 'conditional cd fails closed'
 
 negative_commands=(
     'echo git push'
