@@ -193,7 +193,7 @@ Use the canonical Codex flag set (see CLAUDE.md `Codex Invocation Standard` for 
 
 ```bash
 codex exec \
-  --dangerously-bypass-approvals-and-sandbox \
+  --sandbox read-only \
   --skip-git-repo-check \
   -c tools.web_search=true \
   -c model_reasoning_effort=xhigh \

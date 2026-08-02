@@ -138,7 +138,7 @@ Use the canonical Codex flag set (see CLAUDE.md `Codex Invocation Standard` for 
 
 ```bash
 cd {repo-root} && timeout 600 codex \
-  --dangerously-bypass-approvals-and-sandbox \
+  --sandbox read-only \
   -c tools.web_search=true \
   review --uncommitted
 ```

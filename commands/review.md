@@ -62,13 +62,13 @@ Run OpenAI Codex as the first adversarial reviewer before manual checks. Use the
 ```bash
 # From the repo root containing the staged changes:
 timeout 600 codex \
-  --dangerously-bypass-approvals-and-sandbox \
+  --sandbox read-only \
   -c tools.web_search=true \
   review --uncommitted
 
 # Or for branch diff:
 codex \
-  --dangerously-bypass-approvals-and-sandbox \
+  --sandbox read-only \
   -c tools.web_search=true \
   review --base main
 ```
@@ -108,8 +108,9 @@ Detect repository visibility with GitHub CLI before applying privacy gates.
 gh repo view --json isPrivate --jq '.isPrivate' 2>/dev/null
 ```
 
-- If output is `false` → this is a **public repo**. Set a mental flag: `PUBLIC_REPO=true`.
-- If command fails or returns `true` → treat as a private repo and leave the privacy checks below inactive.
+- Output `false` means public: set `PUBLIC_REPO=true` and run the privacy checks below.
+- Output `true` means private: record that result and continue with the universal secret checks.
+- A command error or any other output means visibility is unknown: run the privacy checks conservatively and report the failed probe. An unknown answer is not evidence of privacy, and the cost of running them on a private repo is a few extra greps.
 
 Keep this detection silent. Apply the right checks based on the result.
 
@@ -403,7 +404,7 @@ Activate when user says "critically review all the changes you've made", "review
 **S0. Codex adversarial review.** Run Codex first as a demanding external critic, using the canonical flag set (see CLAUDE.md `Codex Invocation Standard`):
 ```bash
 timeout 600 codex \
-  --dangerously-bypass-approvals-and-sandbox \
+  --sandbox read-only \
   -c tools.web_search=true \
   review --uncommitted
 ```
