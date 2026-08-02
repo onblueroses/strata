@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/era-audit/ground-truth.schema.json",
+  "title": "Era audit ground truth",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "observed_at", "root_label", "facts"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "root_label": {"type": "string", "minLength": 1},
+    "facts": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/fact"}
+    }
+  },
+  "$defs": {
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value", "evidence", "question"],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {"enum": ["observed", "declared", "mixed"]}
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "evidence": {"minItems": 1}
+            }
+          }
+        }
+      ],
+      "properties": {
+        "status": {"enum": ["observed", "declared", "mixed", "unknown", "not_applicable"]},
+        "value": {},
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "source", "detail"],
+            "properties": {
+              "kind": {"enum": ["command", "file", "runtime", "user", "measurement"]},
+              "source": {"type": "string", "minLength": 1},
+              "detail": {"type": "string"}
+            }
+          }
+        },
+        "question": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

@@ -41,6 +41,14 @@ git clone https://github.com/onblueroses/strata.git ~/.strata
 
 Strata ships the substrate, not a curated set of domain packs. Project-specific skills, vendor automations, and personal references live in separate repos. Adapt the kernel; bring your own packs.
 
+The keep test is whether a skill teaches the agent how to work or teaches it a domain. The first stays; the second belongs somewhere else.
+
+## Known staleness
+
+Instruction files rot against the model that reads them: enumeration quotas sized for a smaller context window, self-attestation compensating for old error rates, steps micro-scripted for a weaker reader. Strata's own bodies carry this. An audit of the 42 primary model-facing files on 2026-08-02 found 492 stale lines and 99 places a current capability goes unused, and most are unfixed.
+
+Run `skills/era-audit/` against this repository to see the current list, or against your own library to find its own. The audit reads your machine for what is true today rather than assuming the author's setup, because a rot detector with a frozen reference era rots too.
+
 ## License
 
 MIT

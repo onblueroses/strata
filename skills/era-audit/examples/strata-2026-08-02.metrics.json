@@ -1,0 +1,170 @@
+{
+  "measured_at": "2026-08-02T18:29:02.061207Z",
+  "root_label": "strata",
+  "corpus": {
+    "basis": "default era-audit include and exclude patterns",
+    "file_count": 69,
+    "bytes": 729392,
+    "lines": 14559,
+    "include_patterns": [
+      "CLAUDE.md",
+      "**/CLAUDE.md",
+      "AGENTS.md",
+      "**/AGENTS.md",
+      "commands/*.md",
+      "agents/*.md",
+      "agents/*.yaml",
+      "agents/*.yml",
+      "rules/**/*.md",
+      ".claude/rules/**/*.md",
+      "skills/**/SKILL.md",
+      "skills/**/agents/*.md",
+      "skills/**/agents/*.yaml",
+      "skills/**/agents/*.yml",
+      "skills/**/references/**/*.md",
+      "skills/**/rules/**/*.md"
+    ],
+    "exclude_patterns": [
+      ".git/**",
+      ".local/**",
+      ".venv/**",
+      "venv/**",
+      "node_modules/**",
+      "vendor/**",
+      "skills/era-audit/examples/**",
+      "skills/era-audit/.work/**"
+    ]
+  },
+  "primary_model_facing": {
+    "basis": "CLAUDE.md, AGENTS.md, commands/*.md, agents/*.md, and skills/**/SKILL.md",
+    "file_count": 42,
+    "details": {
+      "basis": "standalone <details> opening tags in the primary model-facing corpus",
+      "openings": 0,
+      "by_directory": {}
+    }
+  },
+  "skill_descriptions": {
+    "basis": "decoded frontmatter description text in skills/**/SKILL.md",
+    "count": 19,
+    "characters": {
+      "min": 158,
+      "q1": 190,
+      "median": 311,
+      "q3": 548,
+      "max": 690,
+      "mean": 354.05263157894734
+    },
+    "utf8_bytes": {
+      "min": 158,
+      "q1": 190,
+      "median": 311,
+      "q3": 550,
+      "max": 690,
+      "mean": 354.1578947368421
+    },
+    "above_threshold": {
+      "threshold_characters": 1000,
+      "basis": "operator supplied",
+      "files": []
+    },
+    "all": [
+      {
+        "file": "skills/codex-review/SKILL.md",
+        "characters": 690,
+        "utf8_bytes": 690
+      },
+      {
+        "file": "skills/hammock/SKILL.md",
+        "characters": 584,
+        "utf8_bytes": 584
+      },
+      {
+        "file": "skills/humanizer/SKILL.md",
+        "characters": 573,
+        "utf8_bytes": 573
+      },
+      {
+        "file": "skills/harness/SKILL.md",
+        "characters": 551,
+        "utf8_bytes": 551
+      },
+      {
+        "file": "skills/recon/SKILL.md",
+        "characters": 548,
+        "utf8_bytes": 550
+      },
+      {
+        "file": "skills/polish/SKILL.md",
+        "characters": 487,
+        "utf8_bytes": 487
+      },
+      {
+        "file": "skills/era-audit/SKILL.md",
+        "characters": 406,
+        "utf8_bytes": 406
+      },
+      {
+        "file": "skills/security-review/SKILL.md",
+        "characters": 370,
+        "utf8_bytes": 370
+      },
+      {
+        "file": "skills/browser-use/SKILL.md",
+        "characters": 366,
+        "utf8_bytes": 366
+      },
+      {
+        "file": "skills/directional-prompting/SKILL.md",
+        "characters": 311,
+        "utf8_bytes": 311
+      },
+      {
+        "file": "skills/spec/SKILL.md",
+        "characters": 302,
+        "utf8_bytes": 302
+      },
+      {
+        "file": "skills/frontend-design/SKILL.md",
+        "characters": 242,
+        "utf8_bytes": 242
+      },
+      {
+        "file": "skills/grill/SKILL.md",
+        "characters": 221,
+        "utf8_bytes": 221
+      },
+      {
+        "file": "skills/ask-better/SKILL.md",
+        "characters": 202,
+        "utf8_bytes": 202
+      },
+      {
+        "file": "skills/context-save/SKILL.md",
+        "characters": 190,
+        "utf8_bytes": 190
+      },
+      {
+        "file": "skills/context-resume/SKILL.md",
+        "characters": 181,
+        "utf8_bytes": 181
+      },
+      {
+        "file": "skills/defuddle/SKILL.md",
+        "characters": 176,
+        "utf8_bytes": 176
+      },
+      {
+        "file": "skills/skill-creator/SKILL.md",
+        "characters": 169,
+        "utf8_bytes": 169
+      },
+      {
+        "file": "skills/mobile-preview/SKILL.md",
+        "characters": 158,
+        "utf8_bytes": 158
+      }
+    ],
+    "parse_errors": []
+  }
+}

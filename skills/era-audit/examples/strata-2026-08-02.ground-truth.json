@@ -1,0 +1,359 @@
+{
+  "schema_version": "1.0",
+  "observed_at": "2026-08-02T17:42:17.966905Z",
+  "root_label": "strata",
+  "facts": {
+    "cli_tools": {
+      "status": "observed",
+      "value": {
+        "count": 30,
+        "executables": {
+          "aws": [
+            "$HOME/.local/bin/aws"
+          ],
+          "bash": [
+            "/usr/bin/bash"
+          ],
+          "browser-task": [
+            "$HOME/.local/bin/browser-task"
+          ],
+          "browser-use": [],
+          "bun": [],
+          "claude": [
+            "$HOME/.local/bin/claude"
+          ],
+          "codex": [
+            "$HOME/.local/share/mise/installs/node/25.8.0/bin/codex"
+          ],
+          "dmux": [
+            "$HOME/.local/share/mise/installs/node/25.8.0/bin/dmux"
+          ],
+          "docker": [
+            "/usr/bin/docker"
+          ],
+          "flash": [],
+          "gh": [
+            "/usr/bin/gh"
+          ],
+          "git": [
+            "/usr/bin/git"
+          ],
+          "hf": [
+            "$HOME/.local/bin/hf"
+          ],
+          "jq": [
+            "/usr/bin/jq"
+          ],
+          "node": [
+            "$HOME/.local/share/mise/installs/node/25.8.0/bin/node"
+          ],
+          "npm": [
+            "$HOME/.local/share/mise/installs/node/25.8.0/bin/npm"
+          ],
+          "nvidia-smi": [
+            "/usr/bin/nvidia-smi"
+          ],
+          "playwright": [
+            "$HOME/.local/bin/playwright"
+          ],
+          "pnpm": [
+            "$HOME/.local/share/mise/installs/node/25.8.0/bin/pnpm"
+          ],
+          "pytest": [
+            "$HOME/.local/bin/pytest"
+          ],
+          "python3": [
+            "$HOME/.local/share/mise/shims/python3"
+          ],
+          "rg": [
+            "/usr/bin/rg"
+          ],
+          "ruff": [
+            "/usr/bin/ruff"
+          ],
+          "runpodctl": [
+            "$HOME/.local/bin/runpodctl"
+          ],
+          "semgrep": [
+            "$HOME/.local/bin/semgrep"
+          ],
+          "shellcheck": [
+            "/usr/bin/shellcheck"
+          ],
+          "systemd-analyze": [
+            "/usr/bin/systemd-analyze"
+          ],
+          "timeout": [
+            "/usr/bin/timeout"
+          ],
+          "uv": [
+            "/usr/bin/uv"
+          ],
+          "xbow": []
+        }
+      },
+      "evidence": [
+        {
+          "kind": "measurement",
+          "source": "PATH",
+          "detail": "resolved the operator-selected corpus tool list with shutil.which"
+        }
+      ],
+      "question": null
+    },
+    "delegation_contract": {
+      "status": "declared",
+      "value": {
+        "strata_symbolic_lanes": "present but unusable until config/model-map.toml placeholders are replaced",
+        "direct_runner": "Codex CLI is available and supports read-only schema-constrained execution",
+        "cross_model_verifier": "not configured through strata lanes in this snapshot"
+      },
+      "evidence": [
+        {
+          "kind": "file",
+          "source": "$ROOT/config/model-map.toml and $ROOT/bin/lib/lane.sh",
+          "detail": "All four lane bindings are placeholders and the wrapper rejects placeholder values."
+        },
+        {
+          "kind": "command",
+          "source": "codex exec --help",
+          "detail": "The local CLI exposes read-only sandboxing, output schemas, stdin prompts, and ephemeral sessions."
+        }
+      ],
+      "question": null
+    },
+    "house_standards": {
+      "status": "declared",
+      "value": {
+        "model_facing_details": "SKILL.md bodies, commands, and agent prompts load whole and skip details/summary collapses.",
+        "public_intent": "MIT-intent public repository",
+        "scope": "minimal opinionated core rather than a mirror of a private install",
+        "unknown_policy": "Measure rather than guess."
+      },
+      "evidence": [
+        {
+          "kind": "file",
+          "source": "$ROOT/CLAUDE.md",
+          "detail": "Progressive Disclosure and Principles sections read on 2026-08-02."
+        },
+        {
+          "kind": "user",
+          "source": "repository task instructions",
+          "detail": "Public MIT intent and completed subtraction scope are explicit owner requirements."
+        }
+      ],
+      "question": null
+    },
+    "known_incidents": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Which warnings or workarounds came from real incidents and still protect a live failure mode?"
+    },
+    "mcp_servers": {
+      "status": "observed",
+      "value": {
+        "codex": {
+          "status": "responded",
+          "exit_code": 0,
+          "output": "Name                 Url                                Bearer Token Env Var  Status   Auth       \nopenaiDeveloperDocs  https://developers.openai.com/mcp  -                     enabled  Unsupported\n"
+        },
+        "claude": {
+          "status": "responded",
+          "exit_code": 0,
+          "output": "Checking MCP server health…\n\nclaude.ai Google Drive: https://drivemcp.googleapis.com/mcp/v1 - ! Needs authentication\nclaude.ai Google Calendar: https://calendarmcp.googleapis.com/mcp/v1 - ! Needs authentication\nclaude.ai Gmail: https://gmailmcp.googleapis.com/mcp/v1 - ✔ Connected\n"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "command",
+          "source": "codex mcp list",
+          "detail": "exit 0; timeout chosen by operator: 30.0s"
+        },
+        {
+          "kind": "command",
+          "source": "claude mcp list",
+          "detail": "exit 0; timeout chosen by operator: 30.0s"
+        }
+      ],
+      "question": null
+    },
+    "memory_system": {
+      "status": "declared",
+      "value": {
+        "authoritative": "an external operational-memory CLI",
+        "repository_memory_engine": "retired and absent from this stable tree",
+        "audit_constraint": "do not infer that deleted repository memory commands remain supported"
+      },
+      "evidence": [
+        {
+          "kind": "user",
+          "source": "repository task instructions on 2026-08-02",
+          "detail": "The owner states that the repository memory subsystem and its commands were removed and the final tree is stable."
+        },
+        {
+          "kind": "file",
+          "source": "$ROOT",
+          "detail": "The stable tracked tree contains no repository memory engine or retired memory commands."
+        }
+      ],
+      "question": null
+    },
+    "model_lanes": {
+      "status": "observed",
+      "value": {
+        "breadth": {
+          "binding": "<PICK_NON_PRIMARY>",
+          "state": "placeholder",
+          "wrappers": [
+            "$ROOT/bin/breadth"
+          ]
+        },
+        "fast": {
+          "binding": "<PICK_FAST_CODE_MODEL>",
+          "state": "placeholder",
+          "wrappers": [
+            "$ROOT/bin/fast"
+          ]
+        },
+        "grader": {
+          "binding": "<PICK_CHEAP_PARALLEL>",
+          "state": "placeholder",
+          "wrappers": [
+            "$ROOT/bin/grader"
+          ]
+        },
+        "strong": {
+          "binding": "<PICK_STRONGEST_AVAILABLE>",
+          "state": "placeholder",
+          "wrappers": [
+            "$ROOT/bin/strong"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "file",
+          "source": "$ROOT/config/model-map.toml",
+          "detail": "parsed [lanes] bindings"
+        }
+      ],
+      "question": null
+    },
+    "platform": {
+      "status": "observed",
+      "value": {
+        "system": "Linux",
+        "release": "7.0.9-arch2-1",
+        "machine": "x86_64",
+        "python": "3.14.6",
+        "os_release": {
+          "NAME": "Arch Linux",
+          "PRETTY_NAME": "Arch Linux",
+          "ID": "arch",
+          "BUILD_ID": "rolling",
+          "ANSI_COLOR": "38;2;23;147;209",
+          "HOME_URL": "https://archlinux.org/",
+          "DOCUMENTATION_URL": "https://wiki.archlinux.org/",
+          "SUPPORT_URL": "https://bbs.archlinux.org/",
+          "BUG_REPORT_URL": "https://gitlab.archlinux.org/groups/archlinux/-/issues",
+          "PRIVACY_POLICY_URL": "https://terms.archlinux.org/docs/privacy-policy/",
+          "LOGO": "archlinux-logo"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "command",
+          "source": "platform + /etc/os-release",
+          "detail": "read from the live probe process"
+        }
+      ],
+      "question": null
+    },
+    "prompting_standard": {
+      "status": "declared",
+      "value": {
+        "standard": "outcome contract, positive direction, and loop engineering when a prompt drives tools",
+        "number_rule": "Every scalar carries a measurement, source, named requirement, or explicit unknown.",
+        "emphasis_rule": "Reserve absolutes for true invariants."
+      },
+      "evidence": [
+        {
+          "kind": "file",
+          "source": "$ROOT/CLAUDE.md and $ROOT/skills/directional-prompting/SKILL.md",
+          "detail": "Current repository instructions read on 2026-08-02."
+        }
+      ],
+      "question": null
+    },
+    "reader_models": {
+      "status": "declared",
+      "value": {
+        "running_reader": "Codex agent; the exact deployed model id is not exposed to the probe",
+        "observed_relevant_behavior": [
+          "reads large frozen prompt batches",
+          "uses parallel independent tool calls",
+          "returns JSON constrained by a supplied schema",
+          "inspects full files and verifies exact quotes"
+        ]
+      },
+      "evidence": [
+        {
+          "kind": "runtime",
+          "source": "running agent system and tool surface",
+          "detail": "Observed in the session producing this audit on 2026-08-02; exact provider model id remains unknown."
+        }
+      ],
+      "question": null
+    },
+    "retired_systems": {
+      "status": "declared",
+      "value": {
+        "removed_from_stable_tree": [
+          "repository memory subsystem",
+          "domain skill packs outside the minimal public core",
+          "five knowledge-base commands",
+          "gate-verify.sh",
+          "daily-note hook"
+        ],
+        "audit_rule": "Treat references to those removed surfaces as stale unless the file explicitly describes history or migration."
+      },
+      "evidence": [
+        {
+          "kind": "user",
+          "source": "repository task instructions on 2026-08-02",
+          "detail": "The owner identifies the completed subtraction and states that main is stable at 197 tracked files."
+        },
+        {
+          "kind": "command",
+          "source": "git ls-files",
+          "detail": "The stable commit contains 197 tracked paths."
+        }
+      ],
+      "question": null
+    },
+    "runtime_capabilities": {
+      "status": "declared",
+      "value": {
+        "available": [
+          "parallel independent command orchestration",
+          "read-only and writable shell execution modes",
+          "structured goal and plan state",
+          "background command sessions",
+          "structured user questions",
+          "web access",
+          "MCP resource discovery"
+        ],
+        "audit_run_policy": "Semantic audit workers run read-only; no audited file is modified."
+      },
+      "evidence": [
+        {
+          "kind": "runtime",
+          "source": "tools presented to the running agent",
+          "detail": "Declared from the live in-process tool list; subprocess presence was not used as a proxy."
+        }
+      ],
+      "question": null
+    }
+  }
+}

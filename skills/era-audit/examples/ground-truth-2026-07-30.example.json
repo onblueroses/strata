@@ -1,0 +1,147 @@
+{
+  "schema_version": "1.0",
+  "observed_at": "2026-07-30T00:00:00Z",
+  "root_label": "one-install-dated-example",
+  "facts": {
+    "reader_models": {
+      "status": "declared",
+      "value": {
+        "snapshot_scope": "One person's install on 2026-07-30; never use as a default",
+        "capabilities": [
+          "large context",
+          "strong autonomous judgment",
+          "native parallel tool use",
+          "over-emphasis caused overcautious literal behavior in local tasks"
+        ]
+      },
+      "evidence": [
+        {
+          "kind": "user",
+          "source": "operator's dated task evaluations",
+          "detail": "Local observations recorded for this snapshot; another install must re-measure them."
+        }
+      ],
+      "question": null
+    },
+    "runtime_capabilities": {
+      "status": "declared",
+      "value": {
+        "available": [
+          "managed parallel fan-out",
+          "agent subcontexts",
+          "background shell work",
+          "structured user questions",
+          "description-driven skill activation"
+        ],
+        "retired": [
+          {
+            "mechanism": "catalog and lens routing hooks",
+            "retired_on": "2026-07-16"
+          }
+        ]
+      },
+      "evidence": [
+        {
+          "kind": "runtime",
+          "source": "tool surface and hook inventory",
+          "detail": "Observed on this install at the snapshot date."
+        }
+      ],
+      "question": null
+    },
+    "memory_system": {
+      "status": "declared",
+      "value": {
+        "authoritative": "one append-only log exposed through a memo CLI",
+        "retired_on": "2026-07-28",
+        "retired_surfaces": [
+          "always-loaded memory markdown",
+          "daily-note JSON",
+          "per-entity summary and item files",
+          "search index",
+          "native memory engine"
+        ]
+      },
+      "evidence": [
+        {
+          "kind": "file",
+          "source": "the install's memory cutover record",
+          "detail": "This is a dated local architecture fact, not a general recommendation."
+        }
+      ],
+      "question": null
+    },
+    "delegation_contract": {
+      "status": "declared",
+      "value": {
+        "lanes": ["strong", "fast", "breadth"],
+        "resumable": true,
+        "relevant_change": "Sequential generate-then-judge loops were no longer the only available shape."
+      },
+      "evidence": [
+        {
+          "kind": "command",
+          "source": "lane wrapper help and resume smoke tests",
+          "detail": "Bindings and model identifiers were install-specific and intentionally omitted from this public example."
+        }
+      ],
+      "question": null
+    },
+    "prompting_standard": {
+      "status": "declared",
+      "value": {
+        "adopted_on": "2026-07-23",
+        "rules": [
+          "open hard tasks with Goal, Success means, and Stop when",
+          "lead with positive direction",
+          "state unknown instead of fabricating precision",
+          "reserve absolutes for true invariants"
+        ]
+      },
+      "evidence": [
+        {
+          "kind": "file",
+          "source": "the install's prompting standard",
+          "detail": "House standard at the snapshot date."
+        }
+      ],
+      "question": null
+    },
+    "platform": {
+      "status": "observed",
+      "value": {
+        "operating_system": "Arch Linux",
+        "desktop": "Hyprland",
+        "in_use_since": "2026-03-31"
+      },
+      "evidence": [
+        {
+          "kind": "command",
+          "source": "platform probe",
+          "detail": "Observed on this one install."
+        }
+      ],
+      "question": null
+    },
+    "skill_telemetry": {
+      "status": "observed",
+      "value": {
+        "skill_reads_recorded": true
+      },
+      "evidence": [
+        {
+          "kind": "file",
+          "source": "registered observer configuration",
+          "detail": "The observer existed on the snapshot date."
+        }
+      ],
+      "question": null
+    },
+    "known_incidents": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Ask the operator which warnings came from real crashes before deleting any warning."
+    }
+  }
+}

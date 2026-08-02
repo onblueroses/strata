@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "observed_at": "1970-01-01T00:00:00Z",
+  "root_label": "replace-with-library-name",
+  "facts": {
+    "reader_models": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Which models read these instructions now, and what relevant capabilities have you measured on representative tasks?"
+    },
+    "runtime_capabilities": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Which tools and harness features are present in the running agent, including parallel dispatch, background work, structured output, browser access, and user-question tools?"
+    },
+    "memory_system": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Which memory or state system is authoritative now, and how can the auditor verify it?"
+    },
+    "retired_systems": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Which tools, routers, stores, wrappers, paths, and workflow conventions were retired, and on what dates?"
+    },
+    "delegation_contract": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Which delegation lanes or wrappers resolve today, what models do they bind, and which limits are real?"
+    },
+    "prompting_standard": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Which current prompting standard governs these files, and where is it documented?"
+    },
+    "house_standards": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Which local rules are intentional current preferences rather than stale assumptions?"
+    },
+    "known_incidents": {
+      "status": "unknown",
+      "value": null,
+      "evidence": [],
+      "question": "Which warnings or workarounds came from real incidents and still protect a live failure mode?"
+    }
+  }
+}
