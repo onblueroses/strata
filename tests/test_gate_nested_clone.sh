@@ -71,13 +71,15 @@ for command in \
     'echo "$(git clone https://example.invalid/x)"' \
     'echo `git clone https://example.invalid/x`' \
     "bash -c 'git clone https://example.invalid/x'" \
+    "bash -O extglob -lc 'git clone https://example.invalid/x dest'" \
     "cd $ROOT_DIR && git clone https://example.invalid/x dest" \
     "git -C $ROOT_DIR clone https://example.invalid/x dest" \
     "git -C $OUTSIDE_REPO clone https://example.invalid/x dest" \
+    "false && cd $OUTSIDE_DIR; git clone https://example.invalid/x dest" \
+    "(cd $OUTSIDE_DIR && echo ready); git clone https://example.invalid/x dest" \
     "eval 'git clone https://example.invalid/x'"; do
     assert_blocked "$command"
 done
-
 
 for command in \
     "cd $OUTSIDE_DIR && git clone https://example.invalid/x dest" \

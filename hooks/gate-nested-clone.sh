@@ -7,17 +7,18 @@
 # stdin JSON. Deny: exit 2 + stderr.
 set -uo pipefail
 
-# Fail OPEN on infra problems: without jq we cannot parse the input, so warn and allow.
-if ! command -v jq >/dev/null 2>&1; then
-    echo "[nested-clone] jq not found; skipping nested-clone check." >&2
-    exit 0
-fi
-
 INPUT="$(</dev/stdin)"
 case "$INPUT" in
     *git*|*eval*|*sh\ -c*|*sh\ -lc*|*\\*|*\'*|*'`'*|*'$'*) ;;
     *) exit 0 ;;
 esac
+
+# Only relevant calls need the JSON parser; guarded calls retain the fail-open warning.
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[nested-clone] jq not found; skipping nested-clone check." >&2
+    exit 0
+fi
+
 COMMAND="$(jq -r '.tool_input.command // empty' <<<"$INPUT" 2>/dev/null || true)"
 
 case "$COMMAND" in
@@ -102,6 +103,7 @@ NO_EXEC_WRAPPER_OPTIONS = {"--help", "--version"}
 COMMAND_INSPECTION_OPTIONS = {"-v", "-V"}
 PLAIN_NON_EXECUTING = {"echo", "printf", "grep", "cat", "ls"}
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+SHELL_OPTIONS_WITH_VALUE = {"-O", "+O", "-o", "+o", "--init-file", "--rcfile"}
 KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
@@ -327,7 +329,8 @@ def candidates_from_argv(argv, tool, depth, cwd):
         return candidates, ambiguous
     if head in SHELLS:
         script = None
-        for option_index in range(index + 1, len(argv)):
+        option_index = index + 1
+        while option_index < len(argv):
             option = argv[option_index]
             if option == "-c" or (
                 option.startswith("-") and not option.startswith("--") and "c" in option[1:]
@@ -337,8 +340,15 @@ def candidates_from_argv(argv, tool, depth, cwd):
                 else:
                     ambiguous = True
                 break
-            if not option.startswith("-") or option == "-":
+            if option in SHELL_OPTIONS_WITH_VALUE:
+                if option_index + 1 >= len(argv):
+                    ambiguous = True
+                    break
+                option_index += 2
+                continue
+            if not option.startswith(("-", "+")) or option in {"-", "+"}:
                 break
+            option_index += 1
         if script is not None:
             nested_candidates, nested_ambiguous = command_candidates(
                 script, tool, depth + 1, cwd
@@ -409,14 +419,21 @@ def command_candidates(command, tool, depth=0, cwd=None):
         tokens = shell_tokens(command)
     except ValueError:
         return candidates, True
+    # Parenthesized groups run in a subshell, so a `cd` inside them must not be
+    # carried into a later command. Keep those forms blocked unless scope is modeled.
+    ambiguous = ambiguous or any(token in {"(", ")"} for token in tokens)
     commands = list(simple_commands(tokens))
     current_cwd = cwd
-    for command_index, (_, words) in enumerate(commands):
+    for command_index, (separator, words) in enumerate(commands):
         argv = argv_words(words)
         cd_target = direct_cd_target(argv)
         if cd_target is not None:
             next_separator = commands[command_index + 1][0] if command_index + 1 < len(commands) else ""
-            if cd_target and next_separator in {";", "&&", "\n"}:
+            cd_scope_is_safe = (
+                separator in {"", ";", "\n"}
+                and next_separator in {";", "&&", "\n"}
+            )
+            if cd_target and cd_scope_is_safe:
                 resolved_cd = literal_directory(current_cwd, cd_target)
                 if resolved_cd is None:
                     ambiguous = True
