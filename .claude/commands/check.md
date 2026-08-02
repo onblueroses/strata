@@ -18,7 +18,7 @@ Run each gate and read its output:
 
 ```
 ruff check .
-pyright memory telemetry hooks tests bin
+pyright telemetry hooks tests bin
 python3 -m pytest -q
 ```
 

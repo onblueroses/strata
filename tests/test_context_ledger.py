@@ -9,7 +9,6 @@ import io
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,6 +18,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "telemetry" / "context_ledger.py"
+RECONCILIATION_FIXTURE = (
+    ROOT / "tests" / "fixtures" / "context_ledger_reconciliation.json"
+)
 _MODULE_IDS = itertools.count()
 
 
@@ -78,24 +80,25 @@ with patched_env(
 
 SID = "11111111-1111-4111-8111-111111111111"
 TS = "2026-07-23T10:00:00Z"
-REAL_VERIFICATION_SAMPLES = (
-    (
-        "095a4afb-7630-43d3-b7b8-45444ff49832",
-        "a0cc30a5-98cf-4e4f-a67b-4b3d1cb4768b",
-    ),
-    (
-        "9bd155e1-a338-48b6-99a2-134cb5256673",
-        "26ad35c4-87ad-4ae6-a8dc-4cdcbbcf4950",
-    ),
-    (
-        "0e8cf2b5-9c4b-4c46-b4df-c5a0178cb221",
-        "69c8bd53-798d-4b6d-938e-7d4b63648820",
-    ),
-)
 ATTRIBUTION_BUCKETS = ("compaction_summary", "skill_listing")
 ATTRIBUTION_TOKEN_TOLERANCE = 1
 MIN_NAMED_SHARE = 0.30
-LIVE_LEDGER_PATH = Path.home() / ".claude" / "telemetry" / "context-ledger.jsonl"
+
+
+def _expand_fixture(value: Any) -> Any:
+    if isinstance(value, list):
+        return [_expand_fixture(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    if set(value) == {"$repeat", "characters"}:
+        character = value["$repeat"]
+        count = value["characters"]
+        if not isinstance(character, str) or len(character) != 1:
+            raise AssertionError("fixture repeats require one character")
+        if not isinstance(count, int) or count < 0:
+            raise AssertionError("fixture repeat counts must be non-negative integers")
+        return character * count
+    return {key: _expand_fixture(item) for key, item in value.items()}
 
 
 def _independent_textual_chars(value: Any) -> int:
@@ -1057,13 +1060,11 @@ class ToleranceTests(unittest.TestCase):
             self.assertIn(unrelated, rows)
 
 
-class RealCorpusReconciliationTests(unittest.TestCase):
-    """Read the real corpus, but keep all Strata-controlled paths and writes temporary."""
+class FixtureCorpusReconciliationTests(unittest.TestCase):
+    """Reconcile shipped transcript shapes entirely inside an injected runtime."""
 
     @classmethod
     def setUpClass(cls) -> None:
-        if not LIVE_LEDGER_PATH.is_file():
-            raise unittest.SkipTest("local context-ledger backfill is unavailable")
         cls._runtime = tempfile.TemporaryDirectory()
         root = Path(cls._runtime.name)
         install = root / "install"
@@ -1080,47 +1081,59 @@ class RealCorpusReconciliationTests(unittest.TestCase):
         transcript_root = root / "transcripts"
         setattr(cls.module, "TRANSCRIPT_ROOT", transcript_root)
 
-        source_rows, _ = cls.module.load_ledger(LIVE_LEDGER_PATH)
-        by_identity = {
-            (item.get("sid"), item.get("boundary_uuid")): item
-            for item in source_rows
-            if item.get("row_type") == "boundary"
-        }
-        if not all(sample in by_identity for sample in REAL_VERIFICATION_SAMPLES):
-            raise unittest.SkipTest(
-                "run the local context-ledger backfill before integration check"
-            )
+        fixture = json.loads(RECONCILIATION_FIXTURE.read_text(encoding="utf-8"))
+        calibration = fixture.get("calibration")
+        transcripts = fixture.get("transcripts")
+        if not isinstance(calibration, Mapping) or not isinstance(transcripts, list):
+            raise AssertionError("reconciliation fixture has an invalid shape")
 
         cls.verification: list[tuple[dict[str, Any], Any, int, int]] = []
-        for identity in REAL_VERIFICATION_SAMPLES:
-            published = by_identity[identity]
-            source_transcript = Path(published["transcript_path"])
-            destination = (
-                transcript_root / source_transcript.parent.name / source_transcript.name
-            )
+        for fixture_transcript in transcripts:
+            if not isinstance(fixture_transcript, Mapping):
+                raise AssertionError("fixture transcript entry must be an object")
+            relative_path = Path(str(fixture_transcript.get("path") or ""))
+            if relative_path.is_absolute() or ".." in relative_path.parts:
+                raise AssertionError("fixture transcript path must stay relative")
+            boundary_uuids = fixture_transcript.get("boundary_uuids")
+            rows = fixture_transcript.get("rows")
+            if not isinstance(boundary_uuids, list) or not isinstance(rows, list):
+                raise AssertionError(
+                    "fixture transcript rows or boundaries are invalid"
+                )
+
+            destination = transcript_root / relative_path
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source_transcript, destination)
+            expanded_rows = _expand_fixture(rows)
+            destination.write_text(
+                "".join(
+                    f"{json.dumps(item, ensure_ascii=False, sort_keys=True)}\n"
+                    for item in expanded_rows
+                ),
+                encoding="utf-8",
+            )
             parsed = cls.module.read_transcript(destination)
-            boundary_index = next(
-                index
-                for index, candidate in enumerate(parsed.rows)
-                if candidate.line_no == published["boundary_line"]
-                and candidate.value.get("uuid") == published["boundary_uuid"]
-            )
-            reanalyzed, _ = cls.module.analyze_transcript(
-                parsed, published["calibration"]
-            )
-            item = next(
-                candidate
-                for candidate in reanalyzed
-                if candidate["boundary_line"] == published["boundary_line"]
-                and candidate["boundary_uuid"] == published["boundary_uuid"]
-            )
-            first_assistant_index = _first_positive_assistant_index(
-                parsed.rows, boundary_index
-            )
-            cls.verification.append(
-                (item, parsed, boundary_index, first_assistant_index)
+            reanalyzed, _ = cls.module.analyze_transcript(parsed, calibration)
+            for boundary_uuid in boundary_uuids:
+                boundary_index = next(
+                    index
+                    for index, candidate in enumerate(parsed.rows)
+                    if candidate.value.get("uuid") == boundary_uuid
+                )
+                item = next(
+                    candidate
+                    for candidate in reanalyzed
+                    if candidate["boundary_uuid"] == boundary_uuid
+                )
+                first_assistant_index = _first_positive_assistant_index(
+                    parsed.rows, boundary_index
+                )
+                cls.verification.append(
+                    (item, parsed, boundary_index, first_assistant_index)
+                )
+
+        if not cls.verification:
+            raise AssertionError(
+                "reconciliation fixture has no verification boundaries"
             )
 
     @classmethod

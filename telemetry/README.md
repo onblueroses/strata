@@ -210,24 +210,6 @@ channel reads token fields (`tokens` / `tokens_total`) from `delegation` events 
 shipped wrappers emit `lane` / `exit` / `dur_s`, so the delegation cost channel populates once token
 capture is added to the payload.
 
-## The `kb_query` event (memory)
-
-The native memory engine emits one `kb_query` event per search when telemetry is enabled, so
-retrieval quality stays observable. `/recall` searches set `origin: "recall"`; the SessionStart
-memory-index path sets `origin: "digest"`. Payload as shipped:
-```json
-{"corpus":"cards","query":"<char-capped>","n_hits":3,"top_score":0.0,"rank_top_score":0.0,"bm25_top_score":0.0,"vector_top_score":0.0,"low_confidence":false,"is_miss":false,"miss_reason":null,"scores":[],"latency_ms":0.0,"search_mode":"fused","returned_ids":[],"origin":"recall"}
-```
-The `query` field is capped at `QUERY_CHAR_CAP` (4096 chars); an over-cap query is truncated and
-annotated with `query_chars`, `query_truncated`, and `query_sha256`, so the full text never lands in
-the sink. Emission is gated on `STRATA_TELEMETRY`; the sink is gitignored runtime data.
-
-The SessionEnd `memory-access-log.sh` hook consumes these events: `reconcile.py --access-log` tails
-the new `kb_query` rows and folds which cards were returned into
-`$STATE_DIR/memory/session-state/access-log.json` for the separate memory subsystem. This data is
-not an input to `telemetry/digest.py`. The hook is O(new-tail), bounded by a 20s wrapper timeout,
-and fail-open.
-
 ## The `context_composition` event (context ledger)
 
 An explicit `context_ledger.py --backfill` mirrors one event for every boundary and session ledger

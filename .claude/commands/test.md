@@ -21,9 +21,7 @@ python3 -m pytest -q
 Scope to one subsystem for a tighter loop while iterating there:
 
 ```
-python3 -m pytest memory/tests_deep -q     # retrieval engine, digest, reconcile
-python3 -m pytest tests -q                  # agent prompt-file, cost rollup, unify, digest
-python3 -m pytest memory/tests_deep/test_wiring_hooks.py -q   # memory hook wiring
+python3 -m pytest tests -q  # agent prompt-file, cost rollup, unify, digest
 ```
 
 Add `-k <expr>` to select by test name, or a file path to run one module.

@@ -1,0 +1,287 @@
+{
+  "basis": "The exact fixture calibration maps four payload characters to one token. Each transcript leaves a positive authoritative residual while its independently named summary and skill-listing buckets retain the existing thirty-percent coverage floor.",
+  "calibration": {
+    "state": "fitted",
+    "method": "fixture_exact_two_class_ratio",
+    "samples_total": 3,
+    "samples_fit": 3,
+    "samples_validation": 3,
+    "classes": {
+      "prose": {
+        "chars_per_token": 4.0,
+        "reliable": true
+      },
+      "structured": {
+        "chars_per_token": 4.0,
+        "reliable": true
+      }
+    },
+    "pooled": {
+      "chars_per_token": 4.0,
+      "reliable": true
+    }
+  },
+  "transcripts": [
+    {
+      "path": "fixture-project/session-alpha.jsonl",
+      "boundary_uuids": [
+        "fixture-boundary-alpha"
+      ],
+      "rows": [
+        {
+          "type": "attachment",
+          "sessionId": "fixture-session-alpha",
+          "timestamp": "2026-01-01T00:00:00Z",
+          "attachment": {
+            "type": "skill_listing",
+            "content": {
+              "$repeat": "a",
+              "characters": 400
+            }
+          }
+        },
+        {
+          "type": "assistant",
+          "sessionId": "fixture-session-alpha",
+          "timestamp": "2026-01-01T00:01:00Z",
+          "requestId": "fixture-alpha-before",
+          "message": {
+            "usage": {
+              "input_tokens": 1200,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 1
+            },
+            "content": []
+          }
+        },
+        {
+          "type": "system",
+          "subtype": "compact_boundary",
+          "sessionId": "fixture-session-alpha",
+          "timestamp": "2026-01-01T00:02:00Z",
+          "uuid": "fixture-boundary-alpha",
+          "compactMetadata": {
+            "trigger": "manual",
+            "preTokens": 1200
+          }
+        },
+        {
+          "type": "user",
+          "sessionId": "fixture-session-alpha",
+          "timestamp": "2026-01-01T00:03:00Z",
+          "isCompactSummary": true,
+          "message": {
+            "content": {
+              "$repeat": "b",
+              "characters": 400
+            }
+          }
+        },
+        {
+          "type": "assistant",
+          "sessionId": "fixture-session-alpha",
+          "timestamp": "2026-01-01T00:04:00Z",
+          "requestId": "fixture-alpha-after",
+          "message": {
+            "usage": {
+              "input_tokens": 400,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 1
+            },
+            "content": []
+          }
+        }
+      ]
+    },
+    {
+      "path": "fixture-project/session-beta.jsonl",
+      "boundary_uuids": [
+        "fixture-boundary-beta"
+      ],
+      "rows": [
+        {
+          "type": "attachment",
+          "sessionId": "fixture-session-beta",
+          "timestamp": "2026-01-02T00:00:00Z",
+          "attachment": {
+            "type": "skill_listing",
+            "content": [
+              {
+                "$repeat": "c",
+                "characters": 240
+              },
+              {
+                "$repeat": "d",
+                "characters": 160
+              }
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "sessionId": "fixture-session-beta",
+          "timestamp": "2026-01-02T00:01:00Z",
+          "requestId": "fixture-beta-before",
+          "message": {
+            "usage": {
+              "input_tokens": 1400,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 1
+            },
+            "content": []
+          }
+        },
+        {
+          "type": "system",
+          "subtype": "compact_boundary",
+          "sessionId": "fixture-session-beta",
+          "timestamp": "2026-01-02T00:02:00Z",
+          "uuid": "fixture-boundary-beta",
+          "compactMetadata": {
+            "trigger": "manual",
+            "preTokens": 1400
+          }
+        },
+        {
+          "type": "user",
+          "sessionId": "fixture-session-beta",
+          "timestamp": "2026-01-02T00:03:00Z",
+          "isCompactSummary": true,
+          "message": {
+            "content": [
+              {
+                "type": "text",
+                "text": {
+                  "$repeat": "e",
+                  "characters": 160
+                }
+              },
+              {
+                "type": "thinking",
+                "thinking": {
+                  "$repeat": "f",
+                  "characters": 160
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "sessionId": "fixture-session-beta",
+          "timestamp": "2026-01-02T00:04:00Z",
+          "requestId": "fixture-beta-after",
+          "message": {
+            "usage": {
+              "input_tokens": 500,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 1
+            },
+            "content": []
+          }
+        }
+      ]
+    },
+    {
+      "path": "fixture-project/session-gamma.jsonl",
+      "boundary_uuids": [
+        "fixture-boundary-gamma"
+      ],
+      "rows": [
+        {
+          "type": "attachment",
+          "sessionId": "fixture-session-gamma",
+          "timestamp": "2026-01-03T00:00:00Z",
+          "attachment": {
+            "type": "skill_listing",
+            "content": {
+              "$repeat": "g",
+              "characters": 720
+            }
+          }
+        },
+        {
+          "type": "attachment",
+          "sessionId": "fixture-session-gamma",
+          "timestamp": "2026-01-03T00:01:00Z",
+          "attachment": {
+            "type": "skill_listing",
+            "content": {
+              "$repeat": "h",
+              "characters": 360
+            }
+          }
+        },
+        {
+          "type": "assistant",
+          "sessionId": "fixture-session-gamma",
+          "timestamp": "2026-01-03T00:02:00Z",
+          "requestId": "fixture-gamma-before",
+          "message": {
+            "usage": {
+              "input_tokens": 1600,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 1
+            },
+            "content": []
+          }
+        },
+        {
+          "type": "system",
+          "subtype": "compact_boundary",
+          "sessionId": "fixture-session-gamma",
+          "timestamp": "2026-01-03T00:03:00Z",
+          "uuid": "fixture-boundary-gamma",
+          "compactMetadata": {
+            "trigger": "manual",
+            "preTokens": 1600
+          }
+        },
+        {
+          "type": "user",
+          "sessionId": "fixture-session-gamma",
+          "timestamp": "2026-01-03T00:04:00Z",
+          "isCompactSummary": true,
+          "message": {
+            "content": {
+              "$repeat": "i",
+              "characters": 240
+            }
+          }
+        },
+        {
+          "type": "user",
+          "sessionId": "fixture-session-gamma",
+          "timestamp": "2026-01-03T00:05:00Z",
+          "isCompactSummary": true,
+          "message": {
+            "content": {
+              "$repeat": "j",
+              "characters": 240
+            }
+          }
+        },
+        {
+          "type": "assistant",
+          "sessionId": "fixture-session-gamma",
+          "timestamp": "2026-01-03T00:06:00Z",
+          "requestId": "fixture-gamma-after",
+          "message": {
+            "usage": {
+              "input_tokens": 600,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 1
+            },
+            "content": []
+          }
+        }
+      ]
+    }
+  ]
+}
