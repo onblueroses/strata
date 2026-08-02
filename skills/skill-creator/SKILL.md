@@ -1,10 +1,7 @@
 ---
 name: skill-creator
 description: |
-  Create new skills, modify and improve existing skills, and measure skill performance. Use when
-  users want to create a skill from scratch, update or optimize an existing skill, run evals to
-  test a skill, benchmark skill performance with variance analysis, or optimize a skill's
-  description for better triggering accuracy.
+  Create, update, evaluate, benchmark, or optimize skills and their activation descriptions.
   Manual: when the user wants to create, modify, evaluate, or optimize a skill.
 ---
 
@@ -36,9 +33,6 @@ Cool? Cool.
 
 ## Communicating with the user
 
-<details>
-<summary>Communicating with the user</summary>
-
 The skill creator is liable to be used by people across a wide range of familiarity with coding jargon. If you haven't heard (and how could you, it's only very recently that it started), there's a trend now where the power of Claude is inspiring plumbers to open up their terminals, parents and grandparents to google "how to install npm". On the other hand, the bulk of users are probably fairly computer-literate.
 
 So please pay attention to context cues to understand how to phrase your communication! In the default case, just to give you some idea:
@@ -48,14 +42,10 @@ So please pay attention to context cues to understand how to phrase your communi
 
 It's OK to briefly explain terms if you're in doubt, and feel free to clarify terms with a short definition if you're unsure if the user will get it.
 
-</details>
 
 ---
 
 ## Creating a skill
-
-<details>
-<summary>Creating a skill</summary>
 
 ### Capture Intent
 
@@ -173,12 +163,8 @@ Save test cases to `evals/evals.json`. Don't write assertions yet — just the p
 
 See `references/schemas.md` for the full schema (including the `assertions` field, which you'll add later).
 
-</details>
 
 ## Running and evaluating test cases
-
-<details>
-<summary>Running and evaluating test cases</summary>
 
 This section is one continuous sequence — don't stop partway through. Do NOT reach for a separate testing skill.
 
@@ -305,14 +291,10 @@ Kill the viewer server when you're done with it:
 kill $VIEWER_PID 2>/dev/null
 ```
 
-</details>
 
 ---
 
 ## Improving the skill
-
-<details>
-<summary>Improving the skill</summary>
 
 This is the heart of the loop. You've run the test cases, the user has reviewed the results, and now you need to make the skill better based on their feedback.
 
@@ -347,7 +329,6 @@ Keep going until:
 - You're not making meaningful progress
 - Convergence detected: two consecutive iterations with diff delta below 5% of file size
 
-</details>
 
 ---
 
@@ -360,9 +341,6 @@ This is optional, requires subagents, and most users won't need it. The human re
 ---
 
 ## Description Optimization
-
-<details>
-<summary>Description Optimization</summary>
 
 The description field in SKILL.md frontmatter is the primary mechanism that determines whether Claude invokes a skill. After creating or improving a skill, offer to optimize the description for better triggering accuracy.
 
@@ -444,7 +422,6 @@ This means your eval queries should be substantive enough that Claude would actu
 
 Take `best_description` from the JSON output and update the skill's SKILL.md frontmatter. Show the user before/after and report the scores.
 
-</details>
 
 ---
 
@@ -462,9 +439,6 @@ After packaging, direct the user to the resulting `.skill` file path so they can
 
 ## Claude.ai-specific instructions
 
-<details>
-<summary>Claude.ai-specific instructions</summary>
-
 In Claude.ai, the core workflow is the same (draft → test → review → improve → repeat), but because Claude.ai doesn't have subagents, some mechanics change. Here's what to adapt:
 
 **Running test cases**: No subagents means no parallel execution. For each test case, read the skill's SKILL.md, then follow its instructions to accomplish the test prompt yourself. Do them one at a time. This is less rigorous than independent subagents (you wrote the skill and you're also running it, so you have full context), but it's a useful sanity check — and the human review step compensates. Skip the baseline runs — just use the skill to complete the task as requested.
@@ -481,14 +455,10 @@ In Claude.ai, the core workflow is the same (draft → test → review → impro
 
 **Packaging**: The `package_skill.py` script works anywhere with Python and a filesystem. On Claude.ai, you can run it and the user can download the resulting `.skill` file.
 
-</details>
 
 ---
 
 ## Headless / No-Display Environments
-
-<details>
-<summary>Headless / No-Display Environments</summary>
 
 In a headless / no-display environment (no browser, no display), the main things to know are:
 
@@ -499,7 +469,6 @@ In a headless / no-display environment (no browser, no display), the main things
 - Packaging works — `package_skill.py` just needs Python and a filesystem.
 - Description optimization (`run_loop.py` / `run_eval.py`) should work in a headless environment just fine since it uses `claude -p` via subprocess, not a browser, but please save it until you've fully finished making the skill and the user agrees it's in good shape.
 
-</details>
 
 ---
 

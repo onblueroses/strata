@@ -1,6 +1,10 @@
 # Harness State Schema
 
-JSON schema for `$STATE_DIR/harness-state-{session-id}.json` (one file per session — `{session-id}` is the 8-char suffix of today's daily note filename). This file tracks loop progress and survives compaction. Session-specific filenames let multiple sessions run /harness concurrently without clobbering each other's state.
+JSON schema for `$STATE_DIR/harness-state-{session-id}.json` (one file per session —
+`{session-id}` is the first eight characters of the ID supplied by the platform's session hook,
+matching the state filename contract). This file
+tracks loop progress and survives compaction. Session-specific filenames let multiple sessions
+run /harness concurrently without clobbering each other's state.
 
 ## Schema
 
@@ -84,7 +88,7 @@ JSON schema for `$STATE_DIR/harness-state-{session-id}.json` (one file per sessi
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `session_id` | string | yes | 8-char session ID from daily note filename |
+| `session_id` | string | yes | First eight characters from the platform's session hook |
 | `status` | enum | yes | Current loop state. `running` while iterating; `complete` on DONE; `escalated` when a convergence detector reached its second strike and the user paused; `aborted` if the user chose abort during escalation; `error` on unrecoverable failure |
 | `termination_reason` | enum | no | Set when `status` leaves `running`. `done` (DONE), `spinning` / `oscillating` / `structural` / `diminishing_returns` (convergence-detector escalation), `user_abort` (user chose abort), `error` (unrecoverable) |
 | `task_summary` | string | yes | One-line task description for resume context |

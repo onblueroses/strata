@@ -47,9 +47,6 @@ Written by the orchestrator at Phase 0 setup. One per run.
 
 ### generator-approach.md
 
-<details>
-<summary>generator-approach.md</summary>
-
 Written by the generator subagent at the end of its run. Captures reasoning and strategy so future generators can see what was tried.
 
 ```markdown
@@ -77,7 +74,6 @@ decisions, (4) concerns. This helps future attempts learn from your work.
 
 **On quick gate failure**: The orchestrator writes a minimal version noting the failure reason, so the artifact trail is complete even for failed rounds.
 
-</details>
 
 ### files-changed.json
 
@@ -91,9 +87,6 @@ Written by the orchestrator after the generator completes. Lists files touched w
 ```
 
 ### evaluator-verdict.md
-
-<details>
-<summary>evaluator-verdict.md</summary>
 
 Written by the orchestrator after evaluation completes. Contains the verbatim output from Stage A (spec compliance) and Stage B (code quality), concatenated.
 
@@ -116,12 +109,8 @@ OVERALL: HAS_FAILURES
 
 The evaluator never sees the artifact directory. This file is written by the orchestrator after capturing the evaluator subagent's output.
 
-</details>
 
 ### snapshots/
-
-<details>
-<summary>snapshots/</summary>
 
 Written by the orchestrator after the generator completes. Contains copies of all target files, preserving project-relative paths.
 
@@ -135,7 +124,6 @@ File copies, not diffs - agents read files more reliably than they parse diffs. 
 
 Only target files (files the generator was told to create/edit) are snapshotted, not context files.
 
-</details>
 
 ## Who Writes What
 

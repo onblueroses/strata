@@ -1,10 +1,8 @@
 ---
 name: codex-review
-description: "One-shot adversarial review by Codex (high-reasoning) for non-diff artifacts: plans, debugging hypotheses, architecture decisions. Cross-model asymmetry breaks Claude's same-model bias by construction — Codex catches blindspots a same-model self-review normalizes. Returns categorized findings (BLOCKING / IMPORTANT / ADVISORY) plus AGREE notes for anti-bias balance. One-shot, no loop — use /harness when iterative correction is needed. For diff/code review, /verify (Full/Deep) and /review already invoke Codex via `codex review --uncommitted`, so do not duplicate. MANDATORY after /spec writes a plan touching 3+ files or 3+ phases, before the user starts implementation (operationalizes the CLAUDE.md 'Codex plan review' rule). Triggers on: 'have Codex review this', 'run this past Codex', 'second opinion', 'adversarial check', 'cross-model review', 'sanity check this plan', 'what would Codex say', 'review the hypothesis', 'check this architecture decision', 'is this plan sound'. Also triggers when: the user proposes a non-trivial debugging hypothesis that gates real implementation work; an architecture decision is being locked in; a research/scientific plan with empirical claims is about to be executed; a proposal-shaped artifact (deliverables, timeline, budget framing) is up for review; a plan whose outputs touch users, subjects, or third parties asymmetrically is being finalized. Pairs with /spec (upstream — codex-review fires after spec writes), /harness (downstream — when iterative gen-eval is needed), /cross-model-critique (kin — same triage discipline applied to pasted external AI feedback). Manual: /codex-review --plan path/to/spec.md, /codex-review --hypothesis 'the bug is X' --evidence path/to/log, /codex-review --arch 'decision text or path/to/decision.md'."
-tier: core
-cost_hint: high
-parallelizable: false
-when_to_use: Before executing a non-trivial plan, debugging hypothesis, or architecture decision
+description: >-
+  Run a one-shot adversarial review of plans, debugging hypotheses, architecture decisions,
+  research plans, or proposals; use /harness for iterative correction. Triggers on: 'have Codex review this', 'run this past Codex', 'second opinion', 'adversarial check', 'cross-model review', 'sanity check this plan', 'what would Codex say', 'review the hypothesis', 'check this architecture decision', 'is this plan sound'. Also triggers when a non-trivial hypothesis or consequential decision is about to gate implementation. Manual: /codex-review --plan path/to/spec.md, /codex-review --hypothesis 'the bug is X' --evidence path/to/log, /codex-review --arch 'decision text or path/to/decision.md'.
 ---
 
 # /codex-review
@@ -105,9 +103,6 @@ Read the reference doc to load the full preamble for the chosen framing into the
 For implementation/code-quality framings used by `/harness` (security-audit, production-load, maintainability, adversarial-user, dependency-skeptic, reality-declaration), see `$STRATA_HOME/skills/harness/references/evaluator-framings.md`. Those target code that exists; the codex-framings doc targets plans/theories/decisions.
 
 ## Codex Invocation
-
-<details>
-<summary>Codex Invocation</summary>
 
 Per CLAUDE.md: direct `codex` CLI via Bash with `run_in_background: true`. xhigh reasoning + fast service tier can take 5-15 minutes - longer than Bash's 10-minute foreground cap.
 
@@ -214,7 +209,6 @@ Run with `run_in_background: true`.
 
 **Step 5: Read the result.** Once Codex exits, read the full log file. Parse AGREE notes, severity-tagged issues, and the final VERDICT line.
 
-</details>
 
 ## Result Reporting
 
@@ -251,7 +245,7 @@ If Codex returns "No issues found", show that as-is plus a brief recap of what i
 
 ## Integration (acting on the review)
 
-When the user accepts the review and asks for revisions, sort every Codex finding into one of four buckets before touching the artifact. Read the full report once, classify all findings, *then* edit. Adapted from `/cross-model-critique` — Codex's different training distribution catches what same-model self-review normalizes.
+When the user accepts the review and asks for revisions, sort every Codex finding into one of four buckets before touching the artifact. Read the full report once, classify all findings, *then* edit. This triage preserves the benefit of a different training distribution without treating every external finding as automatically correct.
 
 - **PROTECT** — Codex's AGREE notes plus anything it explicitly praised. These are load-bearing walls; revision must not damage them. Mark them in the artifact before editing if there's ambiguity about which lines are "the strong ones."
 - **DIAGNOSE** — Findings where Codex is correct and the artifact must change. Map each diagnosis to a specific file:line or section. If a finding is vague ("the rollback story is thin"), locate the exact spot before acting.

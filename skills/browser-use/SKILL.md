@@ -1,9 +1,7 @@
 ---
 name: browser-use
-version: 0.11.9
 description: |
-  Browser automation via browser-use CLI. Navigate, click, type, screenshot.
-  Supports headless, headed, real Chrome (with logins), and cloud browsers.
+  Automate headless, headed, real-Chrome, or cloud browser sessions with browser-use CLI.
   Auto-trigger: when the task requires reusing an existing Chrome session with your logins (use --browser real), OR when an AI agent must reason over an unknown/dynamic page structure. For simple screenshots and visual validation, use Playwright MCP instead (mcp__playwright__*).
 allowed-tools:
   - Bash
@@ -13,9 +11,6 @@ allowed-tools:
 # Browser Automation with browser-use CLI
 
 ## Common Flag Mistakes (all cause silent failures)
-
-<details>
-<summary>Common Flag Mistakes (all cause silent failures)</summary>
 
 These mistakes happen frequently because the CLI's syntax differs from typical tools:
 
@@ -45,7 +40,6 @@ RIGHT: browser-use screenshot screenshot.png     # Path is a positional arg to '
 The ONLY global flags are: `--session`, `--browser`, `--headed`, `--profile`, `--json`, `--api-key`.
 Global flags go BEFORE the subcommand. Do NOT invent any other flags.
 
-</details>
 
 ## Command Syntax
 
@@ -76,9 +70,6 @@ Only proceed with this skill if one of the bottom two rows matches. For simple s
 
 ## Quick Start
 
-<details>
-<summary>Quick Start</summary>
-
 ```bash
 browser-use open https://example.com           # Navigate to URL
 browser-use state                              # Get page elements with indices
@@ -88,7 +79,6 @@ browser-use screenshot $HOME/temp/shot.png  # Save screenshot
 browser-use close                              # Close browser
 ```
 
-</details>
 
 ## Core Workflow
 
@@ -100,9 +90,6 @@ browser-use close                              # Close browser
 6. **Cleanup**: `browser-use close` when done
 
 ## All Commands Reference
-
-<details>
-<summary>All Commands Reference</summary>
 
 ### Navigation
 ```bash
@@ -173,12 +160,8 @@ browser-use close                         # Close current session
 browser-use close --all                   # Close all sessions
 ```
 
-</details>
 
 ## Global Options
-
-<details>
-<summary>Global Options</summary>
 
 These go BEFORE the subcommand:
 
@@ -191,12 +174,8 @@ These go BEFORE the subcommand:
 | `--json` | Output as JSON |
 | `--api-key KEY` | Browser-Use API key (for remote/extract/run) |
 
-</details>
 
 ## Browser Modes
-
-<details>
-<summary>Browser Modes</summary>
 
 ```bash
 browser-use open <url>                            # Default: headless Chromium
@@ -209,7 +188,6 @@ browser-use --browser remote open <url>           # Cloud browser (requires API 
 - **real**: Uses your Chrome with cookies, extensions, logged-in sessions
 - **remote**: Cloud-hosted browser with proxy support (requires BROWSER_USE_API_KEY)
 
-</details>
 
 ## Screenshot Best Practices
 
@@ -226,9 +204,6 @@ browser-use screenshot --full $HOME/temp/full.png
 Use the Read tool to view the screenshot after saving it.
 
 ## Examples
-
-<details>
-<summary>Examples</summary>
 
 ### Form Submission
 ```bash
@@ -258,7 +233,6 @@ browser-use --browser real open https://gmail.com
 browser-use state  # Already logged in!
 ```
 
-</details>
 
 ## Tips
 
@@ -270,9 +244,6 @@ browser-use state  # Already logged in!
 6. **Wait for dynamic content** - use `browser-use wait selector/text` before screenshotting SPAs
 
 ## Mobile Viewport Emulation
-
-<details>
-<summary>Mobile Viewport Emulation</summary>
 
 Use the `mobile-viewport.py` helper script to emulate mobile and tablet viewports via CDP.
 
@@ -335,7 +306,6 @@ For quick one-offs without the helper script:
 browser-use python "browser._run(browser._session._cdp_set_viewport(393, 852, device_scale_factor=3.0, mobile=True))"
 ```
 
-</details>
 
 ## Quality Self-Check
 
@@ -352,9 +322,6 @@ After completing browser automation, verify:
 - Use `--headed` in automated workflows - only for debugging
 
 ## Cleanup
-
-<details>
-<summary>Cleanup</summary>
 
 **Always close the browser when done:**
 
@@ -379,5 +346,3 @@ If `close` fails (process crashed), kill the browser process directly:
 ```bash
 pkill -f chrome 2>/dev/null
 ```
-
-</details>

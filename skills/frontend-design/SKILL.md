@@ -1,10 +1,8 @@
 ---
 name: frontend-design
 description: |
-  Senior UI/UX engineer that enforces premium, non-generic frontend code. Overrides LLM
-  biases toward "AI slop" with metric-based design rules, strict component architecture,
-  CSS hardware acceleration, and controlled design dials. Includes project-specific
-  knowledge for Tailwind v4, German copy, and text legibility.
+  Build premium, non-generic web interfaces with controlled design dials, component
+  architecture, performant CSS, Tailwind v4, German copy, and legible text.
   Auto-trigger: when building any web UI - components, pages, layouts, or applications.
 ---
 
@@ -35,9 +33,6 @@ description: |
 
 ## 3. DEFAULT ARCHITECTURE & CONVENTIONS
 
-<details>
-<summary>3. DEFAULT ARCHITECTURE & CONVENTIONS</summary>
-
 * **Dependency verification:** Before importing any 3rd party library (framer-motion, lucide-react, etc.), check `package.json`. If missing, output the install command first. Importing a missing dependency causes a build failure that the user has to debug manually - checking first takes 2 seconds and prevents a 10-minute detour.
 * **Framework:** React or Next.js. Default to Server Components (RSC).
   * **RSC SAFETY:** Global state works ONLY in Client Components. Wrap providers in `"use client"` components.
@@ -50,14 +45,10 @@ description: |
 * **Icons:** Use `@phosphor-icons/react` or `@radix-ui/react-icons` (check installed). Standardize `strokeWidth` (1.5 or 2.0 project-wide).
 * **Container queries over viewport hacks:** Use `@container` for component-level responsiveness. A card in a sidebar adapts to its container, not the viewport. Parent: `container-type: inline-size`. Child: `@container (min-width: 400px)` instead of `@media`.
 
-</details>
 
 ---
 
 ## 4. DESIGN ENGINEERING DIRECTIVES (Bias Correction)
-
-<details>
-<summary>4. DESIGN ENGINEERING DIRECTIVES (Bias Correction)</summary>
 
 **Rule 1: Deterministic Typography**
 
@@ -144,14 +135,10 @@ Every interactive element MUST handle all 8 states:
 
 Label MUST sit above input. Helper text optional. Error text below input. `gap-2` for input blocks.
 
-</details>
 
 ---
 
 ## 5. MOTION ENGINE
-
-<details>
-<summary>5. MOTION ENGINE</summary>
 
 * MOTION 1-3: No animations. CSS `:hover`/`:active` only.
 * MOTION 4-7: `transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1)`. **400ms with cubic-bezier(0.4, 0, 0.2, 1)** is the sweet spot for UI transitions. `animation-delay` cascades for load-ins. Only `transform` and `opacity`.
@@ -171,7 +158,6 @@ Label MUST sit above input. Helper text optional. Error text below input. `gap-2
 
 **Exit = 75% of entrance.** 400ms entrance -> 300ms exit. Arrivals are events; departures should be fast.
 
-</details>
 
 ---
 
@@ -184,9 +170,6 @@ Label MUST sit above input. Helper text optional. Error text below input. `gap-2
 ---
 
 ## 7. THE AI TELLS (Forbidden Patterns)
-
-<details>
-<summary>7. THE AI TELLS (Forbidden Patterns)</summary>
 
 ### Visual
 * NO Neon/Outer Glows: Use inner borders or tinted shadows instead
@@ -220,14 +203,10 @@ Label MUST sit above input. Helper text optional. Error text below input. `gap-2
 * NO gradient text for impact (`background-clip: text` looks hacky on 90% of fonts)
 * NO default dark mode with glowing accents (most overused "premium" look in AI output)
 
-</details>
 
 ---
 
 ## 8. TEXT LEGIBILITY
-
-<details>
-<summary>8. TEXT LEGIBILITY</summary>
 
 **Text over any busy/image background uses three-layer text-shadow.** Always use this instead of backdrop panels, radial gradient overlays, or backdrop-blur.
 
@@ -251,7 +230,6 @@ h1, h2, h3, h4 {
 
 Apply globally in base styles. Adjust rgba base color to match the background.
 
-</details>
 
 ---
 
@@ -274,9 +252,6 @@ Apply globally in base styles. Adjust rgba base color to match the background.
 
 ## 11. CREATIVE ARSENAL (High-End Inspiration)
 
-<details>
-<summary>11. CREATIVE ARSENAL (High-End Inspiration)</summary>
-
 Do not default to generic UI. Pull from these:
 
 **Hero:** Stop doing centered text over dark image. Use asymmetric: text left or right, background with stylistic fade.
@@ -295,7 +270,6 @@ Do not default to generic UI. Pull from these:
 
 **Don't mix GSAP/ThreeJS with Framer Motion in the same component tree.** They fight over the same DOM transforms, causing janky animations and hard-to-debug conflicts. Default to Framer Motion for UI interactions. Use GSAP/ThreeJS only for isolated full-page scrolltelling or canvas backgrounds where Framer Motion's React model doesn't reach.
 
-</details>
 
 ---
 

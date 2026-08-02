@@ -1,9 +1,13 @@
 ---
 name: spec
-description: "Create and manage implementation specs that survive compaction: the spec is a navigation chart, not a railroad. Frozen zone (Goal, Boundaries, Decisions, Trail), one live Frontier planned just-in-time, coarse Territory sketch beyond it. MANDATORY on plan-mode exit for work touching 3+ files. Triggers on: 'write a spec', 'spec this out', 'persist the plan', 'advance the frontier'. Skip for 1-2 files."
+description: "Create implementation specs that survive compaction: frozen Goal, Boundaries, Decisions, and Trail; one live Frontier; coarse Territory. MANDATORY on plan-mode exit for work touching 3+ files. Triggers on: 'write a spec', 'spec this out', 'persist the plan', 'advance the frontier'. Skip for 1-2 files."
 ---
 
 # Spec
+
+This skill now keeps durable specs, their Decisions table, one just-in-time Frontier, and
+post-compaction pointers current. Platform memory behavior lives in
+`$STRATA_HOME/reference/knowledge-management.md`; spec maintains no separate knowledge store.
 
 Goal: Persist the destination, invariants, decisions, and live execution state of non-trivial work in one artifact that a fresh context can continue from.
 
@@ -79,7 +83,8 @@ Concurrent sessions require ownership isolation. Give every active spec one clea
 - Every spec has a `Session:` field with the 8-char session ID of the instance working on it.
 - **Before modifying a spec:** check its `Session:` field. If it contains a DIFFERENT session ID AND `Last updated` is within the last 2 hours, leave it unchanged because another instance is actively working on it. Run `date` in bash to get current time for comparison. Warn: "Spec [name] is owned by session [id], last updated [time]. Another instance is working on this."
 - **When picking up a spec** (e.g., after compaction or starting a new session): update the `Session:` field to YOUR session ID.
-- **Your session ID** is the 8-character suffix of your daily note filename (visible in the SessionStart hook output).
+- **Your session ID** is the first eight characters shown by the platform's SessionStart hook,
+  matching the spec ownership contract.
 
 ---
 
@@ -91,7 +96,6 @@ Concurrent sessions require ownership isolation. Give every active spec one clea
    - **Skip if** you just exited plan mode: use the exploration already in context.
    - Invoke `/recon {feature-slug}` when the codebase is outside working memory and the first frontier or the boundaries depend on facts you'd otherwise guess; direct Glob/Grep/Read covers obvious scopes faster.
    - Invoke `/grill` when user-provided intent is thin or the goal has unresolved decision branches (recon covers code facts; /grill covers intent).
-   - Grep `$KB_DIR/resources/decision-library.md` for the feature domain; carry relevant past decisions into the Decisions seed.
    - Surface genuine forks via AskUserQuestion (load /ask-better first) BEFORE writing the chart.
 
 3. **Draft the chart.** Write, in this order:
@@ -116,8 +120,6 @@ Concurrent sessions require ownership isolation. Give every active spec one clea
    Done when the file exists at the canonical path with `Status: in-progress`, `Session:` set, `>> Current Step` pointing at Frontier 1 Step 1.1, exactly one Frontier open, and Territory sketched.
 
 6. **Surface frontier gates.** If Frontier 1 is `Harness: yes`: "Frontier 1 is Harness-gated: PDMC recorded, run `/harness --from-spec` before implementing." If `BoN: yes`: "Frontier 1 is BoN-gated: run `/best-of-n --from-spec`." If both: ABORT with "Spec malformed: Frontier 1 has both Harness and BoN tagged. Fix the spec."
-
-Optionally run `/void --self` on the finished chart to surface the comfortable absence the plan satisfies on paper.
 
 ## Advancing the Frontier (`/spec advance`)
 
@@ -147,7 +149,7 @@ The core loop. Run when the open frontier's gate passes (or the frontier is expl
 
 1. Read the active spec (`Status: in-progress`) from `$SPECS_DIR/`.
    - If zero specs are in-progress: report "No active spec" and stop.
-   - If several are in-progress: pick the one matching the current project/entity; when ambiguous, ask via AskUserQuestion.
+   - If several are in-progress: pick the one matching the current repository and project; when ambiguous, ask via AskUserQuestion.
 2. Update `>> Current Step` with current status and sync `-> Next:` in Quick Start to match.
 3. Check off completed steps in the Frontier.
 4. Update `Last updated` timestamp.
@@ -171,7 +173,8 @@ Completed Specs
 Resolve the active spec as in `/spec update` (zero in-progress: report and stop; several: match by project, else ask).
 
 1. **Run conformance check.** Re-read Goal, Boundaries, Trail. Fill in `## Conformance`. Territory items still open are either waived with reason (intentional scope cut) or the spec stays open.
-2. **Propagate learnings.** Generalizable discoveries go to the entity's `$KB_DIR/{entity}/summary.md` or `$KB_DIR/{entity}/items.json`.
+2. **Preserve learnings.** Record generalizable discoveries in `## Learnings` and link any
+   canonical repo document updated by the implementation.
 3. Set Status to `complete` (or `abandoned` with reason in Learnings).
 4. Update `Last updated`.
 5. Move the closed file into `archive/` inside the specs directory (`archive/` is canonical; `_archive/` is legacy, add nothing to it), or leave it top-level while still referenced.

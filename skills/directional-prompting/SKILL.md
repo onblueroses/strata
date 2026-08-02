@@ -1,6 +1,6 @@
 ---
 name: directional-prompting
-description: "Write prompts, agent directives, slash commands, and skill descriptions with three stacked layers: outcome contract (goal, checkable success criteria, does-not-count list, stop condition, self-verification), direction (positive verbs name the path; zero contradictions; calibrated emphasis), and loop engineering for agentic prompts (persistence policy, diverse routes, blocked-route criteria, adversarial verification). Use when writing or reviewing any prompt, AGENTS.md, CLAUDE.md, tool description, subagent brief, or eval rubric. Triggers on: 'write a prompt', 'improve this prompt', 'make it positive', 'goal engineering', 'loop engineering', 'definition of done'."
+description: "Write or review prompts, agent directives, rules, tool descriptions, skill descriptions, and eval rubrics using outcome contracts, positive direction, and agent-loop controls. Triggers on: 'write a prompt', 'improve this prompt', 'make it positive', 'goal engineering', 'loop engineering', 'definition of done'."
 metadata:
   version: "3.1.1"
 ---
@@ -216,7 +216,7 @@ For each draft:
 Distilled 2026-07 from primary sources.
 
 - Anthropic: prompting best practices; context-engineering and tool-writing engineering posts (2025-2026)
-- OpenAI: GPT-5-series prompting guides, Codex prompting guide, reasoning best practices (2025-2026)
+- OpenAI: current-generation prompting guides, Codex prompting guide, reasoning best practices (2025-2026)
 - Google: Gemini prompt design strategies, Gemini 3 developer guide (2026)
 - Open-problem prompt lineage: OpenAI cycle-double-cover prompt; Shouqiao Wang's Erdős-problem prompts (2026; community verification ongoing)
 - Practitioner corpus: Willison, Karpathy, Schulhoff, Askell, Cursor, Cognition (2025-2026); supports the context-engineering frame and the aged-out table's role-prompting, persuasion, injection-defense, and prompt-porting rows

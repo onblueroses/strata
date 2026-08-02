@@ -1,11 +1,7 @@
 ---
 name: ask-better
-version: 2.0.0
 description: |
-  Maximize alignment between agent and user when asking questions via AskUserQuestion.
-  Not a generic questioning framework - specifically about minimizing the delta between
-  what you think the user wants and what they actually want, using minimum questions
-  with minimum cognitive load.
+  Ask the minimum low-load questions needed to align the agent's model with the user's intent.
   Auto-trigger: MANDATORY when about to use AskUserQuestion. Read before formulating any question to the user.
 allowed-tools:
   - AskUserQuestion
@@ -23,9 +19,6 @@ Alignment = your internal model of what the user wants matches what the user act
 - **Skip if** you're re-asking after the user selected "Other" and gave a custom answer that needs clarification
 
 ## Before You Ask: Confidence Check
-
-<details>
-<summary>Before You Ask: Confidence Check</summary>
 
 Rate your confidence in what the user wants. This determines whether to ask at all and how to frame it.
 
@@ -60,12 +53,8 @@ When you've determined a question is needed, quickly scan which aspects are unre
 - **Constraints** - compatibility, performance, style, deps, time limits
 - **Safety** - is this reversible? migration path? rollback plan?
 
-</details>
 
 ## Core Pattern: Model Exposure
-
-<details>
-<summary>Core Pattern: Model Exposure</summary>
 
 The most alignment-efficient pattern: show your current model and let the user correct it.
 
@@ -103,7 +92,6 @@ Before asking, form your best guess at the answer. Then ask a question that woul
 
 The user either confirms (fast) or corrects with context you didn't have (valuable).
 
-</details>
 
 ## Question Tiers
 
@@ -127,9 +115,6 @@ You are spending the user's decision energy with every question. This budget is 
 - The most expensive question is one that makes the user context-switch. If you're asking about auth and they're thinking about the UI, your question costs triple.
 
 ## Formulating Questions
-
-<details>
-<summary>Formulating Questions</summary>
 
 ### One Decision Per Question
 
@@ -172,7 +157,6 @@ The `header` field is max 12 characters. It's a category tag.
 **Bad:** "Implementation approach", "Which database should we use"
 **Good:** "Approach", "Database", "Auth method", "Deploy"
 
-</details>
 
 ## Detecting Misalignment
 
@@ -219,9 +203,6 @@ If any check fails, revise or defer.
 
 ## Examples
 
-<details>
-<summary>Examples</summary>
-
 ### Hypothesis-first (high alignment efficiency)
 
 ```
@@ -265,5 +246,3 @@ options:
 ```
 
 Why it fails: No homework shown. No hypothesis. Options reveal nothing about the agent's understanding. Forces the user to do the thinking. Multiple sub-decisions bundled into one question.
-
-</details>

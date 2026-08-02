@@ -8,7 +8,7 @@ Block shapes for `/context-save` Step 2. Copy each block into
 is the load-bearing one. Rename a section only by changing every consumer in the same commit.
 
 **Capture vs point:** capture verbatim only what dies with the context window (the live loop,
-decisions, outputs). Point by path at what lives on disk (specs, canonical docs, entity KB).
+decisions, outputs). Point by path at what lives on disk (specs, handoffs, canonical docs, git state).
 
 ## Frame block (one per touched repo — pointers, not copies)
 
@@ -18,14 +18,13 @@ decisions, outputs). Point by path at what lives on disk (specs, canonical docs,
 ## Repo Frame: {repo-name}
 
 **Path:** `/absolute/path/to/repo` | **Branch:** `branch-name`
-**Entity:** `$KB_DIR/projects/{name}` (or "no entity mapping")
 
 **North Star:** [1-3 sentences: what this repo is FOR, the durable goal. Quote the single load-bearing claim from THESIS.md-class docs if one exists.]
 **Station:** [Where this work sits in the longer arc: what's shipped, in motion, queued. 2-4 sentences.]
 **Read for frame:** [paths only, one line each on why]
 - `THESIS.md` — [why it matters to this work]
 - `docs/ARCHITECTURE.md` — [why]
-- `$KB_DIR/projects/{name}/summary.md` — entity state
+- `$STATE_DIR/handoffs/{task}.md` — [why this handoff remains relevant, if one exists]
 ```
 
 ## Core blocks (always include)
@@ -71,9 +70,9 @@ Strategic anchors enforced by the post-compaction read gate. Use at most 3 numbe
 entries with this exact grammar:
 
 1. `$SPECS_DIR/feature.md` (lines 1-60) — the mission: Goal, Boundaries, Decisions
-2. `path/to/entity/summary.md` — durable entity state and strategic constraints
+2. `docs/ARCHITECTURE.md` — durable project constraints
 
-Only durable paths belong here: specs, the knowledge base, or canonical repo docs.
+Only durable paths belong here: specs, handoffs, or canonical repo docs.
 Anything under `/tmp` or a scratchpad is forbidden. A line range is required for
 any file over approximately 10 KB. Carry entries forward across compactions and
 rewrite them only when the mission genuinely shifts; never re-paraphrase them.
@@ -86,7 +85,8 @@ After gated orientation, these advisory tactical pointers are the suggested orde
 2. `path/to/spec.md` — [why: source of truth for the current frontier]
 3. (3-7 entries total; ordered by what unblocks the next move first)
 
-**Suggested skills:** the 1-3 skills to invoke first, each with a one-line why (e.g. `/pickup` to load entity context).
+**Suggested skills:** the skills to invoke first, each with a one-line why (e.g. `/recon` to
+rebuild current repository facts before planning).
 
 ## In-Flight
 

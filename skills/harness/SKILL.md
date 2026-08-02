@@ -1,6 +1,8 @@
 ---
 name: harness
-description: "Run an adversarial generator-evaluator loop for high-stakes implementation tasks. A generator produces output and a different-model-family evaluator tests it against criteria using adversarial framings. Continue until Stage A passes and Stage B has no CRITICAL findings, or a convergence signal fires twice and escalates. Rework failures with evaluator feedback; use --competitive N for multiple candidates. MANDATORY when an active spec phase has `Harness: yes` and implementation is about to begin; run /harness --from-spec. Triggers on: 'run the harness', 'gen-eval loop', 'adversarial loop', 'iterative review', 'harness this', 'competitive mode', 'run N candidates', 'evaluator feedback', and 'cross-model implementation review'. Also triggers when /verify Deep finds second-pass failures, high-stakes work needs iterative review, /codex-review reports BLOCKING findings, or the user invokes the harness. Pairs with /codex-review, /spec, /verify, and /best-of-n. Manual invocation supports ad-hoc use."
+description: >-
+  Run a resumable adversarial generator-evaluator loop for high-stakes implementation, with
+  isolated rubric and quality passes plus convergence-based escalation. Triggers on: 'run the harness', 'gen-eval loop', 'adversarial loop', 'iterative review', 'harness this', 'competitive mode', 'run N candidates', 'evaluator feedback', and 'cross-model implementation review'. Also triggers when an active spec has `Harness: yes`, /verify Deep finds repeated failures, or /codex-review reports BLOCKING findings. Manual: /harness --from-spec | /harness [task].
 ---
 
 # Harness
@@ -15,11 +17,14 @@ Success means:
 
 Stop when: Stage A passes and Stage B meets the selected `done_bar`, or a convergence detector fires twice and the loop escalates to the user.
 
-Run an adversarial generator-evaluator loop. Use a generator lane for generation and a different-model-family evaluator lane for evaluation (strata dispatches the evaluator through `bin/strong`/`bin/grader`; see `commands/harness.md`), cross-model asymmetry for bias-breaking, rotating adversarial framings for coverage, and convergence detectors for termination.
+Run an adversarial generator-evaluator loop. Use a generator lane for generation and dispatch
+the different-model-family evaluator through `$STRATA_HOME/bin/strong`, with the concrete binding
+owned by `config/model-map.toml`. Cross-model asymmetry breaks generator bias; rotating adversarial
+framings cover different failure classes, and convergence detectors terminate the loop.
 
 ## Conceptual Lineage
 
-Map `/harness` onto the managed-agents outcome+rubric+grader+iteration pattern; see https://platform.claude.com/docs/en/managed-agents/define-outcomes. **Grader is the evaluation role: in /harness the grader is a cross-model reviewer dispatched via the `strong`/`grader` lane (bound to a different model family than the generator so the asymmetry holds); in /best-of-n the grader is the orchestrator itself, judging candidate diffs against the BoN rubric.** Use the vocabulary table below to translate /harness's internal terms into the managed-agents canon — they describe the same machine, in different words.
+Map `/harness` onto the managed-agents outcome+rubric+grader+iteration pattern; see https://platform.claude.com/docs/en/managed-agents/define-outcomes. **Grader is the evaluation role: in /harness the grader is a cross-model reviewer dispatched through the `strong` lane (bound to a different model family than the generator so the asymmetry holds); in /best-of-n the grader is the orchestrator itself, judging candidate diffs against the BoN rubric.** Use the vocabulary table below to translate /harness's internal terms into the managed-agents canon — they describe the same machine, in different words.
 
 | Harness vocab | Managed-agents vocab |
 |---|---|
@@ -68,7 +73,13 @@ Treat spec-driven triggers as mandatory. Present verify-escalation and domain-ke
 
 Run these checks before setup so resume state, specs, and prerequisites are explicit.
 
-- **Check for active harness state.** State files are session-specific: `$STATE_DIR/harness-state-{session-id}.json` (where `{session-id}` is the 8-char suffix of today's daily note filename). If your own session's state file exists with `status: "running"`, offer to resume. Multiple sessions can run /harness concurrently; each writes its own state file, and artifact directories are already session-isolated via `run_id`. As a courtesy check for file conflicts only: glob `harness-state-*.json` for *other* sessions with `status: "running"` and `last_updated` within 2 hours; if any of their `target_files` overlap with yours, warn the user that two harness runs will be editing the same files. Continue after the soft warning; reserve user escalation for the mid-run conflict path (see Error Recovery).
+- **Check the evaluator lane.** Confirm `$STRATA_HOME/bin/strong` is executable and the `strong`
+  entry in `config/model-map.toml` names an available model from a different family than the
+  generator. If the entry is still a placeholder or the wrapper cannot run, stop and tell the
+  reader to bind `strong` according to `$STRATA_HOME/CONFIG.md`. Label an explicitly accepted
+  same-family fallback as degraded; never claim cross-model asymmetry for it.
+
+- **Check for active harness state.** State files are session-specific: `$STATE_DIR/harness-state-{session-id}.json`, where `{session-id}` is the first eight characters of the ID supplied by the platform's session hook, matching the state filename contract. If your own session's state file exists with `status: "running"`, offer to resume. Multiple sessions can run /harness concurrently; each writes its own state file, and artifact directories are already session-isolated via `run_id`. As a courtesy check for file conflicts only: glob `harness-state-*.json` for *other* sessions with `status: "running"` and `last_updated` within 2 hours; if any of their `target_files` overlap with yours, warn the user that two harness runs will be editing the same files. Continue after the soft warning; reserve user escalation for the mid-run conflict path (see Error Recovery).
 - **Check for active spec.** If `--from-spec` is passed, verify a spec exists at `$SPECS_DIR/` with Status: `in-progress`. When no active spec exists, abort with: "No active spec found. Create one with `/spec [name]` first, or pass the task inline."
 - **PDMC prerequisite for spec-driven harness.** If `--from-spec` is passed and the active/current phase has `Harness: yes`, verify that the same phase contains a completed `#### PDMC Methodological Review` subsection with PDMC items 1-15 marked `PASS`, `FAIL`, or `N/A` and `Aggregate verdict: PASS`. When this prerequisite check fails, abort exactly with: "PDMC review required before harness. Run /spec PDMC review first."
 
@@ -77,9 +88,6 @@ Run these checks before setup so resume state, specs, and prerequisites are expl
 Execute the phases in order and keep every state transition visible in the state file and artifact directory.
 
 ### Phase 0: Setup
-
-<details>
-<summary>Phase 0: Setup</summary>
 
 Prepare the harness run by parsing inputs, deriving criteria, selecting the first framing, creating artifacts, and initializing state.
 
@@ -153,16 +161,12 @@ Prepare the harness run by parsing inputs, deriving criteria, selecting the firs
    - **Linear mode:** "{N} criteria derived. Definition of done: {done_bar}. Starting with {framing} evaluator. Termination is convergence-based (no hard iteration cap); typical runs finish in 1-3 iterations. Soft cost warning at {cost_warn_threshold} tokens. Artifacts at $STATE_DIR/harness-runs/{run-id}/."
    - **Competitive mode:** "{N} criteria derived. Definition of done: {done_bar}. {K} candidates per iteration. Starting with {framing} evaluator. Termination is convergence-based (no hard iteration cap); soft cost warning at {cost_warn_threshold} tokens. Note that competitive mode multiplies generator cost by {K}x per iteration. Artifacts at $STATE_DIR/harness-runs/{run-id}/."
 
-</details>
 
 ### Phase 1: Generator-Evaluator Loop
 
 Iterate until a termination condition fires (see Step 3 for the full ladder). Each pass through Steps 1 -> 2 -> 3 is one iteration. The loop has no hard iteration cap; convergence detectors are the budget.
 
 #### Step 1: Generate
-
-<details>
-<summary>Step 1: Generate</summary>
 
 Spawn a general-purpose subagent with `model: "inherit"`. The generator gets a fresh context window each iteration - no inherited bias from previous attempts.
 
@@ -334,12 +338,8 @@ Each candidate writes to `{artifact_dir}/round-{N}/candidate-{K}/` (K = 1..N) in
 
 After all N generators complete, the orchestrator proceeds to Step 1.5b (Quick Comparison) instead of Step 1.5.
 
-</details>
 
 #### Step 1.5: Quick Gate (parent, no subagent)
-
-<details>
-<summary>Step 1.5: Quick Gate</summary>
 
 Run a fast parent-context sanity check on the generator's output before spending an evaluator call. This catches obviously broken generations while saving evaluator tokens.
 
@@ -355,12 +355,8 @@ Keep quick-gate failures outside framing rotation because the evaluator never ra
 
 **Competitive mode:** In competitive mode, run the Quick Gate on each candidate separately. Track which candidates pass and which fail. Then proceed to Step 1.5b.
 
-</details>
 
 #### Step 1.5b: Quick Comparison (competitive mode only, parent, no subagent)
-
-<details>
-<summary>Step 1.5b: Quick Comparison</summary>
 
 Select the best candidate from the N generators when `mode: "competitive"` and advance that candidate to evaluation.
 
@@ -401,12 +397,8 @@ Select the best candidate from the N generators when `mode: "competitive"` and a
 
 6. **Update state.** Record `winning_candidate: K` and `candidates_evaluated: N` in the current iteration entry of `harness-state.json`.
 
-</details>
 
 #### Step 1.7: Fixer (only after Stage A failures)
-
-<details>
-<summary>Step 1.7: Fixer</summary>
 
 Run the fixer only when Stage A returns `HAS_FAILURES`. On `ALL_PASS`, skip directly to Stage B. The fixer is a lighter-tier subagent that applies targeted fixes based on evaluator evidence, writing corrected files to a separate directory for arbitration.
 
@@ -464,12 +456,8 @@ CONSTRAINTS:
 
 **Model:** Use a lighter tier for the fixer; it applies prescribed fixes as mechanical work while heavier model budget stays reserved for evaluation.
 
-</details>
 
 #### Step 1.8: Arbitration (only when fixer ran)
-
-<details>
-<summary>Step 1.8: Arbitration</summary>
 
 Compare the generator's original files (in `snapshots/`) against the fixer's corrected files (in `fixer-output/`) and produce per-file accept/reject verdicts. This replaces binary "regenerate everything" with granular file-level arbitration.
 
@@ -495,7 +483,6 @@ Perform arbitration in the orchestrator parent context:
 
 If arbitration accepts fixes that resolve all Stage A failures, the re-evaluation returns `ALL_PASS` and proceeds to Stage B. If failures remain, proceed to Step 3 with `HAS_FAILURES` (the remaining failures feed into the next iteration's rework/fresh logic).
 
-</details>
 
 #### Step 2: Evaluate (Two-Stage Sequential Review)
 
@@ -503,12 +490,9 @@ Run evaluation in two sequential stages. Stage A (spec compliance) must pass bef
 
 ##### Stage A: Spec Compliance (Codex)
 
-<details>
-<summary>Stage A: Spec Compliance (Codex)</summary>
-
 Use Stage A as **the grader for spec-compliance** in the managed-agents sense. Its separate Codex context window structurally mirrors the managed-agents grader's isolation property and keeps generator bias out of the review.
 
-Invoke the evaluator via the codex-companion runtime (strata: `bin/strong`/`bin/grader`). This reviewer checks ONLY whether the implementation matches what was asked for. Binding the evaluator to a different model family than the generator provides cross-model adversarial diversity by construction, so Stage A gets bias-breaking from model isolation.
+Invoke the evaluator through `$STRATA_HOME/bin/strong`. This reviewer checks ONLY whether the implementation matches what was asked for. Binding the evaluator to a different model family than the generator provides cross-model adversarial diversity by construction, so Stage A gets bias-breaking from model isolation.
 
 **Before invoking Stage A**, the orchestrator:
 1. Writes the evaluation prompt to `{artifact_dir}/round-{N}/stage-a-prompt.md` (Codex reads files more reliably than receiving long inline prompts)
@@ -613,17 +597,16 @@ SPINNING_REASON: [only if SPINNING - what's identical vs the prior round and whe
 </structured_output_contract>
 ```
 
-**Codex invocation:**
+**Evaluator invocation:**
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" task \
-  --effort xhigh \
-  "Read the evaluation prompt at {artifact_dir}/round-{N}/stage-a-prompt.md. \
-   Follow it exactly. Read every file listed in FILES TO EVALUATE from disk. \
-   Return your verdicts in the XML format specified in the prompt."
+"$STRATA_HOME/bin/strong" --file "{artifact_dir}/round-{N}/stage-a-prompt.md"
 ```
 
-Use Bash tool with `timeout: 600000` (10 minutes). Capture stdout as the Stage A output.
+Capture stdout as the Stage A output and branch on the wrapper exit codes documented in
+`$STRATA_HOME/CONFIG.md`. Bind `strong` in `config/model-map.toml` to a different model family
+than the generator; if no cross-family binding is available, report that requirement before
+running rather than silently evaluating with the generator's family.
 
 **After Stage A completes:** Capture the full Codex output (verbatim) for the artifact file. Hold it in memory until Stage B completes or is skipped.
 
@@ -633,7 +616,6 @@ Use Bash tool with `timeout: 600000` (10 minutes). Capture stdout as the Stage A
 
 **If Codex is unavailable or errors:** Fall back to spawning a general-purpose subagent with `model: "inherit"` for this stage. Log "Codex: unavailable, fell back to the inherited model" in the iteration state. Treat this as degraded mode because the loop continues with the cross-model benefit lost.
 
-</details>
 
 ##### Stage A.5: Removed
 
@@ -641,12 +623,9 @@ Keep Stage A.5 as removed terminology. Stage A itself now runs on Codex, so a se
 
 ##### Stage B: Code Quality (Codex, only if Stage A passes)
 
-<details>
-<summary>Stage B: Code Quality (Codex)</summary>
-
 Use Stage B as **a second-pass adversarial grader for quality**, applied after the spec-compliance grader passes. Keep the same isolation property as Stage A (Codex, separate context window from the generator) and rotate framing each iteration so the two passes catch different failure classes.
 
-Invoke Codex via the codex-companion runtime. This reviewer applies the adversarial framing and checks code quality independently. It never sees Stage A's output.
+Invoke the evaluator through Strata's `strong` lane. This reviewer applies the adversarial framing and checks code quality independently. It never sees Stage A's output.
 
 **Before invoking Stage B**, the orchestrator writes the evaluation prompt to `{artifact_dir}/round-{N}/stage-b-prompt.md`.
 
@@ -718,17 +697,14 @@ STATUS: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
 </structured_output_contract>
 ```
 
-**Codex invocation:**
+**Evaluator invocation:**
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" task \
-  --effort xhigh \
-  "Read the evaluation prompt at {artifact_dir}/round-{N}/stage-b-prompt.md. \
-   Follow it exactly. Read every file listed in FILES TO EVALUATE from disk. \
-   Return your findings in the format specified in the prompt."
+"$STRATA_HOME/bin/strong" --file "{artifact_dir}/round-{N}/stage-b-prompt.md"
 ```
 
-Use Bash tool with `timeout: 600000` (10 minutes). Capture stdout as the Stage B output.
+Capture stdout as the Stage B output and branch on the wrapper exit codes documented in
+`$STRATA_HOME/CONFIG.md`. The Stage A cross-family binding requirement applies here too.
 
 **After Stage B completes:** Write `{artifact_dir}/round-{N}/evaluator-verdict.md` containing both Stage A and Stage B output (concatenated, verbatim). The evaluator never sees the artifact directory; the orchestrator writes this file.
 
@@ -740,7 +716,6 @@ Use Bash tool with `timeout: 600000` (10 minutes). Capture stdout as the Stage B
 
 **If Codex is unavailable or errors:** Fall back to spawning a general-purpose subagent with `model: "inherit"` for this stage. Log "Codex: unavailable, fell back to the inherited model" in the iteration state.
 
-</details>
 
 ##### Status Vocabulary
 
@@ -756,9 +731,6 @@ Route subagent results through the four-state status vocabulary, and treat `SPIN
 Handle `SPINNING` through the convergence detector path: force framing change and inject a different-approach hint. Route on the status keyword alone.
 
 #### Step 3: Parse and Decide
-
-<details>
-<summary>Step 3: Parse and Decide</summary>
 
 Parse Stage A and, if it ran, Stage B output in the parent orchestrator context; then run convergence detection to pick the next action.
 
@@ -837,12 +809,8 @@ Parse Stage A and, if it ran, Stage B output in the parent orchestrator context;
 
 7. **Report iteration result.** Brief status: "Iteration {N} ({retry_mode}, {framing} framing): Stage A {passed}/{total} criteria. Stage B: {result or skipped}. Failing set: {N items} (was {M last iteration}). {Next action}."
 
-</details>
 
 ### Phase 2: Wrap-up
-
-<details>
-<summary>Phase 2: Wrap-up</summary>
 
 Close the run by reporting cost, final state, iteration history, next steps, insights, and artifact location.
 
@@ -890,16 +858,12 @@ Close the run by reporting cost, final state, iteration history, next steps, ins
 
 7. **Clean up.** The state file and artifact directory stay on disk for reference and debugging. Report the artifact directory location: "Artifacts at {artifact_dir}/". Old runs are cleaned up at Phase 0 of the next `/harness` invocation (not now), keeping the last 3 runs.
 
-</details>
 
 ## State Recovery
 
-<details>
-<summary>State Recovery</summary>
-
 Recover active harness state after compaction or session resume:
 
-1. **Determine your session ID.** It's the 8-char suffix of your daily note filename (from SessionStart hook output).
+1. **Determine your session ID.** Read the first eight characters from the platform's SessionStart hook output, matching the state filename contract.
 
 2. **Read `$STATE_DIR/harness-state-{session-id}.json`.** If it exists and `status` is `running`:
    - This is your own state file - resume directly. Keep other sessions' state files (different `{session-id}` suffix) untouched.
@@ -910,12 +874,8 @@ Recover active harness state after compaction or session resume:
 
 3. **If state file is missing or `status` is not `running`:** Treat the session as having no active harness. Start fresh if the user re-invokes.
 
-</details>
 
 ## Error Recovery
-
-<details>
-<summary>Error Recovery</summary>
 
 Recover from tool, generator, evaluator, and concurrency failures with explicit state updates.
 
@@ -929,7 +889,6 @@ Recover from tool, generator, evaluator, and concurrency failures with explicit 
 | All framings consumed in a rotation cycle without DONE | Cycle back to the most relevant framing. Record the cycle completion in state. |
 | Concurrent harness in another session edits the same files | State files are session-isolated and separate by construction. The guard clause warns at start when target_files overlap. If a mid-run conflict surfaces (Quick Gate sees unexpected changes), pause and ask the user how to proceed |
 
-</details>
 
 ## Core Invariants
 
@@ -944,7 +903,7 @@ Keep these structural properties intact throughout the run.
 - **Second-strike escalation:** When any convergence detector fires twice, the loop MUST escalate to the user via AskUserQuestion. Escalation preserves the safety design.
 - **Cost signal:** When `cumulative_tokens > cost_warn_threshold`, print the warning once so the user can intervene before more tokens burn.
 - **Criteria stability:** Freeze criteria at Phase 0. When criteria are wrong, escalate and restart with better criteria; the "refine criteria and restart" branch in Step 6 is the supported path.
-- **Cross-model evaluation:** Run evaluators through the evaluator lane (codex-companion runtime; strata `bin/strong`/`bin/grader`), bound to a different model family than the generator. The cross-model asymmetry is the core mechanism; a model evaluating its own family's output loses the adversarial benefit. Use a same-family fallback only when the cross-family evaluator is unavailable (degraded mode).
+- **Cross-model evaluation:** Run evaluators through `$STRATA_HOME/bin/strong`, bound to a different model family than the generator. The cross-model asymmetry is the core mechanism; a model evaluating its own family's output loses the adversarial benefit. Use a same-family fallback only when the cross-family evaluator is unavailable (degraded mode).
 - **Competitive cost:** Monitor the cost soft warning closely in `--competitive` mode. N candidates per iteration multiply generator cost. Lower the `--cost-warn` threshold for competitive runs (e.g. `--cost-warn 250000`) so the warning fires earlier and the user can intervene before runaway spend.
 - **File-based evaluator prompt:** Write the evaluation prompt to a file and tell Codex to read it. File-based prompting is more reliable for structured output than truncated inline prompt content in Codex task commands.
 - **Evaluator filesystem scope:** Write all context into the prompt file. Keep the artifact directory path out of the Codex task command so Codex navigates only the files it is evaluating, not harness internals.
@@ -953,7 +912,7 @@ Keep these structural properties intact throughout the run.
 
 Verify these properties after the loop completes:
 
-1. **Cross-model asymmetry maintained** - generators and evaluators run on different-model-family lanes (evaluators via the codex-companion runtime / `bin/grader`). Evaluator prompt files contain zero task description text and zero generator reasoning. The only artifact-directory paths permitted in evaluator prompts are the prior-round `snapshots/` references that drive the SPINNING convergence check. Generator prompts contain zero framing preamble.
+1. **Cross-model asymmetry maintained** - generators and evaluators run on different-model-family lanes (evaluators via `$STRATA_HOME/bin/strong`). Evaluator prompt files contain zero task description text and zero generator reasoning. The only artifact-directory paths permitted in evaluator prompts are the prior-round `snapshots/` references that drive the SPINNING convergence check. Generator prompts contain zero framing preamble.
 2. **Framing rotated** - consecutive iterations used different evaluator framings unless the run completed in 1 iteration
 3. **Rework/fresh mode correct** - rework iterations inject evaluator feedback directly; fresh mode only activates when any criterion in `rework_fail_counts` reaches 2; competitive mode drops to single generator during rework iterations
 4. **State file valid** - `$STATE_DIR/harness-state-{session-id}.json` has all required fields per `references/state-schema.md` including `run_id`, `artifact_dir`, `definition_of_done`, and `convergence_state` with populated `failing_set_history` and `fix_count_history`. The session-suffixed filename is what allows concurrent harness runs in different sessions
@@ -965,6 +924,8 @@ Verify these properties after the loop completes:
 8. **Fixer keeps git state untouched** - fixer prompt contains explicit denial of `git add` and `git commit`; fixer writes only to `fixer-output/` directory and keeps the project directory unchanged
 9. **Arbitration reads both directories** - arbitration step compares `snapshots/` (originals) against `fixer-output/` (fixes) per-file; only accepted files get promoted to the project directory
 10. **Evidence XML has all 5 fields in every verdict** - every `<verdict>` in Codex output contains `<staged>`, `<fix>`, `<rationale>`, `<if-accepted>`, `<if-rejected>` per `references/evidence-schema.md`
-11. **Codex invocation correct** - every Codex call uses `node "${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs" task --effort xhigh` with `timeout: 600000`, prompt content is in a file rather than inline, and evaluators omit `--write`
+11. **Evaluator invocation correct** - every evaluator call uses
+`"$STRATA_HOME/bin/strong" --file PROMPT`, checks the documented wrapper exit code, and reads
+prompt content from a file rather than an inline command
 12. **Rubric vocabulary present** - `grep -c "rubric\|grader\|gradeable" SKILL.md` returns >= 8 lines with matches across the file, anchoring the skill to the managed-agents conceptual canon. (Note: `grep -c` counts matching lines, not occurrences; total occurrences via `grep -oE "rubric|grader|gradeable" | wc -l` is substantially higher and need not be checked separately.)
 13. **Vocab mapping table present** - `grep -c "| evaluator | grader |" SKILL.md` returns >= 1, confirming the Conceptual Lineage callout's mapping table is intact and discoverable

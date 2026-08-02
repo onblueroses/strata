@@ -1,11 +1,15 @@
 ---
 name: recon
-description: Three-wave reconnaissance protocol that builds a verified knowledge brief before non-trivial planning, design, debugging, or architecture work. Run this when planning quality is bounded by information quality — before /spec, /hammock, a debugging hypothesis, an architecture decision, or a non-obvious multi-file refactor. Wave 1 fans wide for breadth, Wave 2 verifies load-bearing claims and tests seams, Wave 3 synthesizes the merged corpus from two complementary framings. Output is one merged brief written to a known path, ready for the next planner or skill to consume. Auto-trigger when the user is about to design, plan, refactor, or debug something non-trivial and the codebase isn't already in working memory; also trigger when the user says "recon", "scout", "let me understand X first", "investigate before deciding", "research the codebase for", or asks to verify load-bearing claims about repo state. Skip for trivially-scoped work (1-2 files, obvious path) — direct Glob/Grep/Read is faster.
+description: >-
+  Three-wave repository reconnaissance: fan out, verify load-bearing claims and seams, then
+  synthesize one cited brief. Auto-trigger when the user is about to design, plan, refactor, or debug something non-trivial and the codebase isn't already in working memory; also trigger when the user says "recon", "scout", "let me understand X first", "investigate before deciding", "research the codebase for", or asks to verify load-bearing claims about repo state. Skip for trivially-scoped work (1-2 files, obvious path) — direct Glob/Grep/Read is faster.
 ---
 
 # Recon
 
-Three-wave reconnaissance that hands the next planner a verified brief instead of vibes.
+This skill now produces a cited repository brief from current code, docs, history, and tests;
+it maintains no separate knowledge store. Platform memory behavior lives in
+`$STRATA_HOME/reference/knowledge-management.md`.
 
 ```
 Goal: Produce one merged recon brief — confirmed facts (with file:line citations),
@@ -68,7 +72,7 @@ Recon is a scaffold with defaults — calling orchestrators should adapt it to t
 | **Wave 1 domains** | The canonical 6 (architecture, constraints, prior-art, gotchas, external-deps, tests-ci) | When the topic targets a specific subsystem or behavior (auth flow, cache path, deploy pipeline, payment integration) | Add topic-specific domains (e.g. `session-storage`, `eviction-policy`, `webhook-handlers`, `idempotency-keys`); drop canonical ones that don't apply. See Wave 1 "Custom domains" table. |
 | **Spark count** | 4-6 Wave 1, 2-6 Wave 2 | When the surface is narrow (1 file) or unusually broad (8+ subsystems) | Drop to 2-3 sparks for tight topics; expand to 8 for genuinely broad recon. Each domain must still produce 5-15 bullets — sub-3 means fold domains together. |
 | **User notes / focus / scope** | Empty | Always when the calling orchestrator knows something topic-specific the sparks should attend to | Fill the `User notes (optional focus / scope / hints / exclusions)` slot in the spark CONTEXT block: hotspots, paths to ignore, suspected failure modes, time-window for git history, prior failed hypotheses, related PR numbers, anything. **This is where targeting happens.** |
-| **Context bundle composition** | The 10-row Wave 0 table | When the topic touches a known entity, an active spec, or a recent incident | Wave 0 chooses which bundle entries apply; the calling orchestrator can pre-populate with specific files (e.g. an incident postmortem, a security audit log, a vendor SDK changelog) that the bundle's defaults wouldn't surface |
+| **Context bundle composition** | The Wave 0 table | When the topic touches an active spec, a known subsystem, or a recent incident | Wave 0 chooses which bundle entries apply; the calling orchestrator can pre-populate with specific files (e.g. an incident postmortem, a security audit log, a vendor SDK changelog) that the bundle's defaults wouldn't surface |
 | **Wave 2 probe selection** | Calling orchestrator picks 1-3 load-bearing claims + 1-3 seams | Always | Pick by load-bearing-ness for the next decision — what claim, if wrong, breaks the plan. Pick seams by where Wave 1 reports touched the same files/concepts. |
 | **Wave 2 escalation** | fast for probes | When a seam touches auth, concurrency, data integrity, schema migration, or cross-language boundaries | Dispatch that specific probe to strong instead. Per-probe choice; the rest stay on fast. |
 | **Wave 3 framings** | "name what's missing" + "name what's wrong" | When the topic is not general planning (e.g. security review, performance investigation, merge-safety check) | Substitute framings that match the next decision: "what would break under load + what's the latency p99 risk"; "what's the threat-model gap + what's the privilege boundary"; "what's the merge-conflict risk + what's the rollback path". Keep the dyadic shape (one positive, one negative framing) so the merge protocol stays applicable. |
@@ -91,7 +95,9 @@ BRIEF_PATH="/tmp/recon-${SLUG}-${SID}.md"
 
 All wave prompts, outputs, sentinels, corpus, and the final brief live under `$RUN_DIR`. Symlink or copy the final brief to `$BRIEF_PATH` for caller convenience; the session suffix prevents parallel recons of the same slug from replacing each other's handoff. The run dir stays as the audit trail.
 
-**Resume guard.** Record `$RUN_DIR`, `$BRIEF_PATH`, `$SID`, and the starting commit in `$RUN_DIR/scope.md` and the current `$KB_DIR/daily/` session note during Wave 0. Resume only a run whose recorded slug and session ID match; re-dispatch missing outputs and continue from the first incomplete wave.
+**Resume guard.** Record `$RUN_DIR`, `$BRIEF_PATH`, `$SID`, and the starting commit in
+`$RUN_DIR/scope.md`. Resume only a run whose recorded slug and session ID match; re-dispatch
+missing outputs and continue from the first incomplete wave.
 
 **Note on placeholders.** Curly-brace tokens in this skill's code snippets (e.g. `{slug}`, `{domain}`, `{topic}`) are template placeholders to substitute before executing — `$SLUG`, `$RUN_DIR`, and concrete domain ids should appear in the actual command. Read them as `${VAR}` in your head.
 
@@ -122,7 +128,7 @@ Background-launched codex calls lose their exit code by default. To preserve it,
 
 Repeat per spark. After dispatching the wave, wait on `.status` files using the Monitor tool (preferred) or a bounded sentinel-poll loop. Wait via Monitor or `wait $!` against tracked PIDs; the naked `pgrep -f PATTERN` busy-loops because the polling shell matches itself.
 
-**Bundled helper — prefer this over assembling the inline pattern from scratch.** The skill ships `scripts/dispatch_wave.sh` at `$STRATA_HOME/skills/recon/scripts/dispatch_wave.sh`. It encodes the sentinel-file pattern with the deadline checks below and was tested end-to-end against fast and strong wrappers (see `examples/`). Invoke it as:
+**Bundled helper — prefer this over assembling the inline pattern from scratch.** The skill ships `scripts/dispatch_wave.sh` at `$STRATA_HOME/skills/recon/scripts/dispatch_wave.sh`. It encodes the sentinel-file pattern with the deadline checks below and was tested end-to-end against fast and strong wrappers. Invoke it as:
 
 ```bash
 bash $STRATA_HOME/skills/recon/scripts/dispatch_wave.sh \
@@ -185,7 +191,7 @@ Run the full protocol when the next step is non-trivial planning, design, or deb
 - `/hammock` design or planning session on an unfamiliar surface
 - Architecture decision (framework choice, refactor strategy, schema change)
 - Debugging hypothesis that will gate non-trivial implementation
-- Pick-up on an entity after a long pause where the codebase has likely drifted
+- Pick-up on a repository or subsystem after a long pause where the codebase has likely drifted
 - Any moment the user asks to "understand X first" or "verify before deciding"
 
 Skip the protocol when scope is small enough that direct exploration wins:
@@ -226,14 +232,10 @@ Before firing any sparks, run a quick orientation pass to lock the scope **and a
 | Input | Always or topic-conditional | Why it matters |
 |-------|-----------------------------|----------------|
 | Repo root + `git rev-parse HEAD` + branch | Always | Pins the snapshot the recon is grounded in; spot-checks during validation rebase to this SHA |
-| Project entity summary (`$KB_DIR/projects/<entity>/summary.md`) | When the repo maps to a known entity | Gives the spark prior context (architecture, deploy procedure, gotchas, recent sessions) without re-deriving |
-| `$KB_DIR/projects/<entity>/items.json` relevant entries | When entity exists | Structured details (specific values, rules, gotchas not in summary) |
 | Active spec for this project (`$SPECS_DIR/*` matching project) | When an active spec exists | Decisions table + Standing Rules already encode constraints the spark should respect |
 | Repo's CLAUDE.md / AGENTS.md / .agent.md | When present at repo root | Project-specific rules for collaborators; sparks should honor them |
-| `$KB_DIR/resources/decision-library.md` filtered to topic keywords | Topic-conditional | Prior architectural decisions that might apply |
 | Prior recon brief at `/tmp/recon-${SLUG}*.md` from previous session | When present | Update-mode recon; flag deltas instead of re-reasoning everything |
 | `git log --oneline -20 -- <topic-relevant-paths>` | When topic localizes to clear paths | Recent change history grounds "what just changed" |
-| Today's daily note JSON (`$KB_DIR/daily/<date>-*.json`) | When session has built up topic-relevant notes | Captures the user's current focus and constraints from this session |
 | Session edits log (`.session-edits-<sid>.jsonl`) for files in topic scope | When session has touched topic files | What this session has already changed; recon should account for those edits |
 
 Glob, Read, and Bash freely to assemble these. Skip inputs that aren't relevant — bundling everything bloats the spark context for no value. The bundle is for orienting the spark, not feeding it the answer.
@@ -290,7 +292,7 @@ CONTEXT:
 - Domain framing: {human-readable name + one-line description of this spark's lane — e.g. "session-storage — how session tokens are written, read, and invalidated across web/mobile auth flows"}
 - Sibling Wave 1 domains in flight: {list — so this spark stays inside its lane}
 - User notes (optional focus / scope / hints / exclusions from the calling orchestrator): {free-form text from the caller — specific files to start from, paths to ignore, suspected hotspots, prior failed hypotheses to avoid retreading, time-window for recent commits, whatever the caller knows that should shape the search. Leave empty when the calling orchestrator has nothing topic-specific to add. This slot is where targeting happens.}
-- Project bundle (from $RUN_DIR/context.md): {paste relevant excerpts — entity summary, repo CLAUDE.md, active spec decisions, prior recon delta, recent commits}
+- Project bundle (from $RUN_DIR/context.md): {paste relevant excerpts — repo CLAUDE.md, active spec decisions, prior recon delta, recent commits}
 
 TASK:
 Read the repo. Trace {domain}-relevant files. For every claim:

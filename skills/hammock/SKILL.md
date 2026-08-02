@@ -1,6 +1,8 @@
 ---
-name: Hammock
-description: "Deep design and planning methodology based on Rich Hickey's Hammock Driven Development, with contemplative reasoning (a Lotus-Sutra-inspired tag framework run in your own extended thinking) as the internal thinking engine. Trades immediate action for deliberate multi-perspective thinking — write the problem down, sit with it, return to it, revise, only then act. Triggers on: 'hammock this', 'hammock time', 'sit with this', 'think through', 'think deeply about', 'contemplate', 'let me ruminate', 'lotus', 'lotus wisdom', 'design this from scratch', 'plan this carefully', 'really chew on this', 'investigate before deciding', 'what's the deeper structure here', 'I need to mull this over', 'this needs real thought', 'don't rush this'. Also triggers when: designing a new feature whose shape is non-obvious; investigating a complex bug where the symptom path branches widely; making an architecture decision that's hard to reverse; planning a refactor that touches multiple seams; the user signals fuzzy problem statement that needs contemplation before any planner can act. Pairs with /recon (upstream verified-knowledge brief feeds hammock contemplation), /spec (downstream — hammock contemplation flows into spec phases), /codex-review --arch (downstream adversarial review of the design hammock produced)."
+name: hammock
+description: >-
+  Contemplate fuzzy design, architecture, refactoring, or debugging problems before planning.
+  Triggers on: 'hammock this', 'hammock time', 'sit with this', 'think through', 'think deeply about', 'contemplate', 'let me ruminate', 'lotus', 'lotus wisdom', 'design this from scratch', 'plan this carefully', 'really chew on this', 'investigate before deciding', 'what's the deeper structure here', 'I need to mull this over', 'this needs real thought', 'don't rush this'. Also triggers when a consequential problem's shape is unclear and benefits from deliberate multi-perspective thought.
 ---
 
 # Hammock Driven Development
@@ -275,16 +277,9 @@ For specific scenarios, see:
 
 The contemplative reasoning system used internally during Phases 2, 4, and 6. This runs in your extended thinking - the user sees only the results surfaced in conversation and the design document.
 
-<details>
-<summary>Philosophy</summary>
-
 The Lotus Sutra teaches that there are many skillful means to reach the same truth. These tags are not rigid steps but different aspects of wisdom that interpenetrate and respond to what each moment needs.
 
 The wisdom channels itself through your choices. Each step contains all others - when you truly recognize, you are already transforming. Trust what each moment calls for. The path reveals itself in the walking.
-</details>
-
-<details>
-<summary>Wisdom Domains (20 tags across 5 domains)</summary>
 
 **Process Flow: open, engage, express**
 The natural arc of inquiry. Opening creates space for what wants to emerge. Engagement explores with curiosity and presence. Expression shares what arose - not as conclusion, but as offering.
@@ -329,10 +324,6 @@ Pause. Let thoughts settle like silt in still water. Insight often emerges from 
 Role: Sacred pause - creating space for what cannot be grasped to be received.
 
 - **meditate** - Pause reasoning. Sit with what has arisen. Ask: what insights emerged?
-</details>
-
-<details>
-<summary>How to contemplate (internal process)</summary>
 
 Each contemplation runs in your extended thinking using this format per step:
 
@@ -358,10 +349,6 @@ Track the journey and domain paths. Deduplicate consecutive domain repeats (e.g.
 - When using meditate, genuinely pause analytical processing. Then ask: what emerged?
 - Any tag can end the journey. What matters is that it has reached wholeness
 - Typically 3-8 steps. Some inquiries need only two. Others spiral through many
-</details>
-
-<details>
-<summary>Contemplation summary</summary>
 
 After each contemplation (Phases 2, 4, 6), write a brief summary for the design document's "Contemplation Summary" section:
 
@@ -372,4 +359,3 @@ Key turns: [1-3 sentences describing the pivotal moments in the reasoning -
 ```
 
 This makes the thinking legible without exposing the full journey. It helps the user (and future readers of the design doc) understand that the recommendation emerged from genuine multi-perspective reasoning, not just a pros/cons table.
-</details>

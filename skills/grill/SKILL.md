@@ -1,6 +1,6 @@
 ---
 name: grill
-description: "Walk the user down a design decision tree one question at a time, anchored to nearby docs (CLAUDE.md, $KB_DIR/, project style docs, ADRs). Use when an open question stands about implementation approach, architecture, API shape, data model, or schema. Triggers on: 'grill me', 'should I X or Y', 'help me decide', 'one question at a time', 'I'm torn between'. Manual: /grill [topic] | --bare."
+description: "Resolve design decisions one question at a time, anchored to repo docs and code. Triggers on: 'grill me', 'should I X or Y', 'help me decide', 'one question at a time', 'I'm torn between'. Manual: /grill [topic] | --bare."
 allowed-tools:
   - AskUserQuestion
   - Read
@@ -11,6 +11,10 @@ allowed-tools:
 ---
 
 # Grill
+
+This skill now resolves a design decision tree against repo docs and code, one question at a
+time. Platform memory behavior lives in `$STRATA_HOME/reference/knowledge-management.md`; grill
+maintains no separate knowledge store.
 
 Goal: Reach shared understanding between user and agent on a design, plan, or architecture decision by walking the relevant decision tree one question at a time.
 
@@ -41,9 +45,8 @@ Default behavior reads from the local doc surface before asking. Check sources i
 
 1. CLAUDE.md (project root and ancestors)
 2. Project ADRs and CONTEXT.md (find with Glob for `**/ADR*.md`, `**/CONTEXT.md`, `**/decisions/**/*.md`)
-3. `$KB_DIR` entity files (`summary.md`, `items.json`) when the topic maps to a known entity
-4. Project style docs when the topic touches writing or external-facing content
-5. Project-local glossary or domain-model files
+3. Project style docs when the topic touches writing or external-facing content
+4. Project-local glossary or domain-model files
 
 When asking a question, anchor it to what the docs already say. Surface terminology conflicts against existing glossaries. Sharpen vocabulary inline. Create ADRs only for hard-to-reverse, surprising decisions resulting from genuine trade-offs; keep routine implementation choices out of the ADR record.
 

@@ -1,11 +1,8 @@
 ---
 name: security-review
 description: |
-  Mandatory security review gate for code and architecture. Run a 7-step workflow:
-  threat model, review against security checklist, emulate attack paths, mitigate
-  findings, pen-test mitigations, deliver. Acts as a security-conscious reviewer
-  with Security+ knowledge covering auth, authz, encryption, logging, input validation,
-  segmentation, privacy, and common vulnerability patterns.
+  Threat-model and security-review code or architecture across auth, authorization,
+  crypto, logging, validation, segmentation, privacy, and attack paths.
   Auto-trigger: when the user asks to review security, threat model, harden, pen test,
   or check for vulnerabilities. Also auto-trigger when writing authentication, authorization,
   cryptographic, or payment-handling code.
@@ -31,9 +28,6 @@ Specifically:
 - **When reviewing existing code** the user provides for security issues
 
 ## Mandatory Workflow
-
-<details>
-<summary>Mandatory Workflow</summary>
 
 Every qualifying task follows this sequence. Do not skip steps.
 
@@ -177,7 +171,6 @@ Only after all steps pass, deliver the code with a brief security summary:
 - Residual risks: [anything the user should know]
 ```
 
-</details>
 
 ## Quality Self-Check
 

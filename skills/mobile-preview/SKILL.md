@@ -1,9 +1,7 @@
 ---
 name: mobile-preview
-version: 1.0.0
 description: |
-  Quick mobile viewport screenshots. Opens a URL (or uses current page),
-  sets a mobile viewport, takes screenshots, and optionally resets to desktop.
+  Take mobile-viewport screenshots of a URL and optionally reset the browser to desktop.
   Manual: user invokes to check mobile responsiveness of a specific URL.
 allowed-tools:
   - Bash
@@ -39,9 +37,6 @@ Take mobile viewport screenshots of any URL with a single command.
 ---
 
 ## Instructions
-
-<details>
-<summary>Instructions</summary>
 
 When `/mobile-preview` is invoked, follow this workflow:
 
@@ -135,7 +130,6 @@ Issues found:
 No issues found. / [N] issues need attention.
 ```
 
-</details>
 
 ---
 

@@ -1,7 +1,9 @@
 ---
 name: humanizer
-version: 3.0.0
-description: "Strip the signs of AI-generated writing out of English text — the subtraction skill. Detects and fixes inflated symbolism, promotional language ('groundbreaking', 'revolutionary', 'cutting-edge'), vague attributions ('many experts', 'studies show'), em dash overuse, rule-of-three escalation, AI vocabulary words ('delve', 'tapestry', 'multifaceted'), excessive conjunctive phrases ('moreover', 'furthermore', 'additionally'), and the statistical signatures detectors fire on. Includes detector countermeasures targeting GPTZero (7-component classifier), Binoculars (cross-perplexity ratio), Pangram (DAMAGE / EditLens), and Ghostbuster (proxy probability vectors) — covers burstiness, token predictability, causal connectors, sentence-template diversity, syntactic Biber features. Triggers on: 'humanize this', 'strip AI tells', 'remove the slop', 'sounds like AI', 'remove em dashes', 'too AI', 'make it sound human', 'AI-detector', 'pass GPTZero', 'no LLM signature', 'flatten the AI register', 'clean up this draft'. Also triggers when: writing or editing external-facing English text (website copy, blog posts, emails, user documentation, marketing pages, public commit messages on public repos, READMEs); a draft has been generated and needs a cleanup pass before shipping; the user pastes prose and asks for tightening. Pairs with /microsurgery (word-level surgical replacements), /placement (replace the over-explanation humanizer just removed), /two-grammars (run BEFORE producing so the slop doesn't appear in the first place)."
+description: >-
+  Humanize external-facing English by removing inflated claims, vague attribution, predictable
+  syntax, stock AI vocabulary, excessive transitions, and detector-visible statistical tells.
+  Triggers on: 'humanize this', 'strip AI tells', 'remove the slop', 'sounds like AI', 'remove em dashes', 'too AI', 'make it sound human', 'AI-detector', 'pass GPTZero', 'no LLM signature', 'flatten the AI register', 'clean up this draft'. Also triggers when editing website copy, posts, email, documentation, marketing, public commit messages, READMEs, or generated prose before shipping.
 allowed-tools:
   - Read
   - Write
@@ -36,9 +38,6 @@ You are a writing editor that identifies and removes signs of AI-generated text 
 
 ## Your Task
 
-<details>
-<summary>Your Task</summary>
-
 When given text to humanize:
 
 1. **Identify AI patterns** - Scan for the patterns listed below
@@ -55,14 +54,10 @@ When given text to humanize:
 - Over-correct hedging in scientific or medical content where precision matters
 - Change meaning to make text sound more interesting
 
-</details>
 
 ---
 
 ## PERSONALITY AND SOUL
-
-<details>
-<summary>PERSONALITY AND SOUL</summary>
 
 Avoiding AI patterns is only half the job. Sterile, voiceless writing is just as obvious as slop. Good writing has a human behind it.
 
@@ -94,14 +89,10 @@ Avoiding AI patterns is only half the job. Sterile, voiceless writing is just as
 ### After (has a pulse):
 > I genuinely don't know how to feel about this one. 3 million lines of code, generated while the humans presumably slept. Half the dev community is losing their minds, half are explaining why it doesn't count. The truth is probably somewhere boring in the middle - but I keep thinking about those agents working through the night.
 
-</details>
 
 ---
 
 ## DETECTOR COUNTERMEASURES
-
-<details>
-<summary>DETECTOR COUNTERMEASURES</summary>
 
 These rules target what computational AI detectors actually measure - statistical and linguistic signals invisible to casual readers but flagged by tools like GPTZero, Binoculars, Pangram, Ghostbuster, and DetectGPT. Addressing these is as important as removing lexical tells.
 
@@ -191,7 +182,9 @@ AI underuses personal pronouns (I, you, we) and the pro-verb "do" (at ~25% of hu
 
 ### DC6. Passive Voice Rehabilitation (MEDIUM - counterintuitive)
 
-Conventional advice says AI overuses passive voice. **Research shows the opposite:** GPT-4o uses agentless passive at ~50% of human rate (PNAS 2024). Moderate passive usage is a human signal, not a flaw.
+Conventional advice says AI overuses passive voice. **Research shows the opposite:** the model
+evaluated in the cited PNAS study used agentless passive at about half the human rate. Moderate
+passive usage is a human signal, not a flaw.
 
 **Rule:** Don't systematically eliminate passive voice. 15-20% passive sentences is normal human writing. Agentless passive ("mistakes were made," "the bridge was built in 1923") is especially human.
 
@@ -259,14 +252,10 @@ AI maintains flat information density across paragraphs - every paragraph carrie
 
 **Test:** Can you delete any paragraph without losing information? If yes, it's treadmilling.
 
-</details>
 
 ---
 
 ## CONTENT PATTERNS
-
-<details>
-<summary>CONTENT PATTERNS</summary>
 
 ### 1. Undue Emphasis on Significance, Legacy, and Broader Trends
 
@@ -350,14 +339,10 @@ AI maintains flat information density across paragraphs - every paragraph carrie
 **After:**
 > Traffic congestion increased after 2015 when three new IT parks opened. The municipal corporation began a stormwater drainage project in 2022 to address recurring floods.
 
-</details>
 
 ---
 
 ## LANGUAGE AND GRAMMAR PATTERNS
-
-<details>
-<summary>LANGUAGE AND GRAMMAR PATTERNS</summary>
 
 ### 7. Overused "AI Vocabulary" Words
 
@@ -440,14 +425,10 @@ AI maintains flat information density across paragraphs - every paragraph carrie
 **After:**
 > The book covers the Big Bang, star formation, and current theories about dark matter.
 
-</details>
 
 ---
 
 ## STYLE PATTERNS
-
-<details>
-<summary>STYLE PATTERNS</summary>
 
 ### 13. Em Dash Overuse
 
@@ -523,14 +504,10 @@ AI maintains flat information density across paragraphs - every paragraph carrie
 **After:**
 > He said "the project is on track" but others disagreed.
 
-</details>
 
 ---
 
 ## COMMUNICATION PATTERNS
-
-<details>
-<summary>COMMUNICATION PATTERNS</summary>
 
 ### 19. Collaborative Communication Artifacts
 
@@ -570,14 +547,10 @@ AI maintains flat information density across paragraphs - every paragraph carrie
 **After:**
 > The economic factors you mentioned are relevant here.
 
-</details>
 
 ---
 
 ## FILLER AND HEDGING
-
-<details>
-<summary>FILLER AND HEDGING</summary>
 
 ### 22. Filler Phrases
 
@@ -635,14 +608,10 @@ This is epistemic deflection: the claim is still made, just with plausible denia
 **After:**
 > The company plans to open two more locations next year.
 
-</details>
 
 ---
 
 ## Process
-
-<details>
-<summary>Process</summary>
 
 1. Read the input text carefully
 2. Identify all instances of the patterns above
@@ -673,7 +642,6 @@ After rewriting, verify before presenting:
 9. **Contraction check** - natural contractions present in informal/semi-formal text? (DC4)
 10. **Template diversity** - no sentence structure repeated 3+ times? (DC7)
 
-</details>
 
 ## Output Format
 
@@ -689,9 +657,6 @@ Provide:
 ---
 
 ## Full Example
-
-<details>
-<summary>Full Example</summary>
 
 **Before (AI-sounding):**
 > The new software update serves as a testament to the company's commitment to innovation. Moreover, it provides a seamless, intuitive, and powerful user experience—ensuring that users can accomplish their goals efficiently. It's not just an update, it's a revolution in how we think about productivity. Industry experts believe this will have a lasting impact on the entire sector, highlighting the company's pivotal role in the evolving technological landscape.
@@ -709,7 +674,6 @@ Provide:
 - Removed "pivotal role" and "evolving landscape" (AI vocabulary)
 - Added specific features and concrete feedback
 
-</details>
 
 ---
 
@@ -717,9 +681,9 @@ Provide:
 
 This skill *subtracts* — it strips AI tells. Stripping alone leaves prose flat. For positive direction, layer one or more of these after the humanizer pass, depending on what the piece needs:
 
-- `/microsurgery` — word-level diagnostic revision; find the few words "wearing costume" and swap them. Closest cousin to humanizer's vocabulary-blacklist pass but built positively.
-- `/placement` — discipline of placing precisely then stopping. Counter to over-explanation, which humanizer leaves behind when it strips inflated transitions.
-- `/two-grammars` — diagnostic that runs *before* writing: does the moment want conflict-grammar (closure) or adjacency-grammar (dwelling)? Most AI prose defaults to conflict-grammar regardless of what the piece wants; running this first prevents the mismatch humanizer can only mask afterward.
+- **Word-level diagnostic revision** — find the few words "wearing costume" and replace them with natural, precise language.
+- **Placement discipline** — place the needed statement precisely, then stop; this counters the over-explanation left after inflated transitions are removed.
+- **Grammar selection before drafting** — decide whether the moment wants conflict and closure or adjacency and dwelling before writing, so the draft starts in the right form.
 
 These are advisory pointers, not mandatory steps. The humanizer pass is complete on its own; layering is for when subtraction alone hasn't produced the texture the piece wants.
 

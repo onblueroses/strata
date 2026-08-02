@@ -1,6 +1,8 @@
 ---
 name: polish
-description: "Make a repository presentable for public release: restructure files to ecosystem conventions, generate a first-person README with progressive disclosure, add missing root files such as LICENSE, .gitignore, and CONTRIBUTING, and run a privacy sweep with history scrubbing. Complete one audit-then-fix pass and humanize generated prose at the end. Triggers on: 'polish', 'make presentable', 'clean up this repo', 'prepare for open source', 'make the README better', 'repo restructure', 'README generation', 'open source readiness', 'public repo cleanup', and 'professionalize this repo'. Also triggers when a user wants a repo to look professional, requests README/LICENSE/.gitignore generation, or prepares to publish or open-source a repo. Pairs with /humanizer, /review, and /commit. Manual: invoke with /polish or /polish [path-to-repo]."
+description: >-
+  Prepare a repository for public release: structure, README, root files, privacy sweep, and
+  history scrubbing. Triggers on: 'polish', 'make presentable', 'clean up this repo', 'prepare for open source', 'make the README better', 'repo restructure', 'README generation', 'open source readiness', 'public repo cleanup', and 'professionalize this repo'. Also triggers for README/LICENSE/.gitignore generation or open-source preparation. Manual: invoke with /polish or /polish [path-to-repo].
 ---
 
 # Polish
@@ -21,9 +23,6 @@ fix everything. No approval gate - you review the diff at the end.
 The skill runs in two phases back-to-back. Do not pause between them.
 
 ### Phase 1: Audit
-
-<details>
-<summary>Audit</summary>
 
 Gather everything you need before touching anything.
 
@@ -55,12 +54,8 @@ Gather everything you need before touching anything.
 6. **Summarize findings.** Print a short audit report (under 20 lines) listing what will change.
    Then proceed directly to Phase 2.
 
-</details>
 
 ### Phase 2: Fix
-
-<details>
-<summary>Fix</summary>
 
 Apply all changes. Work in this order to avoid conflicts.
 
@@ -143,14 +138,10 @@ README and CONTRIBUTING.md. The humanizer removes AI-generation patterns that ma
 feel robotic. This step is important because the README is the first thing a visitor reads
 and AI-sounding text undermines credibility.
 
-</details>
 
 ---
 
 ## Structure Conventions
-
-<details>
-<summary>Structure Conventions</summary>
 
 Apply the convention that matches the detected stack. If the repo doesn't fit neatly into
 one ecosystem, use the Generic layout.
@@ -273,14 +264,10 @@ These files must be at the repo root, never nested:
 - Build artifacts committed (add to .gitignore, remove from tracking)
 - Multiple README files at different levels (consolidate to root)
 
-</details>
 
 ---
 
 ## README Blueprint
-
-<details>
-<summary>README Blueprint</summary>
 
 The README is the project's voice. It should read like the author talking to a peer -
 first person, opinionated, technically precise. Show off what's cool. The reader should
@@ -340,7 +327,7 @@ line counts). Specificity is more impressive than vague claims.
 
 ### Progressive disclosure
 
-Use `<details>`/`<summary>` for secondary content (full hook lists, all CLI commands,
+Use collapsible HTML sections for secondary content (full hook lists, all CLI commands,
 extended configuration tables). Keep the main flow tight - a reader should get the full
 picture without expanding anything.
 
@@ -377,14 +364,10 @@ If the README includes images, use the `<picture>` element for theme-aware rende
 </picture>
 ```
 
-</details>
 
 ---
 
 ## Privacy Rules
-
-<details>
-<summary>Privacy Rules</summary>
 
 This skill targets public repos. Every generated or modified file must be safe to publish.
 
@@ -403,7 +386,6 @@ This skill targets public repos. Every generated or modified file must be safe t
 
 **When unsure:** Flag it and ask. Better to over-flag than to leak.
 
-</details>
 
 ---
 
@@ -415,7 +397,7 @@ Before reporting completion, verify:
 - [ ] Opening hook shows off the most technically interesting aspect
 - [ ] Concrete numbers, architecture, or design decisions are visible - not buried in collapsed sections
 - [ ] Quick Nav links all resolve to actual headings (if Quick Nav exists)
-- [ ] Every `<details>` block has a blank line after `<summary>` and before `</details>`
+- [ ] Every collapsible HTML section has valid spacing around its summary and body
 - [ ] Code examples in README actually match the repo's current code
 - [ ] .gitignore covers the detected stack's artifacts
 - [ ] No privacy-sensitive content remains in any generated file
