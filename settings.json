@@ -2,16 +2,16 @@
   "cleanupPeriodDays": 365000,
   "permissions": {
     "allow": [
-      "Bash",
+      "Bash(git status --short)",
+      "Bash(git diff --stat)",
+      "Bash(git diff --check)",
+      "Bash(git log --oneline)",
+      "Bash(git rev-parse --show-toplevel)",
       "Read",
-      "Write",
-      "Edit",
-      "MultiEdit",
       "Grep",
       "Glob",
       "WebSearch",
       "WebFetch",
-      "mcp__*",
       "Skill(*)"
     ],
     "deny": [

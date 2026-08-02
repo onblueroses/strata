@@ -95,6 +95,15 @@ assert_blocked 'git rm' 'git rm important.py'
 assert_blocked 'find -exec rm' 'find . -name "*.md" -exec rm {} \;'
 assert_blocked 'sh -c recursion' 'sh -c "rm -rf $HOME/x"'
 assert_blocked 'bash -c recursion' 'bash -c "rm -rf ~/x"'
+assert_blocked 'bash -lc recursion' 'bash -lc "rm -rf $HOME/x"'
+assert_blocked 'sh -lc recursion' 'sh -lc "rm -rf $HOME/x"'
+assert_blocked 'bash -xc recursion' 'bash -xc "rm -rf $HOME/x"'
+assert_blocked 'bash -ec recursion' 'bash -ec "rm -rf $HOME/x"'
+assert_blocked 'bash -lxc recursion' 'bash -lxc "rm -rf $HOME/x"'
+assert_blocked 'bash long login option before command' \
+    'bash --login -c "rm -rf $HOME/x"'
+assert_blocked 'bash attached long command option' \
+    'bash --command="rm -rf $HOME/x"'
 assert_blocked 'eval quoted command' 'eval "rm -rf ~/x"'
 assert_blocked 'eval operand concatenation' 'eval rm -rf ~/x'
 assert_blocked 'backtick substitution' 'echo `rm -rf ~/x`'
@@ -151,6 +160,14 @@ assert_blocked 'time option value cannot hide rm' 'time -f format rm -rf "$HOME/
 assert_blocked 'timeout option value cannot hide rm' \
     'timeout --signal KILL 5 rm -rf "$HOME/important"'
 assert_blocked 'xargs replacement option cannot hide rm' 'xargs -I {} rm {} < list.txt'
+assert_blocked 'xargs explicit safe operand cannot hide stdin target' \
+    'printf "%s\n" "$HOME/important" | xargs rm /tmp/harmless'
+assert_allowed 'xargs literal temporary stdin target remains safe' \
+    'echo /tmp/scratch | xargs rm -rf'
+assert_allowed 'xargs printf temporary stdin target remains safe' \
+    'printf "%s\n" /tmp/scratch | xargs rm -rf'
+assert_allowed 'xargs safe replacement target remains safe' \
+    'echo /tmp/scratch | xargs -I {} rm -rf {}'
 assert_blocked 'env split-string cannot hide rm' 'env -S "rm -rf $HOME/important"'
 assert_blocked 'attached env split-string cannot hide rm' \
     'env --split-string="rm -rf $HOME/important"'

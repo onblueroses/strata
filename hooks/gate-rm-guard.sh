@@ -512,6 +512,66 @@ def known_safe(path):
     )
 
 
+def literal_pipeline_targets(segment, assignments):
+    """Return literal stdin path operands from a narrow echo/printf pipeline."""
+    index = 0
+    while index < len(segment) and ASSIGN.match(segment[index]):
+        index += 1
+    if index >= len(segment):
+        return None
+
+    head = command_basename(segment[index])
+    args = segment[index + 1 :]
+    if head == "echo":
+        if args and args[0].startswith("-"):
+            return None
+        targets = args
+    elif head == "printf":
+        # Only the line-delimited string form has a one-to-one relationship between
+        # operands and xargs input. Other formats can join or reinterpret safe-looking text.
+        targets = args[1:] if len(args) > 1 and args[0] == r"%s\n" else []
+    else:
+        return None
+
+    if not targets:
+        return None
+    resolved = [resolve(target, assignments) for target in targets]
+    if any(
+        target is None
+        or any(character.isspace() for character in target)
+        or not known_safe(target)
+        for target in resolved
+    ):
+        return None
+    return resolved
+
+
+def xargs_replacement(segment, start, command_index):
+    """Return xargs' replacement token, or None when no replacement option is active."""
+    replacement = None
+    index = start
+    while index < command_index:
+        token = segment[index]
+        if token in ("-a", "--arg-file", "-d", "--delimiter"):
+            return None, True
+        if token.startswith("--arg-file=") or token.startswith("--delimiter="):
+            return None, True
+        if token in ("-I", "--replace"):
+            if index + 1 >= command_index:
+                return None, True
+            replacement = segment[index + 1]
+            index += 2
+            continue
+        if token.startswith("--replace="):
+            replacement = token.split("=", 1)[1]
+        elif token.startswith("-I") and token != "-I":
+            replacement = token[2:]
+        index += 1
+    if replacement is not None and (not replacement or "$" in replacement or "`" in replacement):
+        return None, True
+    return replacement, False
+
+
 def safe_target(token, assignments):
     resolved = resolve(token, assignments)
     if resolved is None:
@@ -748,8 +808,10 @@ def scan(command, depth=0, placeholder_safe=None):
         segments.append((separator, current))
 
     states = assignment_states(segments, command)
-    for segment_index, (_, segment) in enumerate(segments):
+    for segment_index, (separator, segment) in enumerate(segments):
         assignments = states[segment_index]
+        xargs_input_safe = None
+        xargs_replacement_token = None
 
         def target_is_safe(target):
             if target == "{}" and placeholder_safe is not None:
@@ -767,7 +829,24 @@ def scan(command, depth=0, placeholder_safe=None):
                 continue
             wrapper = command_basename(token)
             if wrapper in WRAPPERS:
-                index, embedded_commands = skip_wrapper_arguments(segment, index + 1, wrapper)
+                wrapper_start = index + 1
+                next_index, embedded_commands = skip_wrapper_arguments(
+                    segment, wrapper_start, wrapper
+                )
+                if wrapper == "xargs":
+                    if separator == "|" and segment_index > 0:
+                        pipeline_targets = literal_pipeline_targets(
+                            segments[segment_index - 1][1], states[segment_index - 1]
+                        )
+                        xargs_input_safe = pipeline_targets is not None
+                    else:
+                        xargs_input_safe = False
+                    xargs_replacement_token, replacement_ambiguous = xargs_replacement(
+                        segment, wrapper_start, next_index
+                    )
+                    if replacement_ambiguous:
+                        xargs_input_safe = False
+                index = next_index
                 for embedded_command in embedded_commands:
                     found.extend(scan(embedded_command, depth + 1, placeholder_safe))
                 continue
@@ -779,7 +858,21 @@ def scan(command, depth=0, placeholder_safe=None):
         head = command_basename(segment[index])
         if head == "rm":
             targets = collect_targets(segment, index + 1)
-            found.append(bool(targets) and all(target_is_safe(target) for target in targets))
+            if xargs_input_safe is None:
+                found.append(
+                    bool(targets) and all(target_is_safe(target) for target in targets)
+                )
+            else:
+                explicit_targets_safe = all(
+                    target_is_safe(target)
+                    or (
+                        xargs_replacement_token is not None
+                        and target == xargs_replacement_token
+                        and xargs_input_safe
+                    )
+                    for target in targets
+                )
+                found.append(xargs_input_safe and explicit_targets_safe)
             continue
 
         if head == "git":
@@ -823,13 +916,35 @@ def scan(command, depth=0, placeholder_safe=None):
             continue
 
         if head in SHELLS:
-            for option_index in range(index + 1, len(segment) - 1):
-                if segment[option_index] == "-c":
+            for option_index in range(index + 1, len(segment)):
+                option = segment[option_index]
+                if option == "-c" or (
+                    option.startswith("-")
+                    and not option.startswith("--")
+                    and "c" in option[1:]
+                ):
+                    if option_index + 1 >= len(segment):
+                        found.append(False)
+                        break
                     nested_command = segment[option_index + 1]
                     if ANSI_C_UNRESOLVED in nested_command:
                         found.append(False)
                     else:
                         found.extend(scan(nested_command, depth + 1, placeholder_safe))
+                    break
+                if option == "--command":
+                    if option_index + 1 >= len(segment):
+                        found.append(False)
+                        break
+                    nested_command = segment[option_index + 1]
+                    found.extend(scan(nested_command, depth + 1, placeholder_safe))
+                    break
+                if option.startswith("--command="):
+                    found.extend(
+                        scan(option.split("=", 1)[1], depth + 1, placeholder_safe)
+                    )
+                    break
+                if option == "--" or not option.startswith("-"):
                     break
 
         if head == "eval" and segment[index + 1 :]:

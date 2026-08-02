@@ -4,6 +4,12 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="${ROOT_DIR}/hooks/gate-nested-clone.sh"
+TMP_DIR="$(mktemp -d)"
+OUTSIDE_DIR="$TMP_DIR/outside"
+OUTSIDE_REPO="$TMP_DIR/existing-repo"
+mkdir -p "$OUTSIDE_DIR"
+git init -q "$OUTSIDE_REPO"
+trap 'rm -rf "$TMP_DIR"' EXIT
 
 run_hook() {
     local command="$1"
@@ -65,8 +71,18 @@ for command in \
     'echo "$(git clone https://example.invalid/x)"' \
     'echo `git clone https://example.invalid/x`' \
     "bash -c 'git clone https://example.invalid/x'" \
+    "cd $ROOT_DIR && git clone https://example.invalid/x dest" \
+    "git -C $ROOT_DIR clone https://example.invalid/x dest" \
+    "git -C $OUTSIDE_REPO clone https://example.invalid/x dest" \
     "eval 'git clone https://example.invalid/x'"; do
     assert_blocked "$command"
+done
+
+
+for command in \
+    "cd $OUTSIDE_DIR && git clone https://example.invalid/x dest" \
+    "git -C $OUTSIDE_DIR clone https://example.invalid/x dest"; do
+    assert_allowed "$command"
 done
 
 for command in \

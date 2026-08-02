@@ -346,7 +346,7 @@ sed "s|\\\$STRATA_HOME|$STRATA_HOME_SED|g" "$STRATA_SETTINGS" >"$RENDERED_SETTIN
 echo ""
 echo "=== Claude Code settings ==="
 if ! $ENABLE_BYPASS_PERMISSIONS && ! $NON_INTERACTIVE; then
-  if confirm_yes "Enable bypassPermissions? This disables Claude Code permission prompts globally for this user."; then
+  if confirm_yes "Enable bypassPermissions? Yes disables Claude Code permission prompts globally. No keeps read-oriented tools and exact read-only Git checks preapproved; other shell commands, file changes, and MCP tools require approval."; then
     ENABLE_BYPASS_PERMISSIONS=true
   fi
 fi
@@ -367,7 +367,8 @@ else
     cp "$RENDERED_SETTINGS" "$DESIRED_SETTINGS"
     echo "  left permission defaultMode unset"
   fi
-  echo "  bypassPermissions was not enabled; rerun with --enable-bypass-permissions to opt in"
+  echo "  bypassPermissions was not enabled; other shell commands, file changes, and MCP tools require approval unless covered by an existing defaultMode"
+  echo "  rerun with --enable-bypass-permissions to opt in to prompt-free tool use"
 fi
 install_copy "$DESIRED_SETTINGS" "$CLAUDE_SETTINGS" "Claude settings"
 rm -f -- "$RENDERED_SETTINGS" "$DESIRED_SETTINGS"

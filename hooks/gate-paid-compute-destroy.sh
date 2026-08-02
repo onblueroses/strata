@@ -55,17 +55,24 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 INPUT="$(</dev/stdin)"
-case "$INPUT" in
-  *aws*|*gcloud*|*runpodctl*|*vastai*|*eval*|*sh\ -c*|*sh\ -lc*|*\\*|*\'*|*'`'*|*'$'*) ;;
-  *) exit 0 ;;
-esac
+
+relevant_to_teardown_policy() {
+  local value="$1"
+
+  if [[ $value =~ $TEARDOWN_PATTERN ]]; then
+    return 0
+  fi
+  case "$value" in
+    *eval*|*sh\ -*|*\\*|*\'*|*'`'*|*'$'*) return 0 ;;
+  esac
+  return 1
+}
+
+relevant_to_teardown_policy "$INPUT" || exit 0
 COMMAND="$(jq -r '.tool_input.command // empty' <<<"$INPUT" 2>/dev/null || true)"
 [ -n "$COMMAND" ] || exit 0
 
-case "$COMMAND" in
-  *aws*|*gcloud*|*runpodctl*|*vastai*|*eval*|*sh\ -c*|*sh\ -lc*|*\\*|*\'*|*\"*) ;;
-  *) exit 0 ;;
-esac
+relevant_to_teardown_policy "$COMMAND" || exit 0
 
 # Keep the common irrelevant path Bash-only. Quoting, escaping, and shell
 # interpreters reach the tokenizer because they can hide or build a command.

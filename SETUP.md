@@ -30,13 +30,22 @@ The init script:
 
 1. Detects your shell (`$SHELL`) and prompts before writing a guarded block to `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`. Pass `--non-interactive` to install that shell-correct block without prompting. The block sets `STRATA_HOME`, `KB_DIR`, `STATE_DIR`, `SPECS_DIR` and prepends `$STRATA_HOME/bin` to `PATH`.
 2. Symlinks `$HOME/.claude/{skills,commands,agents,hooks,reference}` to `$STRATA_HOME/` (backing up conflicting entries first). This is how Claude Code discovers strata's content at session start.
-3. Refreshes `$HOME/.claude/settings.json` and `$HOME/.claude/CLAUDE.md`, backing up changed copies before replacement. It leaves the existing permission mode untouched. `--enable-bypass-permissions` is an explicit opt-in that disables Claude Code permission prompts globally for this user.
+3. Refreshes `$HOME/.claude/settings.json` and `$HOME/.claude/CLAUDE.md`, backing up changed copies before replacement. It leaves an existing permission mode untouched unless you explicitly enable bypass mode. The permission choices are listed below.
 4. Seeds the gitignored `config/private-tokens.txt` from its example when absent and prints the file to edit; reruns never overwrite it.
 5. Creates `workspace/state/specs/` and `workspace/state/handoffs/` for compaction-safe specs and session handoffs.
 6. Reminds you to fill `config/model-map.toml` with the strongest models you currently have access to (see step 3 of this document).
 7. Prints a one-line check command to verify the install: `strong --help && fast --help && grader --help && breadth --help`.
 
 Re-run `strata-init` after `git pull` as the safe upgrade step. It refreshes copied files, leaves current symlinks alone, and reports every unchanged, refreshed, linked, seeded, and backed-up path. Read [MIGRATION.md](MIGRATION.md) before upgrading across a release that removes hooks or commands.
+
+### Permission choices
+
+| Choice | Installed permission behavior | What still asks interactively |
+|---|---|---|
+| Decline the prompt or use `--non-interactive` | Leaves `defaultMode` unset on a clean install and preserves an existing mode on a rerun. Strata preapproves `Read`, `Grep`, `Glob`, `WebSearch`, `WebFetch`, skills, and exact Bash checks for `git status --short`, `git diff --stat`, `git diff --check`, `git log --oneline`, and `git rev-parse --show-toplevel`. | Other Bash commands, `Write`, `Edit`, `MultiEdit`, and every MCP tool require approval when the preserved mode does not already decide otherwise. |
+| Accept the prompt or pass `--enable-bypass-permissions` | Sets `defaultMode` to `bypassPermissions`; tool calls proceed without permission prompts. The explicit deny rules and Strata hooks still apply. | No tool-level permission prompt. |
+
+The prompt controls permission behavior, not whether the safety hooks run. Both paths install the same hooks from `settings.json`.
 
 Source the generated rc file named in the install output, or open a new shell, before continuing.
 
@@ -56,7 +65,7 @@ breadth  = "<PICK_NON_PRIMARY>"            # second-opinion lane, codex fallback
 
 ## 4. Point Claude Code at this install
 
-`strata-init` (step 2) refreshes `$HOME/.claude/settings.json`, backing up a changed copy and preserving its existing permission mode. Claude Code reads that file at session start and wires the strata hooks to `$STRATA_HOME/hooks/`.
+`strata-init` (step 2) refreshes `$HOME/.claude/settings.json`, backing up a changed copy and following the permission choice above. Claude Code reads that file at session start and wires the strata hooks to `$STRATA_HOME/hooks/`.
 
 Open a Claude Code session in any project. Strata's CLAUDE.md, hooks, skills, commands, and reference docs auto-load from `$STRATA_HOME`.
 

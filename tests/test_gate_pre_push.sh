@@ -177,6 +177,27 @@ for i in "${!resolved_wrapper_commands[@]}"; do
     record_status "resolved: ${resolved_wrapper_commands[$i]}" 2
 done
 
+: > "$STATE_DIR/.verify-passed-assign01"
+run_hook "repo=$FLAGGED_REPO; git -C \"\$repo\" push" 'assign01' "$UNRELATED_DIR"
+record_status 'same-command literal repository assignment' 2
+
+: > "$STATE_DIR/.verify-passed-assign02"
+run_hook "repo=$CLEAN_REPO; git -C \"\$repo\" push" 'assign02' "$UNRELATED_DIR"
+record_status 'same-command literal clean repository assignment' 0
+
+: > "$STATE_DIR/.verify-passed-dynamic1"
+run_hook 'git -C "$repo" push' 'dynamic1' "$UNRELATED_DIR"
+record_status 'unresolved repository variable fails closed' 2
+assert_output 'could not resolve the repository target' 'unresolved repository variable'
+
+: > "$STATE_DIR/.verify-passed-shell001"
+run_hook "bash -lc 'git -C $FLAGGED_REPO push'" 'shell001' "$UNRELATED_DIR"
+record_status 'combined shell flags preserve push target' 2
+
+: > "$STATE_DIR/.verify-passed-shell002"
+run_hook "bash --login -c 'git -C $FLAGGED_REPO push'" 'shell002' "$UNRELATED_DIR"
+record_status 'long shell option preserves push target' 2
+
 negative_commands=(
     'echo git push'
     'echo /usr/bin/git push'

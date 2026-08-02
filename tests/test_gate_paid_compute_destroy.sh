@@ -4,6 +4,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOOK="${ROOT_DIR}/hooks/gate-paid-compute-destroy.sh"
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
 
 run_hook() {
     local command="$1"
@@ -74,6 +76,13 @@ for command in \
     'vastai stop instance'; do
     assert_blocked "$command"
 done
+
+CUSTOM_HOOK="$TMP_DIR/gate-paid-compute-destroy-custom.sh"
+sed "s@EXTRA_TEARDOWN_PATTERNS=()@EXTRA_TEARDOWN_PATTERNS=('gpupod[[:space:]]+(stop|remove|delete)')@" \
+    "$HOOK" >"$CUSTOM_HOOK"
+chmod +x "$CUSTOM_HOOK"
+HOOK="$CUSTOM_HOOK"
+assert_blocked 'gpupod remove instance-id'
 
 for command in \
     'grep "runpodctl stop pod" notes.md' \

@@ -89,6 +89,7 @@ for required in bin/strata-init bin/strata-doctor settings.json; do
   fi
 done
 
+
 PASSED=0
 FAILED=0
 SKIPPED=0
@@ -107,6 +108,24 @@ skip_check() {
   SKIPPED=$((SKIPPED + 1))
   printf 'SKIP: %s\n' "$1"
 }
+
+DOCUMENTED_EXECUTABLES=(
+  bin/strata-init
+  bin/strata-doctor
+  bin/strong
+  bin/fast
+  bin/grader
+  bin/breadth
+  bin/dmux-dispatch.sh
+)
+for executable in "${DOCUMENTED_EXECUTABLES[@]}"; do
+  indexed_mode="$(git -C "$SOURCE_ROOT" ls-files -s -- "$executable" | awk '{print $1}')"
+  if [[ "$indexed_mode" == "100755" ]]; then
+    pass_check "documented entry point is executable in the index: $executable"
+  else
+    fail_check "documented entry point is not executable in the index: $executable (mode ${indexed_mode:-missing})"
+  fi
+done
 
 REAL_PYTHON="$(command -v python3)"
 
@@ -377,15 +396,28 @@ if [[ -f "$CLAUDE_SETTINGS" ]] && jq -e . "$CLAUDE_SETTINGS" >/dev/null; then
   else
     fail_check "clean install changed global permission defaultMode"
   fi
+  if jq -e '
+      .permissions.allow as $allow
+      | ($allow | index("Bash")) == null
+        and ($allow | index("Write")) == null
+        and ($allow | index("Edit")) == null
+        and ($allow | index("MultiEdit")) == null
+        and ($allow | index("mcp__*")) == null
+    ' "$CLAUDE_SETTINGS" >/dev/null; then
+    pass_check "declined bypass does not blanket-preapprove shell, writes, edits, or MCP tools"
+  else
+    fail_check "declined bypass still blanket-preapproves shell, writes, edits, or MCP tools"
+  fi
 else
   fail_check "installed Claude settings are missing or invalid"
 fi
 
 if grep -qF 'bypassPermissions' "$FIRST_LOG" && \
-    grep -qF -- '--enable-bypass-permissions' "$FIRST_LOG"; then
-  pass_check "non-interactive output names the skipped bypass and explicit opt-in"
+    grep -qF -- '--enable-bypass-permissions' "$FIRST_LOG" && \
+    grep -qF 'other shell commands, file changes, and MCP tools require approval' "$FIRST_LOG"; then
+  pass_check "non-interactive output names the declined grants and explicit opt-in"
 else
-  fail_check "non-interactive output does not explain that bypassPermissions was skipped and how to opt in"
+  fail_check "non-interactive output does not explain the declined grants and how to opt in"
 fi
 
 if [[ -f "$CLAUDE_SETTINGS" ]]; then

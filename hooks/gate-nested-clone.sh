@@ -55,13 +55,13 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
 
-# Are we inside a git repo? If yes, resolve the clone target against its toplevel.
-# Fail OPEN when git is unavailable or we are not inside a repo (nothing to nest into).
-PARENT_REPO=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+# The hook's cwd is only the initial shell cwd. A later `cd` or `git -C` can move the
+# clone into or out of a repository, so the parser determines the enclosing repo per clone.
+PARENT_REPO=$(git rev-parse --show-toplevel 2>/dev/null || true)
 
 # Parse clone operands without mistaking option values for the source or target.
 CLONE_STATUS="$(
-    NESTED_CLONE_COMMAND="$COMMAND" NESTED_CLONE_PARENT_REPO="$PARENT_REPO" python3 - <<'PY'
+    NESTED_CLONE_COMMAND="$COMMAND" python3 - <<'PY'
 import os
 import re
 import shlex
@@ -132,16 +132,18 @@ def shell_tokens(command):
 
 
 def simple_commands(tokens):
+    separator = ""
     current = []
     for token in tokens:
         if token in CONTROL_OPERATORS:
             if current:
-                yield current
+                yield separator, current
                 current = []
+            separator = token
             continue
         current.append(token)
     if current:
-        yield current
+        yield separator, current
 
 
 def argv_words(words):
@@ -246,7 +248,7 @@ def nested_commands(command):
     return nested, malformed
 
 
-def candidates_from_argv(argv, tool, depth):
+def candidates_from_argv(argv, tool, depth, cwd):
     if depth > MAX_SCAN_DEPTH:
         return [], True
     candidates = []
@@ -275,7 +277,7 @@ def candidates_from_argv(argv, tool, depth):
                 except ValueError:
                     return candidates, True
                 nested_candidates, nested_ambiguous = candidates_from_argv(
-                    split_argv + argv[index + 2 :], tool, depth + 1
+                    split_argv + argv[index + 2 :], tool, depth + 1, cwd
                 )
                 return candidates + nested_candidates, ambiguous or nested_ambiguous
             if wrapper == "env" and token.startswith("--split-string="):
@@ -284,7 +286,7 @@ def candidates_from_argv(argv, tool, depth):
                 except ValueError:
                     return candidates, True
                 nested_candidates, nested_ambiguous = candidates_from_argv(
-                    split_argv + argv[index + 1 :], tool, depth + 1
+                    split_argv + argv[index + 1 :], tool, depth + 1, cwd
                 )
                 return candidates + nested_candidates, ambiguous or nested_ambiguous
             if wrapper == "env" and token.startswith("-S") and token != "-S":
@@ -293,7 +295,7 @@ def candidates_from_argv(argv, tool, depth):
                 except ValueError:
                     return candidates, True
                 nested_candidates, nested_ambiguous = candidates_from_argv(
-                    split_argv + argv[index + 1 :], tool, depth + 1
+                    split_argv + argv[index + 1 :], tool, depth + 1, cwd
                 )
                 return candidates + nested_candidates, ambiguous or nested_ambiguous
             if not token.startswith("-") or token == "-":
@@ -319,7 +321,7 @@ def candidates_from_argv(argv, tool, depth):
 
     head = command_basename(argv[index])
     if head == tool:
-        candidates.append(argv[index:])
+        candidates.append((argv[index:], cwd))
         return candidates, ambiguous
     if head in PLAIN_NON_EXECUTING:
         return candidates, ambiguous
@@ -338,14 +340,16 @@ def candidates_from_argv(argv, tool, depth):
             if not option.startswith("-") or option == "-":
                 break
         if script is not None:
-            nested_candidates, nested_ambiguous = command_candidates(script, tool, depth + 1)
+            nested_candidates, nested_ambiguous = command_candidates(
+                script, tool, depth + 1, cwd
+            )
             candidates.extend(nested_candidates)
             ambiguous = ambiguous or nested_ambiguous
         return candidates, ambiguous
     if head == "eval":
         if index + 1 < len(argv):
             nested_candidates, nested_ambiguous = command_candidates(
-                " ".join(argv[index + 1 :]), tool, depth + 1
+                " ".join(argv[index + 1 :]), tool, depth + 1, cwd
             )
             candidates.extend(nested_candidates)
             ambiguous = ambiguous or nested_ambiguous
@@ -357,55 +361,115 @@ def candidates_from_argv(argv, tool, depth):
         if command_basename(argv[candidate_index]) == tool
     ]
     if later_tools:
-        candidates.extend(argv[candidate_index:] for candidate_index in later_tools)
+        candidates.extend((argv[candidate_index:], cwd) for candidate_index in later_tools)
         ambiguous = True
     elif TOOL_WORD.search(" ".join(argv[index + 1 :])):
         ambiguous = True
     return candidates, ambiguous
 
 
-def command_candidates(command, tool, depth=0):
+def literal_directory(base, target):
+    if (
+        not target
+        or target.startswith("~")
+        or any(character in target for character in "$`*?[]{}")
+    ):
+        return None
+    expanded = os.path.expanduser(target)
+    resolved = os.path.realpath(
+        expanded if os.path.isabs(expanded) else os.path.join(base, expanded)
+    )
+    return resolved if os.path.isdir(resolved) else None
+
+
+def direct_cd_target(argv):
+    if not argv or command_basename(argv[0]) != "cd":
+        return None
+    index = 1
+    while index < len(argv) and argv[index] in {"-L", "-P", "-e"}:
+        index += 1
+    if index < len(argv) and argv[index] == "--":
+        index += 1
+    return argv[index] if index + 1 == len(argv) else ""
+
+
+def command_candidates(command, tool, depth=0, cwd=None):
     if depth > MAX_SCAN_DEPTH:
         return [], True
+    if cwd is None:
+        cwd = os.getcwd()
     candidates = []
     nested, malformed = nested_commands(command)
     ambiguous = malformed
     for inner in nested:
-        inner_candidates, inner_ambiguous = command_candidates(inner, tool, depth + 1)
+        inner_candidates, inner_ambiguous = command_candidates(inner, tool, depth + 1, cwd)
         candidates.extend(inner_candidates)
         ambiguous = ambiguous or inner_ambiguous
     try:
         tokens = shell_tokens(command)
     except ValueError:
         return candidates, True
-    for words in simple_commands(tokens):
-        word_candidates, word_ambiguous = candidates_from_argv(argv_words(words), tool, depth)
+    commands = list(simple_commands(tokens))
+    current_cwd = cwd
+    for command_index, (_, words) in enumerate(commands):
+        argv = argv_words(words)
+        cd_target = direct_cd_target(argv)
+        if cd_target is not None:
+            next_separator = commands[command_index + 1][0] if command_index + 1 < len(commands) else ""
+            if cd_target and next_separator in {";", "&&", "\n"}:
+                resolved_cd = literal_directory(current_cwd, cd_target)
+                if resolved_cd is None:
+                    ambiguous = True
+                else:
+                    current_cwd = resolved_cd
+            elif next_separator:
+                ambiguous = True
+            continue
+        word_candidates, word_ambiguous = candidates_from_argv(
+            argv, tool, depth, current_cwd
+        )
         candidates.extend(word_candidates)
         ambiguous = ambiguous or word_ambiguous
     return candidates, ambiguous
 
 
-def git_args(argv):
+def git_args(argv, cwd):
     index = 1
+    effective_cwd = cwd
     while index < len(argv):
         arg = argv[index]
         if arg == "--":
-            return argv[index + 1 :], False
+            return argv[index + 1 :], False, effective_cwd
         if arg in NO_EXEC_WRAPPER_OPTIONS:
-            return [], False
+            return [], False, effective_cwd
         if not arg.startswith("-") or arg == "-":
-            return argv[index:], False
+            return argv[index:], False, effective_cwd
         if arg in GIT_OPTIONS_WITH_VALUES:
             if index + 1 >= len(argv):
-                return [], True
+                return [], True, effective_cwd
+            if arg == "-C":
+                resolved_cwd = literal_directory(effective_cwd, argv[index + 1])
+                if resolved_cwd is None:
+                    return [], True, effective_cwd
+                effective_cwd = resolved_cwd
+            elif arg in {"--git-dir", "--work-tree"}:
+                return [], True, effective_cwd
             index += 2
         elif arg.startswith("--") and arg.split("=", 1)[0] in GIT_OPTIONS_WITH_VALUES:
+            if arg.split("=", 1)[0] in {"--git-dir", "--work-tree"}:
+                return [], True, effective_cwd
             index += 1 if "=" in arg else 2
-        elif any(arg.startswith(option) and arg != option for option in {"-C", "-c"}):
+        elif arg.startswith("-C") and arg != "-C":
+            resolved_cwd = literal_directory(effective_cwd, arg[2:])
+            if resolved_cwd is None:
+                return [], True, effective_cwd
+            effective_cwd = resolved_cwd
+            index += 1
+        elif arg.startswith("-c") and arg != "-c":
             index += 1
         else:
             index += 1
-    return [], False
+    return [], False, effective_cwd
 
 
 def clone_destination(args):
@@ -439,19 +503,37 @@ def clone_destination(args):
     return operands[-1] if len(operands) > 1 else ".", False
 
 
+def enclosing_repository(path):
+    current = os.path.realpath(path)
+    while True:
+        if os.path.exists(os.path.join(current, ".git")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
+
+
 command = os.environ.get("NESTED_CLONE_COMMAND", "")
 candidates, ambiguous = command_candidates(command, "git")
-parent_repo = os.path.realpath(os.environ["NESTED_CLONE_PARENT_REPO"])
-for candidate in candidates:
-    args, git_ambiguous = git_args(candidate)
+for candidate, candidate_cwd in candidates:
+    args, git_ambiguous, effective_cwd = git_args(candidate, candidate_cwd)
     destination, clone_ambiguous = clone_destination(args)
     ambiguous = ambiguous or git_ambiguous or clone_ambiguous
     if destination is None:
         continue
-    destination = os.path.realpath(os.path.expanduser(destination))
+    destination = os.path.expanduser(destination)
+    destination = os.path.realpath(
+        destination
+        if os.path.isabs(destination)
+        else os.path.join(effective_cwd, destination)
+    )
+    repository = enclosing_repository(destination)
+    if repository is None:
+        continue
     try:
-        if os.path.commonpath((parent_repo, destination)) == parent_repo:
-            print("inside")
+        if os.path.commonpath((repository, destination)) == repository:
+            print(f"inside:{repository}")
             raise SystemExit
     except ValueError:
         pass
@@ -467,11 +549,16 @@ case "$CLONE_STATUS" in
     outside)
         exit 0
         ;;
-    inside|ambiguous)
+    inside:*)
+        PARENT_REPO="${CLONE_STATUS#inside:}"
+        ;;
+    ambiguous)
+        echo "[nested-clone] clone destination is ambiguous; blocking because it could land inside an existing repository." >&2
+        exit 2
         ;;
     *)
-        echo "[nested-clone] command parse failed; skipping nested-clone check." >&2
-        exit 0
+        echo "[nested-clone] command parse failed; blocking a plausible clone whose destination could not be classified safely." >&2
+        exit 2
         ;;
 esac
 
