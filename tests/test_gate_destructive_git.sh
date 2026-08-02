@@ -64,6 +64,7 @@ for command in \
     'echo "$(git reset --hard)"' \
     'echo `git reset --hard`' \
     "bash -c 'git reset --hard'" \
+    "bash -O extglob -lc 'git reset --hard'" \
     "eval 'git reset --hard'" \
     'git clean -fd' \
     'git branch -D topic' \

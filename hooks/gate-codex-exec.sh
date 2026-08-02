@@ -14,17 +14,19 @@
 # form used by the /codex-review skill per reference/codex-invocation.md.
 set -uo pipefail
 
-# Fail open when jq is missing: an infra gap should warn, never block a tool call.
-if ! command -v jq >/dev/null 2>&1; then
-    echo "[gate-codex-exec] jq not found; allowing command unchecked." >&2
-    exit 0
-fi
-
 INPUT="$(</dev/stdin)"
 case "$INPUT" in
     *codex*|*eval*|*sh\ -c*|*sh\ -lc*|*\\*|*\'*|*'`'*|*'$'*) ;;
     *) exit 0 ;;
 esac
+
+# Only relevant calls need the JSON parser. Keep ordinary Bash commands on the
+# raw-input fast path while preserving the fail-open warning for guarded calls.
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[gate-codex-exec] jq not found; allowing command unchecked." >&2
+    exit 0
+fi
+
 COMMAND="$(jq -r '.tool_input.command // empty' <<<"$INPUT" 2>/dev/null || true)"
 
 # A literal-free command cannot reach this gate's policy. This lightweight glob
@@ -142,6 +144,7 @@ NO_EXEC_WRAPPER_OPTIONS = {"--help", "--version"}
 COMMAND_INSPECTION_OPTIONS = {"-v", "-V"}
 PLAIN_NON_EXECUTING = {"echo", "printf", "grep", "cat", "ls"}
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+SHELL_OPTIONS_WITH_VALUE = {"-O", "+O", "-o", "+o", "--init-file", "--rcfile"}
 KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
@@ -433,7 +436,8 @@ def candidates_from_argv(argv, depth):
     if head in PLAIN_NON_EXECUTING:
         return candidates, ambiguous
     if head in SHELLS:
-        for option_index in range(index + 1, len(argv)):
+        option_index = index + 1
+        while option_index < len(argv):
             option = argv[option_index]
             if option == "-c" or (
                 option.startswith("-") and not option.startswith("--") and "c" in option[1:]
@@ -441,8 +445,14 @@ def candidates_from_argv(argv, depth):
                 if option_index + 1 >= len(argv):
                     return candidates, True
                 return command_candidates(argv[option_index + 1], depth + 1)
-            if not option.startswith("-") or option == "-":
+            if option in SHELL_OPTIONS_WITH_VALUE:
+                if option_index + 1 >= len(argv):
+                    return candidates, True
+                option_index += 2
+                continue
+            if not option.startswith(("-", "+")) or option in {"-", "+"}:
                 break
+            option_index += 1
         return candidates, ambiguous
     if head == "eval":
         if index + 1 < len(argv):

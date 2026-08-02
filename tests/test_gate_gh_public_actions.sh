@@ -81,6 +81,7 @@ assert_blocked 'gh -R owner/repo issue create --title t --body b'
 assert_blocked "'gh' issue create --title t --body b"
 assert_blocked "bash -lc 'gh issue create --title t --body b'"
 assert_blocked "bash -lc 'gh pr create --title t --body b'"
+assert_blocked "bash -O extglob -lc 'gh issue create --title t --body b'"
 assert_blocked "echo \"\$(gh issue create --title t --body b)\""
 assert_blocked "echo \"\$(gh api repos/owner/repo -X POST)\""
 assert_blocked "echo \"\$(gh api repos/owner/repo -f foo=bar)\""

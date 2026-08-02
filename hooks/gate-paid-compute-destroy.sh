@@ -29,10 +29,27 @@ EXTRA_TEARDOWN_PATTERNS=()
 if [ "${#EXTRA_TEARDOWN_PATTERNS[@]}" -gt 0 ]; then
   TEARDOWN_PATTERNS+=("${EXTRA_TEARDOWN_PATTERNS[@]}")
 fi
-TEARDOWN_PATTERN=""
-for pat in "${TEARDOWN_PATTERNS[@]}"; do
-  TEARDOWN_PATTERN="${TEARDOWN_PATTERN:+${TEARDOWN_PATTERN}|}${pat}"
-done
+printf -v TEARDOWN_PATTERN '%s|' "${TEARDOWN_PATTERNS[@]}"
+TEARDOWN_PATTERN="${TEARDOWN_PATTERN%|}"
+
+INPUT="$(</dev/stdin)"
+
+if [[ ! $INPUT =~ $TEARDOWN_PATTERN ]]; then
+  case "$INPUT" in
+    *eval*|*sh\ -*|*\\*|*\'*|*'`'*|*'$'*) ;;
+    *) exit 0 ;;
+  esac
+fi
+
+# Only relevant calls need the JSON parser. Keep ordinary Bash commands on the
+# raw-input fast path while preserving the fail-open warning for teardown calls.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "[paid-compute-destroy] jq not found; teardown gate skipped (fail-open)." >&2
+  exit 0
+fi
+
+COMMAND="$(jq -r '.tool_input.command // empty' <<<"$INPUT" 2>/dev/null || true)"
+[ -n "$COMMAND" ] || exit 0
 
 deny() {
   local cmd="$1"
@@ -47,32 +64,12 @@ deny() {
   exit 2
 }
 
-# Fail open on infra problems: without jq the command cannot be parsed, so warn
-# and allow rather than block on a tooling gap.
-if ! command -v jq >/dev/null 2>&1; then
-  echo "[paid-compute-destroy] jq not found; teardown gate skipped (fail-open)." >&2
-  exit 0
-fi
-
-INPUT="$(</dev/stdin)"
-
-relevant_to_teardown_policy() {
-  local value="$1"
-
-  if [[ $value =~ $TEARDOWN_PATTERN ]]; then
-    return 0
-  fi
-  case "$value" in
-    *eval*|*sh\ -*|*\\*|*\'*|*'`'*|*'$'*) return 0 ;;
+if [[ ! $COMMAND =~ $TEARDOWN_PATTERN ]]; then
+  case "$COMMAND" in
+    *eval*|*sh\ -*|*\\*|*\'*|*'`'*|*'$'*) ;;
+    *) exit 0 ;;
   esac
-  return 1
-}
-
-relevant_to_teardown_policy "$INPUT" || exit 0
-COMMAND="$(jq -r '.tool_input.command // empty' <<<"$INPUT" 2>/dev/null || true)"
-[ -n "$COMMAND" ] || exit 0
-
-relevant_to_teardown_policy "$COMMAND" || exit 0
+fi
 
 # Keep the common irrelevant path Bash-only. Quoting, escaping, and shell
 # interpreters reach the tokenizer because they can hide or build a command.
@@ -155,6 +152,7 @@ NO_EXEC_WRAPPER_OPTIONS = {"--help", "--version"}
 COMMAND_INSPECTION_OPTIONS = {"-v", "-V"}
 PLAIN_NON_EXECUTING = {"echo", "printf", "grep", "cat", "ls"}
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+SHELL_OPTIONS_WITH_VALUE = {"-O", "+O", "-o", "+o", "--init-file", "--rcfile"}
 KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
@@ -355,7 +353,8 @@ def candidates_from_argv(argv, depth):
     if head in PLAIN_NON_EXECUTING:
         return candidates, ambiguous
     if head in SHELLS:
-        for option_index in range(index + 1, len(argv)):
+        option_index = index + 1
+        while option_index < len(argv):
             option = argv[option_index]
             if option == "-c" or (
                 option.startswith("-") and not option.startswith("--") and "c" in option[1:]
@@ -363,8 +362,14 @@ def candidates_from_argv(argv, depth):
                 if option_index + 1 >= len(argv):
                     return candidates, True
                 return command_candidates(argv[option_index + 1], depth + 1)
-            if not option.startswith("-") or option == "-":
+            if option in SHELL_OPTIONS_WITH_VALUE:
+                if option_index + 1 >= len(argv):
+                    return candidates, True
+                option_index += 2
+                continue
+            if not option.startswith(("-", "+")) or option in {"-", "+"}:
                 break
+            option_index += 1
         return candidates, ambiguous
     if head == "eval":
         if index + 1 < len(argv):

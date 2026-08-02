@@ -19,17 +19,18 @@
 # config/private-tokens.example.txt). Ship the .example.txt template only.
 set -uo pipefail
 
-# Fail open if jq is unavailable: warn, allow. (infra error, not a policy hit)
-if ! command -v jq >/dev/null 2>&1; then
-    echo "[gate-gh-public-actions] jq not found; allowing command without gh public-action check." >&2
-    exit 0
-fi
-
 INPUT="$(</dev/stdin)"
 case "$INPUT" in
     *gh*|*eval*|*sh\ -c*|*sh\ -lc*|*\\*|*\'*|*'`'*|*'$'*) ;;
     *) exit 0 ;;
 esac
+
+# Only relevant calls need the JSON parser; guarded calls retain the fail-open warning.
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[gate-gh-public-actions] jq not found; allowing command without gh public-action check." >&2
+    exit 0
+fi
+
 COMMAND="$(jq -r '.tool_input.command // empty' <<<"$INPUT" 2>/dev/null || true)"
 
 case "$COMMAND" in
@@ -155,6 +156,7 @@ GLOBAL_FLAGS_WITH_VALUES = {"-R", "--repo", "--hostname", "--jq", "--template", 
 GLOBAL_FLAGS_WITH_ATTACHED_VALUES = ("-R",)
 TERMINAL_GLOBAL_FLAGS = {"-h", "--help", "--version"}
 SHELL_WRAPPERS = {"bash", "sh", "zsh", "dash", "ksh"}
+SHELL_OPTIONS_WITH_VALUE = {"-O", "+O", "-o", "+o", "--init-file", "--rcfile"}
 MAX_NESTING_DEPTH = 32
 WRAPPERS = {
     "sudo", "doas", "command", "builtin", "exec", "env", "nice", "ionice",
@@ -321,10 +323,15 @@ def inline_shell_script(command_words):
             return None
         if arg == "-c" or (arg.startswith("-") and not arg.startswith("--") and "c" in arg[1:]):
             return command_words[index + 1] if index + 1 < len(command_words) else None
+        if arg in SHELL_OPTIONS_WITH_VALUE:
+            if index + 1 >= len(command_words):
+                return None
+            index += 2
+            continue
         if arg == "--login":
             index += 1
             continue
-        if not arg.startswith("-") or arg == "-":
+        if not arg.startswith(("-", "+")) or arg in {"-", "+"}:
             return None
         index += 1
     return None

@@ -124,6 +124,7 @@ for command in \
     'echo "$(codex exec x)"' \
     'echo `codex exec x`' \
     "bash -c 'codex exec x'" \
+    "bash -O extglob -lc 'codex exec x'" \
     "eval 'codex exec x'"; do
     assert_blocked "$command"
 done

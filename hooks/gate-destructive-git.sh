@@ -21,17 +21,18 @@
 # on its own broken plumbing.
 set -uo pipefail
 
-# Fail open if jq is unavailable: warn, allow. (infra error, not a policy hit)
-if ! command -v jq >/dev/null 2>&1; then
-    echo "[gate-destructive-git] jq not found; allowing command without destructive-git check." >&2
-    exit 0
-fi
-
 INPUT="$(</dev/stdin)"
 case "$INPUT" in
     *git*|*eval*|*sh\ -c*|*sh\ -lc*|*\\*|*\'*|*'`'*|*'$'*) ;;
     *) exit 0 ;;
 esac
+
+# Only relevant calls need the JSON parser; guarded calls retain the fail-open warning.
+if ! command -v jq >/dev/null 2>&1; then
+    echo "[gate-destructive-git] jq not found; allowing command without destructive-git check." >&2
+    exit 0
+fi
+
 COMMAND="$(jq -r '.tool_input.command // empty' <<<"$INPUT" 2>/dev/null || true)"
 
 case "$COMMAND" in
@@ -107,6 +108,7 @@ NO_EXEC_WRAPPER_OPTIONS = {"--help", "--version"}
 COMMAND_INSPECTION_OPTIONS = {"-v", "-V"}
 PLAIN_NON_EXECUTING = {"echo", "printf", "grep", "cat", "ls"}
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+SHELL_OPTIONS_WITH_VALUE = {"-O", "+O", "-o", "+o", "--init-file", "--rcfile"}
 KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!"}
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$")
@@ -310,7 +312,8 @@ def candidates_from_argv(argv, tool, depth):
     if head in PLAIN_NON_EXECUTING:
         return candidates, ambiguous
     if head in SHELLS:
-        for option_index in range(index + 1, len(argv)):
+        option_index = index + 1
+        while option_index < len(argv):
             option = argv[option_index]
             if option == "-c" or (
                 option.startswith("-") and not option.startswith("--") and "c" in option[1:]
@@ -318,8 +321,14 @@ def candidates_from_argv(argv, tool, depth):
                 if option_index + 1 >= len(argv):
                     return candidates, True
                 return command_candidates(argv[option_index + 1], tool, depth + 1)
-            if not option.startswith("-") or option == "-":
+            if option in SHELL_OPTIONS_WITH_VALUE:
+                if option_index + 1 >= len(argv):
+                    return candidates, True
+                option_index += 2
+                continue
+            if not option.startswith(("-", "+")) or option in {"-", "+"}:
                 break
+            option_index += 1
         return candidates, ambiguous
     if head == "eval":
         if index + 1 < len(argv):

@@ -64,6 +64,15 @@ if ! COMMAND="$(
     exit 0
 fi
 
+# Decoded plain-data commands cannot launch a deletion. Any shell construction
+# marker keeps the command on the full analyzer path, including xargs pipelines.
+plain_data_command='^[[:space:]]*(echo|printf|grep)([[:space:]]|$)'
+# shellcheck disable=SC2016  # Literal shell construction markers are matched here.
+if [[ $COMMAND =~ $plain_data_command &&
+      $COMMAND != *[';&|()`$\']* && $COMMAND != *$'\n'* ]]; then
+    exit 0
+fi
+
 if ! command -v python3 >/dev/null 2>&1; then
     fallback_for_missing_dependency python3
 fi
@@ -154,6 +163,7 @@ NO_EXEC_WRAPPER_OPTIONS = {"--help", "--version"}
 COMMAND_INSPECTION_OPTIONS = {"-v", "-V"}
 KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!"}
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
+SHELL_OPTIONS_WITH_VALUE = {"-O", "+O", "-o", "+o", "--init-file", "--rcfile"}
 DESTRUCTIVE = {"shred", "truncate", "unlink", "rmdir"}
 DESTRUCTIVE_OPTIONS_WITH_VALUE = {
     "shred": {"-n", "--iterations", "-s", "--size", "--random-source"},
@@ -916,7 +926,8 @@ def scan(command, depth=0, placeholder_safe=None):
             continue
 
         if head in SHELLS:
-            for option_index in range(index + 1, len(segment)):
+            option_index = index + 1
+            while option_index < len(segment):
                 option = segment[option_index]
                 if option == "-c" or (
                     option.startswith("-")
@@ -944,8 +955,15 @@ def scan(command, depth=0, placeholder_safe=None):
                         scan(option.split("=", 1)[1], depth + 1, placeholder_safe)
                     )
                     break
+                if option in SHELL_OPTIONS_WITH_VALUE:
+                    if option_index + 1 >= len(segment):
+                        found.append(False)
+                        break
+                    option_index += 2
+                    continue
                 if option == "--" or not option.startswith("-"):
                     break
+                option_index += 1
 
         if head == "eval" and segment[index + 1 :]:
             # eval concatenates operands before execution, so quoted and unquoted forms agree.

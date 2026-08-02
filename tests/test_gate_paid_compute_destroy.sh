@@ -67,6 +67,7 @@ for command in \
     'echo "$(runpodctl stop pod pod-id)"' \
     'echo `runpodctl stop pod pod-id`' \
     "bash -c 'runpodctl stop pod pod-id'" \
+    "bash -O extglob -lc 'runpodctl stop pod pod-id'" \
     "eval 'runpodctl stop pod pod-id'" \
     'aws ec2 stop-instances' \
     'aws ec2 terminate-instances' \

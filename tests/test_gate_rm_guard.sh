@@ -100,6 +100,8 @@ assert_blocked 'sh -lc recursion' 'sh -lc "rm -rf $HOME/x"'
 assert_blocked 'bash -xc recursion' 'bash -xc "rm -rf $HOME/x"'
 assert_blocked 'bash -ec recursion' 'bash -ec "rm -rf $HOME/x"'
 assert_blocked 'bash -lxc recursion' 'bash -lxc "rm -rf $HOME/x"'
+assert_blocked 'bash shopt option before combined command flags' \
+    'bash -O extglob -lc "rm -rf $HOME/x"'
 assert_blocked 'bash long login option before command' \
     'bash --login -c "rm -rf $HOME/x"'
 assert_blocked 'bash attached long command option' \
