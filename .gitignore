@@ -5,6 +5,10 @@
 # only config/private-tokens.example.txt ships as a template.
 config/private-tokens.txt
 
+# Agent working state (recon notes, execution specs) written by coding agents run
+# inside this checkout. Local scratch, never part of the published skeleton.
+.codex/
+
 # Runtime knowledge-base content populated by strata-init lives inside the
 # install tree by default; never check that into the public repo. Override
 # $KB_DIR to point this elsewhere before running strata-init when you want

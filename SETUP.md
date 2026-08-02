@@ -2,6 +2,16 @@
 
 Walks you from `git clone` to a working install.
 
+## Prerequisites
+
+Required: `jq`, Python 3.10 or newer (`python3`), and `git`. Without `jq`, the deletion guard falls back to a coarse string check that cannot distinguish `rm -rf ~/project` from `echo "rm -rf"`, so it errs toward stopping you. The pre-push, nested-clone, public-gh, codex-exec, destructive-git, and paid-compute teardown gates cannot parse hook input without `jq` and skip their checks. Optional: `codex` powers the pre-commit review path; `dmux` and `tmux` power pane orchestration; `browser-use` and Playwright MCP power browser automation; `defuddle` powers article extraction. Run `bin/strata-doctor` before or after installation to check what actually resolves.
+
+`strata-init` creates a local Python environment and installs its declared package requirements, so uncached packages need access to a package index.
+
+### Deletion guard
+
+The deletion guard catches accidents and agent slips. It is not a security boundary: any bash string parser is defeated by an interpreter, a script file, or an aliased command, so do not rely on it against an adversary or a compromised agent.
+
 ## 1. Clone
 
 ```
@@ -18,14 +28,17 @@ You can install anywhere; `~/.strata` is the convention.
 
 The init script:
 
-1. Detects your shell (`$SHELL`), prompts before writing a guarded block to `~/.zshrc` or `~/.bashrc`. The block sets `STRATA_HOME`, `KB_DIR`, `STATE_DIR`, `SPECS_DIR` and prepends `$STRATA_HOME/bin` to `PATH`.
-2. Symlinks `$HOME/.claude/{skills,commands,agents,hooks,reference}` to `$STRATA_HOME/` (backing up any existing entries first). This is how Claude Code discovers strata's content at session start.
-3. Installs `$STRATA_HOME/settings.json` into `$HOME/.claude/settings.json` (backup + overwrite). Wires the Stop/PreToolUse/PostToolUse hooks to `$STRATA_HOME/hooks/`.
-4. Populates `workspace/` with PARA-flavored seed templates: `areas/`, `projects/`, `resources/`, `daily/`, `inbox/`, `archives/`. Each directory ships a README explaining the pattern; entity directories include a `summary.md` schema and an `items.json` example. This is the substrate your agent reads, writes, and grows over time.
-5. Prompts you to fill `config/model-map.toml` with the strongest models you currently have access to (see step 3 of this document).
-6. Prints a one-line check command to verify the install: `strong --help && fast --help && grader --help && breadth --help`.
+1. Detects your shell (`$SHELL`) and prompts before writing a guarded block to `~/.zshrc`, `~/.bashrc`, or `~/.config/fish/config.fish`. Pass `--non-interactive` to install that shell-correct block without prompting. The block sets `STRATA_HOME`, `KB_DIR`, `STATE_DIR`, `SPECS_DIR` and prepends `$STRATA_HOME/bin` to `PATH`.
+2. Symlinks `$HOME/.claude/{skills,commands,agents,hooks,reference}` to `$STRATA_HOME/` (backing up conflicting entries first). This is how Claude Code discovers strata's content at session start.
+3. Refreshes `$HOME/.claude/settings.json` and `$HOME/.claude/CLAUDE.md`, backing up changed copies before replacement. It leaves the existing permission mode untouched. `--enable-bypass-permissions` is an explicit opt-in that disables Claude Code permission prompts globally for this user.
+4. Seeds the gitignored `config/private-tokens.txt` from its example when absent and prints the file to edit; reruns never overwrite it.
+5. Populates `workspace/` with PARA-flavored seed templates: `areas/`, `projects/`, `resources/`, `daily/`, `inbox/`, `archives/`. Each directory ships a README explaining the pattern; entity directories include a `summary.md` schema and an `items.json` example. This is the substrate your agent reads, writes, and grows over time.
+6. Reminds you to fill `config/model-map.toml` with the strongest models you currently have access to (see step 3 of this document).
+7. Prints a one-line check command to verify the install: `strong --help && fast --help && grader --help && breadth --help`.
 
-Source the new rc block (`source ~/.zshrc` or open a new shell) before continuing.
+Re-run `strata-init` after `git pull` as the safe upgrade step. It refreshes copied files, leaves current symlinks alone, and reports every unchanged, refreshed, linked, seeded, and backed-up path.
+
+Source the generated rc file named in the install output, or open a new shell, before continuing.
 
 ## 3. Fill in model-map.toml
 
@@ -43,7 +56,7 @@ breadth  = "<PICK_NON_PRIMARY>"            # second-opinion lane, codex fallback
 
 ## 4. Point Claude Code at this install
 
-`strata-init` (step 2) installs `$STRATA_HOME/settings.json` into `$HOME/.claude/settings.json` (backing up any existing file first). Claude Code reads that file at session start and wires the strata hooks to `$STRATA_HOME/hooks/`. If you declined the install during step 2, copy or merge `$STRATA_HOME/settings.json` into `$HOME/.claude/settings.json` (or `<project>/.claude/settings.json`) yourself.
+`strata-init` (step 2) refreshes `$HOME/.claude/settings.json`, backing up a changed copy and preserving its existing permission mode. Claude Code reads that file at session start and wires the strata hooks to `$STRATA_HOME/hooks/`.
 
 Open a Claude Code session in any project. Strata's CLAUDE.md, hooks, skills, commands, and reference docs auto-load from `$STRATA_HOME`.
 

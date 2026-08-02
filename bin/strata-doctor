@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+# strata-doctor: report install dependencies and configuration readiness.
+
+set -u
+shopt -s extglob
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STRATA_HOME="${STRATA_HOME:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
+display_path() {
+  local path="$1"
+  case "$path" in
+    "$HOME") printf '%s' '$HOME' ;;
+    "$HOME"/*) printf '$HOME%s' "${path#"$HOME"}" ;;
+    "$STRATA_HOME") printf '%s' '$STRATA_HOME' ;;
+    "$STRATA_HOME"/*) printf '$STRATA_HOME%s' "${path#"$STRATA_HOME"}" ;;
+    *) printf '%s' "$path" ;;
+  esac
+}
+
+trim() {
+  local value="$1"
+  value="${value##+([[:space:]])}"
+  value="${value%%+([[:space:]])}"
+  printf '%s' "$value"
+}
+
+required_missing=false
+
+check_required() {
+  local name="$1" missing_cost="$2" resolved
+  if resolved="$(command -v "$name" 2>/dev/null)"; then
+    printf 'OK required %s: %s\n' "$name" "$(display_path "$resolved")"
+  else
+    printf 'MISSING required %s: %s\n' "$name" "$missing_cost"
+    required_missing=true
+  fi
+}
+
+check_required_python() {
+  local resolved version
+  local minimum_major=3 minimum_minor=10
+
+  if ! resolved="$(command -v python3 2>/dev/null)"; then
+    printf 'MISSING required python3: Python %s.%s or newer is required; hook parsers and the lane agent cannot run\n' \
+      "$minimum_major" "$minimum_minor"
+    required_missing=true
+    return
+  fi
+
+  if version="$(python3 -c '
+import sys
+
+minimum = (int(sys.argv[1]), int(sys.argv[2]))
+print(".".join(str(part) for part in sys.version_info[:3]))
+raise SystemExit(sys.version_info[:2] < minimum)
+' "$minimum_major" "$minimum_minor" 2>/dev/null)"; then
+    printf 'OK required python3 >=%s.%s: %s (version %s)\n' \
+      "$minimum_major" "$minimum_minor" "$(display_path "$resolved")" "$version"
+  else
+    printf 'OUTDATED required python3: Python %s.%s or newer is required; found %s at %s; hook parsers and the lane agent cannot run\n' \
+      "$minimum_major" "$minimum_minor" "${version:-unknown}" "$(display_path "$resolved")"
+    required_missing=true
+  fi
+}
+
+check_optional() {
+  local name="$1" missing_cost="$2" resolved
+  if resolved="$(command -v "$name" 2>/dev/null)"; then
+    printf 'OK optional %s: %s\n' "$name" "$(display_path "$resolved")"
+  else
+    printf 'MISSING optional %s: %s\n' "$name" "$missing_cost"
+  fi
+}
+
+echo "=== Required dependencies ==="
+check_required jq "safety gates cannot parse hook input and fail open"
+check_required_python
+check_required git "repository checks, update checks, and worktree dispatch cannot run"
+
+echo ""
+echo "=== Optional integrations ==="
+check_optional codex "the pre-commit cross-model review path is unavailable"
+check_optional dmux "dmux pane orchestration is unavailable"
+check_optional browser-use "browser-use CLI automation is unavailable"
+check_optional defuddle "article-to-markdown extraction is unavailable"
+check_optional tmux "terminal pane dispatch is unavailable"
+
+PLAYWRIGHT_RESOLUTION=""
+PLAYWRIGHT_STATUS=""
+for candidate in playwright-mcp mcp-server-playwright; do
+  if resolved="$(command -v "$candidate" 2>/dev/null)"; then
+    PLAYWRIGHT_RESOLUTION="$(display_path "$resolved")"
+    PLAYWRIGHT_STATUS="resolved"
+    break
+  fi
+done
+
+if [[ -z "$PLAYWRIGHT_RESOLUTION" ]] && command -v python3 >/dev/null 2>&1; then
+  PLAYWRIGHT_RESOLUTION="$(python3 - \
+    "$HOME/.claude/settings.json" '$HOME/.claude/settings.json' \
+    "$HOME/.claude.json" '$HOME/.claude.json' \
+    "$STRATA_HOME/.mcp.json" '$STRATA_HOME/.mcp.json' <<'PY'
+from pathlib import Path
+import json
+import sys
+
+
+def contains_playwright_reference(value):
+    if isinstance(value, dict):
+        return any(
+            "playwright" in str(key).lower() or contains_playwright_reference(item)
+            for key, item in value.items()
+        )
+    if isinstance(value, list):
+        return any(contains_playwright_reference(item) for item in value)
+    return isinstance(value, str) and "playwright" in value.lower()
+
+
+def has_playwright_mcp(value):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "mcpServers" and isinstance(item, dict):
+                if any(
+                    "playwright" in str(server_name).lower()
+                    or contains_playwright_reference(server_config)
+                    for server_name, server_config in item.items()
+                ):
+                    return True
+            if has_playwright_mcp(item):
+                return True
+    elif isinstance(value, list):
+        return any(has_playwright_mcp(item) for item in value)
+    return False
+
+
+arguments = iter(sys.argv[1:])
+for raw_path, label in zip(arguments, arguments):
+    path = Path(raw_path)
+    if not path.is_file():
+        continue
+    try:
+        content = json.loads(path.read_text())
+    except (OSError, ValueError):
+        continue
+    if has_playwright_mcp(content):
+        print(f"configured in {label}")
+        break
+PY
+)"
+fi
+
+if [[ -n "$PLAYWRIGHT_RESOLUTION" ]]; then
+  if [[ "$PLAYWRIGHT_STATUS" == "resolved" ]]; then
+    printf 'OK optional %s: %s\n' "Playwright MCP" "$PLAYWRIGHT_RESOLUTION"
+  else
+    printf 'CONFIGURED optional %s; launch resolution was not tested\n' "Playwright MCP $PLAYWRIGHT_RESOLUTION"
+  fi
+elif command -v python3 >/dev/null 2>&1; then
+  printf 'MISSING optional %s\n' "Playwright MCP: browser testing through Playwright MCP is unavailable"
+else
+  printf 'UNKNOWN optional %s\n' "Playwright MCP: python3 is missing, so JSON configuration could not be inspected"
+fi
+
+echo ""
+echo "=== Strata configuration ==="
+PRIVATE_TOKENS="$STRATA_HOME/config/private-tokens.txt"
+if [[ -f "$PRIVATE_TOKENS" ]]; then
+  active_private_token=false
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    case "$line" in
+      ''|'#'*) continue ;;
+      *) active_private_token=true; break ;;
+    esac
+  done <"$PRIVATE_TOKENS"
+  if $active_private_token; then
+    printf 'OK config private denylist %s contains at least one active token\n' \
+      "$(display_path "$PRIVATE_TOKENS")"
+  else
+    printf 'INCOMPLETE config private denylist %s: add at least one active token, one private identifier per line, then rerun strata-doctor\n' \
+      "$(display_path "$PRIVATE_TOKENS")"
+  fi
+else
+  printf 'MISSING config private denylist %s: run strata-init or copy config/private-tokens.example.txt to that path\n' \
+    "$(display_path "$PRIVATE_TOKENS")"
+fi
+
+MODEL_MAP="$STRATA_HOME/config/model-map.toml"
+if [[ ! -f "$MODEL_MAP" ]]; then
+  printf 'MISSING config model map %s\n' "$(display_path "$MODEL_MAP")"
+else
+  unresolved_placeholders=false
+  while IFS= read -r line; do
+    if [[ "$line" == *'<PICK_'* ]]; then
+      unresolved_placeholders=true
+      break
+    fi
+  done <"$MODEL_MAP"
+  if $unresolved_placeholders; then
+    printf 'INCOMPLETE config model map %s\n' "contains unresolved <PICK_...> placeholders"
+  else
+    printf 'OK config model map %s\n' "has no unresolved <PICK_...> placeholders"
+  fi
+fi
+
+PROVIDER_KEYS=(ANTHROPIC_API_KEY OPENAI_API_KEY DEEPSEEK_API_KEY GEMINI_API_KEY)
+PROVIDER_KEY_SOURCE=""
+for key in "${PROVIDER_KEYS[@]}"; do
+  if [[ -n "${!key:-}" ]]; then
+    PROVIDER_KEY_SOURCE="environment variable $key"
+    break
+  fi
+done
+
+ENV_FILE="$STRATA_HOME/.local/.env"
+if [[ -z "$PROVIDER_KEY_SOURCE" && -f "$ENV_FILE" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="$(trim "$line")"
+    [[ -z "$line" || "$line" == \#* || "$line" != *=* ]] && continue
+    name="$(trim "${line%%=*}")"
+    value="$(trim "${line#*=}")"
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+      value="${value:1:${#value}-2}"
+    else
+      value="${value%%+([[:space:]])\#*}"
+      value="$(trim "$value")"
+      [[ "$value" == \#* ]] && value=""
+    fi
+    [[ -n "$value" ]] || continue
+    for key in "${PROVIDER_KEYS[@]}"; do
+      if [[ "$name" == "$key" ]]; then
+        PROVIDER_KEY_SOURCE="$(display_path "$ENV_FILE") entry $key"
+        break 2
+      fi
+    done
+  done <"$ENV_FILE"
+fi
+
+if [[ -n "$PROVIDER_KEY_SOURCE" ]]; then
+  printf 'OK config provider key %s\n' "$PROVIDER_KEY_SOURCE"
+else
+  printf 'MISSING config provider key %s\n' "set at least one documented provider API key in the environment or \$STRATA_HOME/.local/.env"
+fi
+
+echo ""
+if $required_missing; then
+  echo "RESULT: one or more required dependencies are missing"
+  exit 1
+fi
+echo "RESULT: all required dependencies resolve; optional and configuration gaps do not change the exit status"
