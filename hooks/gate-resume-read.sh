@@ -6,7 +6,7 @@
 # python body runs ONLY in the brief window after a compaction while the
 # read-gate is armed. Fails OPEN on any error (only the python's deliberate
 # exit 2 blocks; everything else lets the tool proceed).
-hookData=$(cat)
+hookData=$(</dev/stdin)
 
 # Key the sentinel on the FULL session id (not a truncated prefix) so two sessions
 # sharing an 8-char prefix can never share one gate. Must match the restore hook,

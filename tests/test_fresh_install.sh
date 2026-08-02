@@ -89,7 +89,6 @@ for required in bin/strata-init bin/strata-doctor settings.json; do
   fi
 done
 
-
 PASSED=0
 FAILED=0
 SKIPPED=0
