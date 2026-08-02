@@ -184,6 +184,14 @@ SEPARATOR_CHARS = set(";|&(){}")
 SAFE_DIRS = {"__pycache__", "node_modules", ".cache", "build", "dist", "target"}
 SAFE_SUFFIXES = (".pyc", ".o", ".class")
 SAFE_ABSOLUTE_ROOTS = ("/tmp", "/var/tmp")
+# Scratch roots the agent owns: a background job's own tmp and the session scratchpad.
+# Matched by spelling rather than by expanding the hook's own $HOME, so the rule reads
+# the command string and never the environment the hook happens to run in.
+HOME_PREFIX = re.compile(r"^(?:~|\$HOME|\$\{HOME\}|/home/[^/]+|/Users/[^/]+)")
+SCRATCH_ROOTS = (
+    re.compile(r"^/\.claude/jobs/[^/]+/tmp(?:/|$)"),
+    re.compile(r"^/\.cache/tmp/claude-\d+/[^/]+"),
+)
 ANSI_C_UNRESOLVED = "__STRATA_ANSI_C_UNRESOLVED__"
 
 
@@ -582,11 +590,29 @@ def xargs_replacement(segment, start, command_index):
     return replacement, False
 
 
+def agent_scratch(path):
+    """Recognize a scratch root the agent owns, under either home spelling.
+
+    Any expansion left after the home prefix keeps the target unknown, so a variable
+    standing in for a path component cannot borrow this allowance.
+    """
+    match = HOME_PREFIX.match(path)
+    if not match:
+        return False
+    remainder = path[match.end() :]
+    if "$" in remainder or "`" in remainder or not remainder.startswith("/"):
+        return False
+    normalized = os.path.normpath(remainder)
+    return any(root.match(normalized) for root in SCRATCH_ROOTS)
+
+
 def safe_target(token, assignments):
     resolved = resolve(token, assignments)
     if resolved is None:
-        return False
-    return known_safe(resolved)
+        # An unresolved expansion still names a scratch root when the only unknown is
+        # $HOME itself, which cannot move the path out of the root it spells.
+        return agent_scratch(token)
+    return known_safe(resolved) or agent_scratch(resolved)
 
 
 def collect_targets(segment, start):

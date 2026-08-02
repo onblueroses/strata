@@ -311,6 +311,25 @@ assert_blocked 'unbalanced quote fails toward block' 'rm -rf "/tmp/scratch'
 
 assert_allowed 'shred options preserve a safe target' 'shred -n 1 /tmp/safe'
 
+# A background job's own tmp is scratch the agent owns; blocking it makes the guard
+# fire on the harness that created the directory.
+assert_allowed 'job tmp root under a tilde' 'rm -rf ~/.claude/jobs/ca8c2efb/tmp'
+assert_allowed 'job tmp root under $HOME' 'rm -rf $HOME/.claude/jobs/ca8c2efb/tmp'
+assert_allowed 'job tmp subdirectory' 'rm -rf ~/.claude/jobs/ca8c2efb/tmp/build'
+assert_allowed 'job tmp under a literal home path' \
+    'rm -rf /home/agent/.claude/jobs/ca8c2efb/tmp'
+assert_allowed 'job tmp through a literal assignment' \
+    'T=~/.claude/jobs/ca8c2efb/tmp/probe && rm -rf $T'
+assert_allowed 'session scratchpad root' \
+    'rm -rf $HOME/.cache/tmp/claude-1000/-home-agent/session/scratchpad'
+assert_blocked 'the jobs directory above a job tmp' 'rm -rf ~/.claude/jobs/ca8c2efb'
+assert_blocked 'traversal out of a job tmp' \
+    'rm -rf ~/.claude/jobs/ca8c2efb/tmp/../../../important'
+assert_blocked 'a variable path component inside a job tmp' \
+    'rm -rf ~/.claude/jobs/$JOB/tmp'
+assert_blocked 'the scratch root does not sanctify a sibling target' \
+    'rm -rf ~/.claude/jobs/ca8c2efb/tmp ~/important'
+
 RECURSION_LIMIT=3
 NESTED_COMMAND='rm -rf /tmp/scratch'
 for ((level = 0; level < RECURSION_LIMIT; level++)); do
