@@ -35,11 +35,376 @@ emit_block() {  # $1 = reason slug; additive, fail-open telemetry (no command/id
     bash "$STRATA_HOME/telemetry/telemetry-emit.sh" hook_block "$S" "$B" 2>/dev/null || true
 }
 
-# Only trigger on git push.
-echo "$COMMAND" | grep -qE 'git[[:space:]]+push' || exit 0
+# Shell-tokenize before deciding whether this is a push. The executable may be an absolute
+# path or sit behind an ordinary launch wrapper; comparing basenames after wrapper unwrapping
+# keeps those forms on the same path as bare git. Unknown launchers and malformed commands
+# containing plausible git/push words are treated as ambiguous and scanned conservatively.
+plausibly_mentions_git_push() {
+    local git_word='(^|[^[:alnum:]_-])([^[:space:];&|()]+/)?git([^[:alnum:]_-]|$)'
+    local push_word='(^|[^[:alnum:]_-])push([^[:alnum:]_-]|$)'
+    [[ $COMMAND =~ $git_word && $COMMAND =~ $push_word ]]
+}
+
+PARSE_RESULT=""
+if command -v python3 >/dev/null 2>&1; then
+    PARSE_RESULT="$(PUSH_GATE_COMMAND="$COMMAND" python3 - <<'PY' 2>/dev/null || true
+import json
+import os
+import re
+import shlex
+
+CONTROL_OPERATORS = {"\n", ";", ";;", ";&", ";;&", "&&", "||", "|", "|&", "&", "(", ")"}
+REDIRECT_OPERATORS = {"<", ">", "<<", ">>", "<>", "<<-", "<<<", ">|", "<&", ">&", "&>", "&>>"}
+WRAPPERS = {
+    "sudo", "doas", "command", "builtin", "exec", "env", "nice", "ionice",
+    "nohup", "stdbuf", "time", "timeout", "setsid", "xargs", "chronic",
+}
+WRAPPER_OPTIONS_WITH_VALUE = {
+    "sudo": {
+        "-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt",
+        "-C", "--close-from", "-T", "--command-timeout", "-R", "--chroot",
+        "-D", "--chdir",
+    },
+    "doas": {"-C", "-u"},
+    "exec": {"-a"},
+    "env": {"-u", "--unset", "-C", "--chdir", "--argv0"},
+    "nice": {"-n", "--adjustment"},
+    "ionice": {
+        "-c", "--class", "-n", "--classdata", "-p", "--pid", "-P", "--pgid",
+        "-u", "--uid",
+    },
+    "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
+    "time": {"-f", "--format", "-o", "--output"},
+    "timeout": {"-k", "--kill-after", "-s", "--signal"},
+    "xargs": {
+        "-a", "--arg-file", "-d", "--delimiter", "-E", "--eof", "-I", "--replace",
+        "-L", "--max-lines", "-n", "--max-args", "-P", "--max-procs", "-s",
+        "--max-chars", "--process-slot-var",
+    },
+}
+NO_EXEC_WRAPPER_OPTIONS = {"--help", "--version"}
+COMMAND_INSPECTION_OPTIONS = {"-v", "-V"}
+# These commands are explicit negative controls whose operands are data, not an executable.
+# Everything else with plausible git/push operands stays ambiguous and therefore gets scanned.
+NON_LAUNCHERS = {"echo", "grep", "printf"}
+GIT_OPTIONS_WITH_VALUE = {
+    "-C", "-c", "--git-dir", "--work-tree", "--namespace", "--super-prefix",
+    "--config-env",
+}
+GIT_TERMINAL_OPTIONS = {"-h", "--help", "--version", "--exec-path", "--html-path", "--man-path", "--info-path"}
+ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$", re.DOTALL)
+DURATION = re.compile(r"^\d+(?:\.\d+)?[smhd]?$", re.IGNORECASE)
+
+
+def basename(word):
+    return os.path.basename(word)
+
+
+def shell_tokens(command):
+    lexer = shlex.shlex(command, posix=True, punctuation_chars="();<>|&\n")
+    lexer.whitespace_split = True
+    lexer.whitespace = " \t\r"
+    lexer.commenters = ""
+    return list(lexer)
+
+
+def segments(tokens):
+    result = []
+    separator = ""
+    current = []
+    for token in tokens:
+        if token in CONTROL_OPERATORS:
+            if current:
+                result.append((separator, current))
+                current = []
+            separator = token
+        else:
+            current.append(token)
+    if current:
+        result.append((separator, current))
+    return result
+
+
+def argv_words(words):
+    argv = []
+    index = 0
+    while index < len(words):
+        token = words[index]
+        if token.isdigit() and index + 1 < len(words) and words[index + 1] in REDIRECT_OPERATORS:
+            index += 3
+            continue
+        if token in REDIRECT_OPERATORS:
+            index += 2
+            continue
+        argv.append(token)
+        index += 1
+    return argv
+
+
+def plausible_words(words):
+    text = " ".join(words)
+    return bool(
+        re.search(r"(?<![A-Za-z0-9_-])(?:[^\s;&|()]+/)?git(?![A-Za-z0-9_-])", text)
+        and re.search(r"(?<![A-Za-z0-9_-])push(?![A-Za-z0-9_-])", text)
+    )
+
+
+def consume_wrapper(argv, index, wrapper):
+    options_with_value = WRAPPER_OPTIONS_WITH_VALUE.get(wrapper, set())
+    while index < len(argv):
+        token = argv[index]
+        if token == "--":
+            return index + 1, None, "ok"
+        if token in NO_EXEC_WRAPPER_OPTIONS:
+            return len(argv), None, "none"
+        if wrapper == "command" and token in COMMAND_INSPECTION_OPTIONS:
+            return len(argv), None, "none"
+        if wrapper == "env" and token in ("-S", "--split-string"):
+            if index + 1 >= len(argv):
+                return len(argv), None, "ambiguous"
+            try:
+                embedded = shlex.split(argv[index + 1], posix=True)
+            except ValueError:
+                return len(argv), None, "ambiguous"
+            return index + 2, embedded, "ok"
+        if wrapper == "env" and token.startswith("--split-string="):
+            try:
+                embedded = shlex.split(token.split("=", 1)[1], posix=True)
+            except ValueError:
+                return len(argv), None, "ambiguous"
+            return index + 1, embedded, "ok"
+        if wrapper == "env" and token.startswith("-S") and token != "-S":
+            try:
+                embedded = shlex.split(token[2:], posix=True)
+            except ValueError:
+                return len(argv), None, "ambiguous"
+            return index + 1, embedded, "ok"
+        if not token.startswith("-") or token == "-":
+            break
+        option = token.split("=", 1)[0]
+        if token in options_with_value:
+            if index + 1 >= len(argv):
+                return len(argv), None, "ambiguous"
+            index += 2
+        elif "=" in token and option in options_with_value:
+            index += 1
+        else:
+            index += 1
+
+    if wrapper == "timeout":
+        if index >= len(argv) or not DURATION.fullmatch(argv[index]):
+            return len(argv), None, "ambiguous"
+        index += 1
+    if wrapper == "env":
+        while index < len(argv) and ASSIGNMENT.fullmatch(argv[index]):
+            index += 1
+    return index, None, "ok"
+
+
+def git_push_target(args):
+    target = ""
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            index += 1
+            break
+        if arg in GIT_TERMINAL_OPTIONS:
+            return "none", ""
+        if arg in GIT_OPTIONS_WITH_VALUE:
+            if index + 1 >= len(args):
+                return "ambiguous", target
+            if arg == "-C":
+                target = args[index + 1]
+            index += 2
+            continue
+        option = arg.split("=", 1)[0]
+        if "=" in arg and option in GIT_OPTIONS_WITH_VALUE:
+            if option == "-C":
+                target = arg.split("=", 1)[1]
+            index += 1
+            continue
+        if arg.startswith("-C") and arg != "-C":
+            target = arg[2:]
+            index += 1
+            continue
+        if arg.startswith("-c") and arg != "-c":
+            index += 1
+            continue
+        if arg.startswith("-") and arg != "-":
+            index += 1
+            continue
+        break
+
+    if index < len(args) and args[index] == "push":
+        return "match", target
+    return "none", ""
+
+
+def resolve_segment(words):
+    argv = argv_words(words)
+    index = 0
+    while index < len(argv) and ASSIGNMENT.fullmatch(argv[index]):
+        index += 1
+
+    while index < len(argv):
+        executable = basename(argv[index])
+        if executable == "git":
+            return git_push_target(argv[index + 1 :])
+        if executable not in WRAPPERS:
+            if executable in NON_LAUNCHERS:
+                return "none", ""
+            return ("ambiguous", "") if plausible_words(argv[index + 1 :]) else ("none", "")
+
+        next_index, embedded, status = consume_wrapper(argv, index + 1, executable)
+        if status != "ok":
+            return status, ""
+        if embedded is not None:
+            argv = embedded + argv[next_index:]
+            index = 0
+            while index < len(argv) and ASSIGNMENT.fullmatch(argv[index]):
+                index += 1
+            continue
+        index = next_index
+
+    return "none", ""
+
+
+def direct_cd_target(words):
+    argv = argv_words(words)
+    index = 0
+    while index < len(argv) and ASSIGNMENT.fullmatch(argv[index]):
+        index += 1
+    if index >= len(argv) or basename(argv[index]) != "cd":
+        return None
+    index += 1
+    while index < len(argv):
+        if argv[index] == "--":
+            index += 1
+            break
+        if argv[index] in ("-L", "-P", "-e"):
+            index += 1
+            continue
+        break
+    return argv[index] if index < len(argv) else None
+
+
+command = os.environ.get("PUSH_GATE_COMMAND", "")
+raw_plausible = bool(
+    re.search(r"(?<![A-Za-z0-9_-])(?:[^\s;&|()]+/)?git(?![A-Za-z0-9_-])", command)
+    and re.search(r"(?<![A-Za-z0-9_-])push(?![A-Za-z0-9_-])", command)
+)
+try:
+    parsed_segments = segments(shell_tokens(command))
+except ValueError:
+    print(json.dumps({"status": "ambiguous" if raw_plausible else "none", "target": ""}))
+    raise SystemExit
+
+cwd_target = ""
+match_targets = []
+ambiguous_targets = []
+for _, words in parsed_segments:
+    cd_target = direct_cd_target(words)
+    if cd_target is not None:
+        cwd_target = cd_target
+        continue
+
+    status, target = resolve_segment(words)
+    if status == "match":
+        match_targets.append(target or cwd_target)
+    if status == "ambiguous":
+        ambiguous_targets.append(target or cwd_target)
+
+targets = []
+for target in match_targets + ambiguous_targets:
+    if target not in targets:
+        targets.append(target)
+
+commands = [shlex.join(["git", "-C", target, "push"]) if target else "git push" for target in targets]
+if len(targets) > 1:
+    status = "multi"
+elif match_targets:
+    status = "match"
+elif ambiguous_targets:
+    status = "ambiguous"
+else:
+    status = "none"
+print(json.dumps({"status": status, "target": targets[0] if targets else "", "commands": commands}))
+PY
+)"
+fi
+
+PARSER_STATUS=""
+TARGET_DIR=""
+if [ -n "$PARSE_RESULT" ]; then
+    PARSER_STATUS="$(printf '%s' "$PARSE_RESULT" | jq -r '.status // empty' 2>/dev/null || true)"
+    TARGET_DIR="$(printf '%s' "$PARSE_RESULT" | jq -r '.target // empty' 2>/dev/null || true)"
+fi
+case "$PARSER_STATUS" in
+    match|ambiguous|multi) ;;
+    none) exit 0 ;;
+    *)
+        plausibly_mentions_git_push || exit 0
+        PARSER_STATUS="ambiguous"
+        ;;
+esac
 
 # Need git and a work tree.
 command -v git &>/dev/null || exit 0
+
+# A compound command can carry pushes to multiple repositories. Run this same gate once for
+# each resolved target so every repo gets its own scan and surfaced marker; the generated
+# commands are parser input only and are never executed.
+if [ "$PARSER_STATUS" = "multi" ]; then
+    if ! printf '%s' "$PARSE_RESULT" | jq -e '.commands | length > 1' >/dev/null 2>&1; then
+        echo "gate-pre-push: ambiguous multi-repository push could not be split safely." >&2
+        exit 2
+    fi
+    MULTI_STATUS=0
+    while IFS= read -r nested_command; do
+        if ! NESTED_INPUT="$(printf '%s' "$INPUT" \
+            | jq -c --arg command "$nested_command" '.tool_input.command = $command' 2>/dev/null)"; then
+            echo "gate-pre-push: ambiguous multi-repository push could not be split safely." >&2
+            exit 2
+        fi
+        printf '%s' "$NESTED_INPUT" | bash "$0"
+        nested_status=$?
+        case "$nested_status" in
+            0) ;;
+            2) MULTI_STATUS=2 ;;
+            *) MULTI_STATUS=2 ;;
+        esac
+    done < <(printf '%s' "$PARSE_RESULT" | jq -r '.commands[]')
+    exit "$MULTI_STATUS"
+fi
+
+# PreToolUse runs before the shell command, so the hook cwd does not reflect `git -C` or a
+# preceding `cd`. Resolve those forms from the command and make every repository decision
+# below from that target. A missing or inaccessible explicit target cannot be pushed either.
+if [ -z "$TARGET_DIR" ] && [ "$PARSER_STATUS" = "ambiguous" ]; then
+    TARGET_DIR="$(printf '%s' "$COMMAND" \
+        | grep -oE '(^|[[:space:]])-C[[:space:]]+[^[:space:];&|]+' | tail -1 \
+        | sed -E 's/.*-C[[:space:]]+//')"
+fi
+if [ -z "$TARGET_DIR" ] && [ "$PARSER_STATUS" = "ambiguous" ]; then
+    TARGET_DIR="$(printf '%s' "$COMMAND" \
+        | grep -oE '(^|[;&|(][[:space:]]*)cd[[:space:]]+[^[:space:];&|]+' | tail -1 \
+        | sed -E 's/.*cd[[:space:]]+//')"
+fi
+TARGET_DIR="${TARGET_DIR%\"}"; TARGET_DIR="${TARGET_DIR#\"}"
+TARGET_DIR="${TARGET_DIR%\'}"; TARGET_DIR="${TARGET_DIR#\'}"
+# shellcheck disable=SC2016,SC2088  # These patterns intentionally match unexpanded shell text.
+case "$TARGET_DIR" in
+    '~')        TARGET_DIR="$HOME" ;;
+    '~/'*)      TARGET_DIR="$HOME/${TARGET_DIR#\~/}" ;;
+    '$HOME')    TARGET_DIR="$HOME" ;;
+    '$HOME/'*)  TARGET_DIR="$HOME/${TARGET_DIR#\$HOME/}" ;;
+esac
+if [ -n "$TARGET_DIR" ]; then
+    [ -d "$TARGET_DIR" ] || exit 0
+    cd "$TARGET_DIR" 2>/dev/null || exit 0
+fi
+
 git rev-parse --is-inside-work-tree &>/dev/null || exit 0
 
 # The knowledge base is expected to contain private identifiers and is not a public code repo.
@@ -191,6 +556,7 @@ SECRET_URL_RE+='|[Aa]uthorization:[[:space:]]*(Bearer|Basic)[[:space:]]+[A-Za-z0
 GENERIC_SECRET_RE="(secret|token|passwd|password|api[_-]?key|access[_-]?key|client[_-]?secret|auth[_-]?token|private[_-]?key|aws_secret)([\"' ]*[:=]| =>)[[:space:]]*[\"'\`]?[A-Za-z0-9+/_=-]{24,}"
 
 FINDINGS=""
+DENYLIST_NOTICE=""
 
 # Render only source context plus a one-way fingerprint of the full matched line. The
 # fingerprint distinguishes repeated findings without disclosing usable secret material.
@@ -263,7 +629,8 @@ if [ "$IS_PUBLIC" -eq 1 ]; then
         done < "$tf"
     done
 
-    # An unconfigured denylist is a clean no-op; universal secret checks still apply.
+    # Missing local policy must not pass silently. It surfaces once as a decision, while
+    # universal credential and filename checks above remain active regardless.
     if [ -n "$DENY_TOKENS" ]; then
         PHITS="$(printf '%s\n' "$ADDED" | grep -iniF -f <(printf '%s' "$DENY_TOKENS") 2>/dev/null | head -8 || true)"
         [ -n "$PHITS" ] && PHITS="$(mask_hits "$PHITS")"
@@ -272,6 +639,8 @@ if [ "$IS_PUBLIC" -eq 1 ]; then
         PMHITS="$(printf '%s\n' "$MESSAGES" | grep -iniF -f <(printf '%s' "$DENY_TOKENS") 2>/dev/null | head -6 || true)"
         [ -n "$PMHITS" ] && PMHITS="$(mask_msg_hits "$PMHITS")"
         [ -n "$PMHITS" ] && FINDINGS+=$'[PRIVATE] private identifier from the local denylist in an outgoing COMMIT MESSAGE to a PUBLIC repo (amend or rebase to fix):\n'"$PMHITS"$'\n'
+    else
+        DENYLIST_NOTICE='NOTICE (privacy): no denylist configured; private-identifier scanning is off.'
     fi
 fi
 
@@ -287,12 +656,15 @@ if [ -f "$VERIFY" ] && { [ ! -f "$EDITS" ] || [ ! "$EDITS" -nt "$VERIFY" ]; }; t
     reviewed=1
 fi
 
-# Clean diff and already reviewed -> nothing to surface, push through.
-[ -z "$FINDINGS" ] && [ "$reviewed" -eq 1 ] && exit 0
+# Clean diff, configured privacy scan, and already reviewed -> push through.
+[ -z "$FINDINGS" ] && [ -z "$DENYLIST_NOTICE" ] && [ "$reviewed" -eq 1 ] && exit 0
 
 # Surface once per HEAD: a re-push of the same commits is the decision -> allow.
+# Include the canonical repository root in the marker key so one repo cannot inherit
+# another repo's same-HEAD decision within the session.
 HEAD_SHA="$(git rev-parse HEAD 2>/dev/null || echo none)"
-SURFACED="$STATE_DIR/.pushgate-surfaced-$SID8"
+ROOT_KEY="$(printf '%s' "$ROOT" | git hash-object --stdin 2>/dev/null || true)"
+SURFACED="$STATE_DIR/.pushgate-surfaced-$SID8-$ROOT_KEY"
 [ -f "$SURFACED" ] && [ "$(cat "$SURFACED" 2>/dev/null)" = "$HEAD_SHA" ] && exit 0
 printf '%s' "$HEAD_SHA" > "$SURFACED" 2>/dev/null || true
 
@@ -306,6 +678,10 @@ REASON="unreviewed-surface"
         echo "  - Redact anything that is a real secret or private identifier (a new commit re-scans)."
         echo "  - If you have confirmed these are false positives, the re-push carries them through."
         [ "$reviewed" -eq 0 ] && echo
+    fi
+    if [ -n "$DENYLIST_NOTICE" ]; then
+        [ -z "$FINDINGS" ] && REASON="privacy-config-surface"
+        echo "$DENYLIST_NOTICE"
     fi
     if [ "$reviewed" -eq 0 ]; then
         echo "PAUSE (unreviewed push): these commits were not verified this session (no fresh .verify-passed marker)."
