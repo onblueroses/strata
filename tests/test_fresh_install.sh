@@ -615,25 +615,81 @@ import sys
 
 trace_path = Path(sys.argv[1])
 home = Path(sys.argv[2]).resolve()
-mutating = re.compile(
-    r"(?:open|openat|creat).*?(?:O_WRONLY|O_RDWR|O_CREAT|O_TRUNC|O_APPEND)"
-    r"|(?:rename|renameat|unlink|unlinkat|mkdir|mkdirat|rmdir|symlink|link|truncate|chmod)\("
-)
-quoted_absolute = re.compile(r'"(/[^"]*)"')
+hook_name = sys.argv[3]
+
+# Syscall names match whole. The earlier pattern matched substrings, so "link(" hit
+# inside "readlink(" and every path canonicalisation -- /tmp, /usr/bin/python3,
+# /proc/<pid>/fd/2 -- was reported as a write.
+MUTATING = {
+    "rename", "renameat", "renameat2",
+    "unlink", "unlinkat",
+    "mkdir", "mkdirat",
+    "rmdir",
+    "symlink", "symlinkat",
+    "link", "linkat",
+    "truncate",
+    "chmod", "fchmodat",
+    "mknod", "mknodat",
+}
+# These mutate only when the flags say so.
+OPENING = {"open", "openat", "openat2", "creat"}
+WRITE_FLAGS = re.compile(r"O_WRONLY|O_RDWR|O_CREAT|O_TRUNC|O_APPEND")
+# strace -f puts the pid in front of every line. A call cut in two by a context
+# switch resumes on a line that carries no path, so only the first half is read.
+CALL = re.compile(r"^(?:\[pid\s+\d+\]\s*|\d+\s+)?(?P<name>[a-z_0-9]+)\((?P<args>.*)$")
+QUOTED_ABSOLUTE = re.compile(r'"(/[^"]*)"')
+
+# Allowed outside the throwaway HOME, with the reason for each:
+ALLOWED_PATHS = {
+    # The bit bucket. Nothing written here survives the call.
+    "/dev/null",
+}
+# bash's controlling-terminal probe. Every bash start-up issues this call before any
+# hook code runs, `bash -c true` included; it names a terminal device rather than a
+# file, and under this test it fails with ENXIO for want of a controlling terminal.
+# Matched as a whole call, not as a path, so a hook that opens /dev/tty to write to
+# the terminal, or chmods it, or unlinks it, is still a finding. The return value
+# stays out of the match: a runner that does give bash a terminal makes the same
+# start-up call.
+TTY_PROBE = re.compile(r'^openat\(AT_FDCWD, "/dev/tty", O_RDWR\|O_NONBLOCK\)')
+# The test's own scratch root is deliberately absent from that list. The throwaway
+# HOME is a child of it, so an entry for the root would retire the containment
+# check this function exists to make. No hook writes there.
+
+# A failed call still counts: a hook that tries to write outside HOME has crossed
+# the boundary whether or not the kernel let it. Relative paths are not examined,
+# since run_hook_case gives every hook a cwd inside the throwaway HOME.
 violations = []
 for line in trace_path.read_text(errors="replace").splitlines():
-    if not mutating.search(line):
+    call = CALL.match(line)
+    if call is None:
         continue
-    for raw_path in quoted_absolute.findall(line):
-        if raw_path == "/dev/null":
+    name = call.group("name")
+    args = call.group("args")
+    if name in OPENING:
+        if not WRITE_FLAGS.search(args):
             continue
-        path = Path(raw_path)
+    elif name not in MUTATING:
+        continue
+    if TTY_PROBE.match(f"{name}({args}"):
+        continue
+    for raw_path in QUOTED_ABSOLUTE.findall(args):
+        if raw_path in ALLOWED_PATHS:
+            continue
         try:
-            path.resolve().relative_to(home)
-        except (ValueError, OSError):
-            violations.append(raw_path)
+            resolved = Path(raw_path).resolve()
+        except OSError:
+            resolved = Path(raw_path)
+        try:
+            resolved.relative_to(home)
+        except ValueError:
+            violations.append(line.strip())
 if violations:
-    print(f"{sys.argv[3]} wrote outside throwaway HOME: {sorted(set(violations))}", file=sys.stderr)
+    # The syscall line, not only the path. A run that fails has to say which call
+    # made the claim, or the next reader repeats this investigation from scratch.
+    print(f"{hook_name} wrote outside throwaway HOME:", file=sys.stderr)
+    for entry in sorted(set(violations))[:10]:
+        print(f"  {entry}", file=sys.stderr)
     raise SystemExit(1)
 PY
 }
