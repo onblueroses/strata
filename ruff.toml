@@ -8,3 +8,43 @@ extend-exclude = [
   "skills/skill-creator/eval-viewer",
   "skills/browser-use",
 ]
+
+[lint]
+# The baseline is this repo's choice as of 2026-08-20, not ruff's default, which
+# moves: 0.15 defaulted to E4/E7/E9/F, 0.16 widened it and reported 107 findings
+# against the same files. Measured at ruff 0.16.3 over this tree, every family
+# below reports zero, so the set is a floor already met rather than a backlog.
+#
+# Deliberately left out, each for a reason rather than for the count:
+#   E501, D, ANN, COM, EM, PT, PTH, T20 - a house style this tree does not follow.
+#   B, BLE, I, S, SIM, TRY, UP, PL, RUF - real findings here; they need work, not a
+#     select entry, and each is its own ticket when someone takes it on.
+#   ERA - flags comments that read like code, and this tree explains itself in
+#     comments, so it would buy noqa markers rather than clarity.
+#   FIX, TD - they forbid the TODO markers the workflow writes on purpose.
+#   DOC - its rules are preview-only, so zero findings is not evidence of anything.
+#   AIR, FAST, DJ, NPY, PD - frameworks this repo does not import.
+select = [
+  "E4", "E7", "E9", "F", "W",  # pycodestyle errors and warnings, pyflakes
+  "A",      # builtin shadowing
+  "ARG",    # unused arguments
+  "ASYNC",  # blocking calls in async code
+  "C4",     # comprehensions
+  "DTZ",    # naive datetimes
+  "FA",     # missing `from __future__ import annotations`
+  "FLY",    # static join over an f-string
+  "G",      # logging call format
+  "ICN",    # import conventions
+  "INT",    # gettext
+  "LOG",    # logging misuse
+  "N",      # pep8 naming
+  "PGH",    # blanket noqa and type: ignore
+  "PIE",    # misc lints
+  "Q",      # quote consistency
+  "RET",    # return paths
+  "RSE",    # raise
+  "SLOT",   # __slots__ on subclasses of str, tuple, Enum
+  "TC",     # runtime imports that belong under TYPE_CHECKING
+  "TID",    # relative and banned imports
+  "YTT",    # sys.version misuse
+]

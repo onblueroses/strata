@@ -7,8 +7,8 @@ WARN_REPOS=()
 check_repo() {
     local dir="$1"
     [ -d "$dir/.git" ] || return
-    local remote
-    remote=$(git -C "$dir" remote get-url origin 2>/dev/null) || return
+    # A repo with no origin has nowhere to push, so it cannot hold unpushed commits.
+    git -C "$dir" remote get-url origin >/dev/null 2>&1 || return
     local status
     status=$(git -C "$dir" status -sb 2>/dev/null | head -1)
     if echo "$status" | grep -q "\[ahead"; then

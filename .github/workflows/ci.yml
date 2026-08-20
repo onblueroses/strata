@@ -35,15 +35,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install the gate tooling
-        # Pinned on purpose. ruff.toml selects no rule set, so the gate inherits
-        # ruff's defaults, and those move: 0.16 widened them and reports 108 findings
-        # against this same config. An unpinned linter turns the badge red without a
-        # commit. Bump these deliberately, and give ruff.toml an explicit [lint]
-        # select in the same commit as a ruff 0.16 bump.
-        # Verified green: ruff 0.15.22, pyright 1.1.411, pytest 9.1.1.
+        # Pinned on purpose, so that a release of any of these three turns the badge
+        # red only when someone changes this file. ruff.toml now carries an explicit
+        # [lint] select, so a ruff bump moves the rules only where the release
+        # changes a rule this repo asked for.
+        # Verified green over this tree: ruff 0.16.3, pyright 1.1.411, pytest 9.1.1.
         run: |
           python -m pip install --disable-pip-version-check --quiet \
-            "ruff==0.15.22" "pyright==1.1.411" "pytest>=9.0,<10"
+            "ruff==0.16.3" "pyright==1.1.411" "pytest>=9.0,<10"
 
       - name: ruff
         run: ruff check .
@@ -83,8 +82,12 @@ jobs:
           shellcheck --version
 
       - name: shellcheck
-        # severity=error only. The tree carries style and info findings knowingly;
-        # this gate is for scripts that are broken, not scripts that are unfashionable.
+        # severity=warning. Measured over the same 56 scripts: error 0, warning 0,
+        # info 146, style 147. The tree is already clean at warning, so the gate
+        # records a line the repo holds. info stays out because 134 of its 146
+        # findings are SC2016 on single-quoted strings these scripts mean literally:
+        # this gate is for scripts that are broken, not for scripts that are
+        # unfashionable.
         run: |
           scripts=()
           while IFS= read -r f; do
@@ -97,7 +100,7 @@ jobs:
             exit 1
           fi
           printf 'shellcheck over %d scripts\n' "${#scripts[@]}"
-          shellcheck --severity=error -- "${scripts[@]}"
+          shellcheck --severity=warning -- "${scripts[@]}"
 
       - name: shell tests
         # Every script runs even after one fails, so a red run reports the whole set
