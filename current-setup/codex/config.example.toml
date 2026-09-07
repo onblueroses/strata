@@ -1,0 +1,8 @@
+# Minimal portable example. Native roles are registered by placing *.toml files in
+# $CODEX_HOME/agents/; this file does not replace that directory registration.
+model = "gpt-5.6-sol"
+model_provider = "openai"
+service_tier = "default"
+
+# Authentication is supplied by the local ChatGPT subscription login.
+# Keep credentials and machine-specific settings in the target config.
