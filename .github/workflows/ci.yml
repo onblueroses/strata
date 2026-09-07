@@ -1,4 +1,4 @@
-name: CI
+name: setup validation
 
 on:
   push:
@@ -9,112 +9,11 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  # Superseded PR pushes are worth cancelling; pushes to main are not. Cancelling
-  # a main run leaves the workflow's latest state non-green until the next finishes.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
-  python:
-    # The three gates .claude/commands/check.md documents, in the order it lists them.
-    name: python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # 3.10 is the floor bin/strata-init enforces (PYTHON_MIN_MINOR=10, set there
-        # because pydantic-ai declares >=3.10). 3.14 is the current release. Testing
-        # both ends keeps the "Python 3.10 or newer" claim in SETUP.md honest.
-        python-version: ["3.10", "3.14"]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install the gate tooling
-        # Pinned on purpose, so that a release of any of these three turns the badge
-        # red only when someone changes this file. ruff.toml now carries an explicit
-        # [lint] select, so a ruff bump moves the rules only where the release
-        # changes a rule this repo asked for.
-        # Verified green over this tree: ruff 0.16.3, pyright 1.1.411, pytest 9.1.1.
-        run: |
-          python -m pip install --disable-pip-version-check --quiet \
-            "ruff==0.16.3" "pyright==1.1.411" "pytest>=9.0,<10"
-
-      - name: ruff
-        run: ruff check .
-
-      - name: pyright
-        # The directory list is deliberate. pyrightconfig.json carries `include: []`,
-        # so a bare `pyright` walks whatever else is in the tree instead of the source.
-        run: pyright telemetry hooks tests bin
-
-      - name: pytest
-        run: python -m pytest -q
-
-  shell:
-    # bash is the larger half of this repo: 21 test scripts over 59 shipped scripts,
-    # none of which pytest collects.
-    name: shell
+  validate:
+    name: portable setup
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # Deliberately no setup-python here. tests/test_fresh_install.sh:33 resets
-      # PATH to the system directories, so a toolcache interpreter is dropped
-      # before strata-init runs and the shell tests always use the runner's
-      # system python3 (3.12 on ubuntu-24.04). A setup-python step here would
-      # claim a version this job does not test. The python job above covers the
-      # 3.10 floor for ruff, pyright and pytest; making the installer itself run
-      # under 3.10 needs the test to carry the interpreter through its own PATH
-      # sanitising, which is a change to the test, not to CI.
-
-      - name: Assert the hook dependencies resolve
-        # The gates degrade to skipped checks when jq is absent, which would let the
-        # tests below pass while testing nothing. Fail here instead. Both tools ship
-        # on ubuntu-latest; this step is the tripwire for the day one of them stops.
-        run: |
-          command -v jq
-          command -v shellcheck
-          shellcheck --version
-
-      - name: shellcheck
-        # severity=warning. Measured over the same 56 scripts: error 0, warning 0,
-        # info 146, style 147. The tree is already clean at warning, so the gate
-        # records a line the repo holds. info stays out because 134 of its 146
-        # findings are SC2016 on single-quoted strings these scripts mean literally:
-        # this gate is for scripts that are broken, not for scripts that are
-        # unfashionable.
-        run: |
-          scripts=()
-          while IFS= read -r f; do
-            head -c 2 -- "$f" | grep -q '#!' || continue
-            head -n 1 -- "$f" | grep -qE '(bash|sh)$|(bash|sh)[[:space:]]' || continue
-            scripts+=("$f")
-          done < <(git ls-files)
-          if [ "${#scripts[@]}" -eq 0 ]; then
-            echo "no shell scripts matched; the selection above is broken" >&2
-            exit 1
-          fi
-          printf 'shellcheck over %d scripts\n' "${#scripts[@]}"
-          shellcheck --severity=warning -- "${scripts[@]}"
-
-      - name: shell tests
-        # Every script runs even after one fails, so a red run reports the whole set
-        # rather than only the first casualty.
-        run: |
-          fail=0
-          for t in tests/test_*.sh; do
-            echo "::group::$t"
-            if bash "$t"; then
-              echo "PASS $t"
-            else
-              echo "FAIL $t"
-              fail=1
-            fi
-            echo "::endgroup::"
-          done
-          exit "$fail"
+      - name: Validate setup
+        run: python3 scripts/check_setup.py

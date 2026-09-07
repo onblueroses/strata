@@ -1,4 +1,0 @@
-{
-  "<PICK_MODEL_ID>":   {"in": 0.0, "out": 0.0, "cache_read": 0.0, "cache_write": 0.0, "billing": "subscription"},
-  "<PICK_MODEL_ID_2>": {"in": 0.0, "out": 0.0, "cache_read": 0.0, "cache_write": 0.0, "billing": "marginal"}
-}

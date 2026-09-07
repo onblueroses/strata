@@ -13,6 +13,3 @@ updates:
       github-actions:
         patterns:
           - "*"
-# No pip entry: the Python tool versions are pinned inline in ci.yml rather than in a
-# requirements file, and Dependabot reads files, not workflow arguments. Bump them in
-# the workflow.

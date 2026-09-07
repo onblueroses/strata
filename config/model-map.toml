@@ -1,8 +1,0 @@
-# Bind symbolic lanes to concrete model ids. The lane runner reads only this
-# table; replace placeholders with models available to this install.
-
-[lanes]
-strong = "<PICK_STRONGEST_AVAILABLE>"
-fast = "<PICK_FAST_CODE_MODEL>"
-grader = "<PICK_CHEAP_PARALLEL>"
-breadth = "<PICK_NON_PRIMARY>"

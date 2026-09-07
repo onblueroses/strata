@@ -1,60 +1,31 @@
-<!-- keywords: Claude Code native memory, note discipline, stable tokens, append-only corrections, pointers -->
-# Native Memory Notes
+# Knowledge Management
 
-Claude Code ships project memory. Strata uses it and does not maintain a second memory backend.
+Use three separate layers:
 
-## Quick Nav
+| Layer | Purpose |
+| --- | --- |
+| Task ledger | Live ownership, decisions, questions, and follow-through |
+| Append-only memory | Compact facts, current state, events, and document pointers |
+| Document vault | Rich notes, research, handoffs, and other durable documents |
 
-| Need | Read |
-|------|------|
-| Check what exists | Verify the backend |
-| Write a useful record | Record shape |
-| Keep retrieval reliable | Stable anchors |
-| Correct an old claim | Append corrections |
+The operator supplies the locations and commands for these layers. This snapshot intentionally contains no private service command, account name, absolute path, or credential.
 
-## Verify the backend
+## Append-only memory
 
-Inspect `$HOME/.claude/projects/*/memory/` to see the native project-memory files
-that exist on the current installation. Resolve the active project through the
-current session transcript; encoded directory names are an implementation detail,
-so a guessed path is not evidence.
-
-Read the target file before appending. The file on disk is the check for what the
-platform retained and whether a proposed record already exists.
-
-## Record shape
-
-Keep one record on one line. Begin it with a type prefix:
+Each record is one line in the form:
 
 ```text
-F <stable-token> <durable fact>
-S <stable-token> <current state>
-E <stable-token> <event and outcome>
-P <stable-token> <path to richer content>
+TYPE ENTITY SCOPE KEY PAYLOAD
 ```
 
-Use `F` for a fact expected to remain true, `S` for replaceable current state,
-`E` for something that happened, and `P` for a filesystem pointer.
+Use `F` for durable facts, `S` for changeable current state, `E` for events, and `P` for document pointers. Use stable entity, scope, and key tokens. Keep records within the configured byte limit. Append corrections as newer records; do not edit or delete old records.
 
-Write the claim so another session can test it against a file, command, commit,
-issue, or observed result. If no such check exists, label the uncertainty in the
-record instead of turning it into a fact.
+Read mutable state by recalling the exact entity, scope, and key, then selecting the greatest record id. Treat a truncated recall as incomplete and narrow the query until coverage is complete. Store rich content in a document first, then append a pointer with its absolute operator-supplied path and reason.
 
-## Stable anchors
+## Delegated candidates
 
-Anchor records with literals that survive paraphrase: project slugs, file paths,
-config keys, command names, issue ids, schema fields, or commit ids. Reuse the
-same token when the same subject appears again.
+Delegates return candidates for primary judgment. A detached dispatch may use the operator-supplied proposal inbox when its brief names that route. The primary validates grammar, byte limits, identity, and exact recall before accepting a candidate. The proposal queue is not live state until the primary settles it.
 
-Do not rely on semantic similarity for identity. A literal search for the stable
-token should find the relevant history even when wording changes.
+## Boundaries
 
-Keep explanations, logs, designs, and long evidence in ordinary project files.
-Store a `P` record with the exact path and a short statement of why it matters.
-
-## Append corrections
-
-Correct a record by appending a line that repeats its stable token and states what
-it supersedes. Leave the old line in place so the change remains visible.
-
-Before relying on current state, read all matching lines and use the newest supported correction. Verify consequential claims against their pointed-to source.
+Keep task state in the task ledger. Keep repository warnings in the repository's local instructions. Keep rich knowledge in documents. Treat legacy summaries and rendered dates as historical context unless current evidence confirms them.

@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-STRATA_LANE_SHIM="${BASH_SOURCE[0]}"
-# shellcheck source=bin/lib/lane.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/lane.sh"

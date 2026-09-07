@@ -1,4 +1,0 @@
-interface:
-  display_name: "Era Audit"
-  short_description: "Audit instruction libraries for model-era rot"
-  default_prompt: "Use $era-audit to audit this instruction library against live ground truth."
