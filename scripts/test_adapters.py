@@ -109,6 +109,7 @@ class AdapterTests(unittest.TestCase):
         cmd = [sys.executable, str(ROOT / "delegation/codex-run.py"), "fast", "--cwd", str(self.work), "example brief"]
         refused = subprocess.run(cmd, env={**env, "TEST_AUTH": "API key login"}, capture_output=True, text=True)
         self.assertEqual(refused.returncode, 2)
+        self.assertIn("ChatGPT subscription login", refused.stderr)
         self.assertFalse(log.exists())
         accepted = subprocess.run(cmd, env=env, capture_output=True, text=True)
         self.assertEqual(accepted.returncode, 0, accepted.stderr)

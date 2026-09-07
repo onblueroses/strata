@@ -41,7 +41,7 @@ def main():
     parser.add_argument("--sandbox", choices=["read-only", "workspace-write"], default="read-only")
     parser.add_argument("--timeout", type=float, default=1800)
     parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_intermixed_args()
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("timeout must be positive")
     if args.file and args.prompt:
