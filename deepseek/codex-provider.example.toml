@@ -1,0 +1,11 @@
+# Sanitized [model_providers.deepseek] block from the live Codex config.
+# This bridge is used only by ds-codex; it is not the native OpenAI route.
+[model_providers.deepseek]
+name = "DeepSeek (local responses bridge)"
+base_url = "http://127.0.0.1:4100/v1"
+env_key = "DEEPSEEK_API_KEY"
+wire_api = "responses"
+
+# The bridge's tool continuation path does not carry DeepSeek reasoning_content.
+# The live ds-codex wrapper disables thinking at this bridge. This limitation does
+# not apply to ordinary native OpenAI routes or to the official primary overlay.

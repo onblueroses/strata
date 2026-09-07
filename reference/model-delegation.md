@@ -4,9 +4,11 @@
 
 Primary Claude, Codex, and the user-facing DeepSeek primary have equal task coverage and authority. A delegated role receives only the authority granted in its brief.
 
-## Native subscription tiers
+## Native runtimes and provider routes
 
-Use the current native Codex catalog through the subscription-backed OpenAI provider. The inspected installation reported ChatGPT authentication with the default OpenAI provider on the snapshot date; treat that as dated evidence and verify the provider before each launch or spawn. Do not use or silently fall back to a disallowed provider.
+Native Codex delegation uses the subscription-backed OpenAI provider. Verify the provider before launch; do not silently switch to an API route. Claude Code also has [native Claude agents](../claude/README.md), and its cross-runtime calls use [delegation wrappers](../delegation/README.md).
+
+[DeepSeek](../deepseek/README.md) has distinct primary and delegated harnesses, agentic Flash/Pro routes, and a Codex/LiteLLM bridge. These use metered DeepSeek API access with explicit spend authority. [Kimi](../kimi/README.md) uses a native OAuth client. These runtimes are part of the setup; the Codex subscription policy does not describe their billing. Consult the [route inventory](../providers.toml) and verify the selected route's actual provider before launching.
 
 Choose the tier by work:
 

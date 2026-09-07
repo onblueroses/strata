@@ -1,0 +1,43 @@
+{
+  "description": "Native memory, continuity and shared privacy registrations. Replace __STRATA_ROOT__; configure adapters and approve native hook trust before use.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" memory-wake",
+            "timeout": 20
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": []
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" continuity",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" privacy",
+            "timeout": 40
+          }
+        ]
+      }
+    ]
+  }
+}

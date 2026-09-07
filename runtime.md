@@ -1,66 +1,36 @@
-# Current runtime snapshot
+# Native setup coverage
 
-This document is an anonymized snapshot of one working installation. It describes observed wiring and portability boundaries; it is not a drop-in configuration.
+Snapshot date: 2026-09-07. The source is the live native settings, active skill and agent directories, shared instructions, and installed delegation wrappers. No session transcripts, authentication stores, trust records, or private workspace data are copied.
 
-## Provider and execution defaults
+| Source surface | Portable counterpart | Adaptation |
+|---|---|---|
+| Shared Claude/Codex/Kimi instruction spine | Root `AGENTS.md` and `CLAUDE.md` link | Identity and private operations replaced with operator-supplied services |
+| Claude native agents and selected settings | `claude/` | Five agent bodies retained; safe settings whitelist; credentials and machine permissions omitted |
+| Claude active hook registrations | `claude/hooks.example.json` | Event topology preserved through explicit local adapters |
+| Codex native roles and settings | `codex/` | Seven roles, actual primary model, subscription provider and memory-feature settings |
+| Codex native lifecycle/privacy hooks | `codex/hooks.example.json` | Memory, preserved empty startup slot, compaction, and both privacy gates |
+| Claude-to-Codex wrappers | `delegation/codex-run.py` | Native tiers, subscription preflight, authority boundary, logs and process lifecycle; private telemetry/cache removed |
+| DeepSeek primary operating layer | `deepseek/` | Primary instructions, managed provider overlay, separate delegate boundary and spend guard |
+| DeepSeek alternate routes | DeepSeek README and provider examples | Agentic Flash/Pro and Codex/LiteLLM bridge dependencies identified |
+| Kimi native client | `kimi/` | Observed model/provider and OAuth-backed search/fetch config; token stores omitted |
+| Active personal skill bodies | `skills/` | Workflows and required support files retained; private campaign examples and services generalized |
 
-The active Codex CLI uses the default OpenAI service tier with ChatGPT authentication. Authentication material is stored by the local client and is not part of this snapshot. The runtime permits commands without an approval prompt and uses full local filesystem access. Reproduce those choices only after reviewing the security model of the target machine.
+## Runtime distinctions
 
-The configured model and reasoning settings are installation choices. The role files retain the observed native model identifiers as dated configuration examples. Account names, project paths, and trust entries are omitted.
+Claude Code uses its native Anthropic model aliases and agents; it may delegate across runtimes through an authorized wrapper. The inspected primary setting is `opus[1m]` with `xhigh` effort.
 
-## Hook wiring
+Codex uses the OpenAI provider and ChatGPT authentication. Its inspected primary is `gpt-6-astra`; native workers select Sol, Terra, or Luna through their role files. The source disables native memory and uses an external wake service. The source's full-access and no-prompt settings are recorded in the example and require deliberate review before adoption. The portable subprocess delegate defaults to read-only rather than inheriting full access.
 
-The Codex hook configuration has these effective routes:
+DeepSeek has a separate user-facing primary and bounded delegates. Its source primary is one-shot/headless and requires explicit spend confirmation. Native child/fork/workflow surfaces are disabled because that harness version does not enforce weaker child memory authority. The additional `ds-flash` and `ds-pro` routes use an agentic pydantic-ai harness; `ds-codex` uses a separately configured LiteLLM bridge. These are metered DeepSeek calls.
 
-| Event | Matcher | Current behavior |
-| --- | --- | --- |
-| `SessionStart` | startup, resume, clear, compact | Runs a memory wake hook. It injects the session scope and memory authority rules, then includes the external store's wake output when available. |
-| `SessionStart` | startup, resume, clear, compact | An empty hook slot is present. It does nothing and preserves the configured matcher layout. |
-| `SessionStart` | compact | Runs a continuity hook. It reports repository status and saved session context after compaction. |
-| `PreToolUse` | `Bash` | Runs a wrapper that sends the command to both privacy gates. A clean result from both permits the command; a refusal, timeout, missing gate, malformed event, or hook failure refuses it. |
+Kimi Code uses its own managed provider and OAuth files, with `kimi-code/k3-256k` selected in the inspected configuration. It shares the instruction spine but has no copied custom hook bridge or managed skill installer in this snapshot. Installed does not imply currently running.
 
-The wrapper invokes two local gates: one for public or external actions and one for outgoing repository history. Their implementation is installation-specific and is deliberately not copied here. The wrapper uses absolute host paths in the live setup, so copying the hook file alone would create a broken or unsafe install.
+## Hooks and services
 
-The host's broader settings file also contains event hooks for session lifecycle, file edits, Bash, and notifications. Those hooks are separate from `codex/hooks.json`; this snapshot records their presence as host integration, not as portable Codex behavior. The settings file also enables a status-line command and a single installed editor plugin. Their commands, paths, credentials, and account-specific integrations stay local.
+Both Claude and Codex register hooks natively. The portable registration files call the [shared adapter](integrations/README.md), which requires explicitly supplied commands for memory, continuity, privacy, ownership, notifications, and workspace operations. Empty configuration does not silently pass a privacy check. The adapter is a bridge to policy implementations, not those implementations or an OS sandbox.
 
-The host settings register the following responsibilities (names are abstracted):
+The Claude source registers startup memory/core, workspace sync, child-session cleanup, compaction recovery, time, compute, and backup checks; stop/notification handling; edit/write boundaries and receipts; shell isolation and two privacy gates; and end-of-session sync. Retired lint-on-write, resource-sizing warnings, sibling narration, context nudges, browser-window movement, and workspace-wide unpushed warnings are not reintroduced.
 
-| Event | Configured responsibilities |
-| --- | --- |
-| Session start | Memory wake and authority, workspace sync, stale child-session cleanup, compaction recovery, clock injection, paid-compute and backup checks |
-| Before edit/write | Shared-config write boundary; ownership warning for writes |
-| Before shell | Isolated-runtime boundary; outgoing-history and public-action privacy gates |
-| After edit/write | Session edit receipts |
-| Stop / notification | Notifications; asynchronous continuation on stop |
-| Session end | Workspace sync |
+The Codex source registers memory wake, an empty startup slot preserving hook trust indices, compaction continuity, and a shell hook dispatching both public-action and outgoing-history privacy gates. Native hook approval remains a target-client responsibility.
 
-Retired process hooks can remain on disk without being registered. The inspected settings do not register lint-on-write, resource-sizing warnings, sibling narration, context nudges, browser-window movement, or workspace-wide unpushed warnings.
-
-## Enabled versus present
-
-The native Codex memory feature is disabled. A separate memory service and its wake hook are present and active, so disabling native memory does not disable external memory behavior. The runtime should treat the external store as optional: if its executable or store is absent, report that wake is unavailable and continue from current files and other authoritative sources.
-
-The live skill directory contains these personal skills:
-
-| Skill | Purpose |
-| --- | --- |
-| `pickup-context` | Reconcile current files, repository instructions, active work, decisions, and optional memory or issue ledgers into a short orientation. |
-| `close-session` | Reconcile completed work, verification, follow-ups, and restart context at the end of a session. |
-| `cold-email` | Draft a constrained, personal cold-outreach message from verified recipient context. |
-| `outreach-atlas` | Build and audit a sourced prospect or outreach data layer. |
-| `research-viz` | Create diagrams or interactive research visualizations. |
-| `triage` | Route inbound material to an owner and tracking level without resolving it. |
-
-The installation also has bundled or vendor-provided skills elsewhere in the client skill search path. They are available to the host runtime but are not vendored in this snapshot. A skill being installed on the host does not make it part of the portable core.
-
-## Install links and portability
-
-The local install script links the shared instruction file, hook configuration, role definitions, and selected skill directories into the Codex home directory. It repairs missing or wrong symlinks and reports regular files as blocked rather than replacing them. It also links a small set of shared personal skills. Existing unrelated skills remain untouched.
-
-The script currently embeds the source repository location and assumes a Unix shell, symlinks, Python, and a writable Codex home. A portable installer must replace those with a user-selected repository root and runtime home, validate source files before linking, and make no assumptions about a particular home directory.
-
-## External services
-
-The live workflow can consult an external memory store and an issue or work ledger. Those services are optional adapters, not requirements of the portable skills. The skills below name the information they need and define read-only fallback behavior; they do not invent endpoints, credentials, or client commands. A target installation may provide equivalent adapters, local files, or no adapter at all.
-
-Keep credentials in the target runtime's secret store. Keep account-specific MCP integrations, private project inventories, trust lists, telemetry, session databases, and host paths out of this directory.
+The memory store, issue ledger, document vault, Chrome integration, remote infrastructure, and vendor skills are dependencies. Their public forms are the adapter contracts and workflows; private records, service addresses, credentials, identity, and deployment targets are absent. Source-specific cache, telemetry, resume machinery and full external harness installers are not copied blindly.

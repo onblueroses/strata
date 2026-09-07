@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -160,6 +161,64 @@ def check_forbidden_and_secrets(root: Path, errors: list[str]) -> None:
             errors.append(f"credential-like value found in {relative}")
 
 
+def check_native_setup(root: Path, errors: list[str]) -> None:
+    required = (
+        "providers.toml", "claude/README.md", "claude/settings.example.json",
+        "claude/hooks.example.json", "codex/hooks.example.json",
+        "deepseek/AGENTS.md", "deepseek/AGENTS.delegate.md", "deepseek/primary-overlay.example.yml",
+        "deepseek/codex-provider.example.toml", "deepseek/provider.env.example",
+        "deepseek/launch-adapter.sh", "kimi/config.example.toml", "kimi/AGENTS.md",
+        "delegation/codex-run.py", "integrations/hook_adapter.py", "integrations/adapters.example.json",
+    )
+    for name in required:
+        if not (root / name).is_file():
+            errors.append(f"missing native setup artifact: {name}")
+    for relative in tracked_paths(root):
+        path = root / relative
+        if not path.is_file():
+            continue
+        if path.suffix in {".json", ".toml"}:
+            try:
+                text = path.read_text()
+                json.loads(text) if path.suffix == ".json" else tomllib.loads(text)
+            except (ValueError, OSError) as exc:
+                errors.append(f"invalid native configuration {relative}: {exc}")
+    route_file = root / "providers.toml"
+    if route_file.is_file():
+        try:
+            routes = tomllib.loads(route_file.read_text())["routes"]
+            for name in ("claude", "codex", "dsh_primary", "dsh_agent", "ds_flash", "ds_pro", "ds_codex", "kimi"):
+                if name not in routes:
+                    errors.append(f"missing provider route: {name}")
+            for name in ("dsh_primary", "dsh_agent", "ds_flash", "ds_pro", "ds_codex"):
+                if not routes.get(name, {}).get("spend_authorization_required"):
+                    errors.append(f"metered route lacks spend boundary: {name}")
+        except (ValueError, KeyError) as exc:
+            errors.append(f"invalid provider inventory: {exc}")
+    for name in ("code-reviewer", "knowledge-lookup", "orchestrator", "quick-research", "web-mapper"):
+        path = root / "claude" / "agents" / f"{name}.md"
+        if not path.is_file() or not path.read_text().startswith("---\n"):
+            errors.append(f"missing native Claude agent/frontmatter: {name}")
+    for name in ("pickup-context", "close-session", "cold-email", "outreach-atlas", "research-viz", "triage", "end", "context-save", "deploy"):
+        if not (root / "skills" / name / "SKILL.md").is_file():
+            errors.append(f"missing active personal skill: {name}")
+    for name in ("claude/hooks.example.json", "codex/hooks.example.json"):
+        path = root / name
+        if not path.is_file():
+            continue
+        try:
+            config = json.loads(path.read_text())
+            privacy = []
+            for group in config["hooks"]["PreToolUse"]:
+                for hook in group["hooks"]:
+                    if hook["command"].endswith(" privacy"):
+                        privacy.append(hook)
+            if len(privacy) != 1 or privacy[0].get("timeout", 0) < 40:
+                errors.append(f"{name} needs one combined privacy adapter with sufficient timeout")
+        except (ValueError, KeyError, TypeError) as exc:
+            errors.append(f"invalid hook registration {name}: {exc}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
@@ -171,6 +230,7 @@ def main() -> int:
     shared = root / "CLAUDE.md"
     if not shared.is_symlink() or shared.readlink() != Path("AGENTS.md"):
         errors.append("CLAUDE.md must link to AGENTS.md")
+    check_native_setup(root, errors)
     check_roles(root, errors)
     check_config(root, errors)
     check_links(root, errors)

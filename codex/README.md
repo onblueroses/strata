@@ -11,3 +11,11 @@ This directory contains a portable role matrix for subscription-backed native Co
 5. Adapt lifecycle hooks, memory commands, task-ledger commands, and external integrations to the target environment before enabling them. The role files contain boundaries and responsibilities; they do not install private infrastructure.
 
 Delegates return findings and memory candidates to the primary. The primary owns acceptance, shared memory, task-ledger state, and external side effects. Use the strong, bounded, and mechanical tiers according to failure cost and task shape.
+
+## Primary settings and hooks
+
+The example now records the inspected primary model (`gpt-6-astra`), reasoning effort, disabled native memory, and full-access execution settings. These are source defaults to review, not required permission levels for a new installation. Native role files retain their own model and sandbox choices.
+
+[hooks.example.json](hooks.example.json) preserves the native event topology. Replace `__STRATA_ROOT__`, configure the [shared adapters](../integrations/README.md), merge the registration, and approve hook trust through the native client. The empty SessionStart slot intentionally preserves the source layout.
+
+The separate metered DeepSeek/Codex bridge is described under [DeepSeek](../deepseek/README.md). Do not use it as an automatic subscription fallback.

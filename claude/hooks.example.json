@@ -1,0 +1,35 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" memory-wake"}]},
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" memory-core"}]},
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" workspace-sync", "timeout": 20}]},
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" session-cleanup", "timeout": 20}]},
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" continuity", "timeout": 20}]},
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" clock", "timeout": 20}]},
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" compute-guard"}]},
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" backup-guard"}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" notify", "timeout": 20}]},
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" async-rewake", "timeout": 20, "async": true}]}
+    ],
+    "Notification": [
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" notify", "timeout": 20}]}
+    ],
+    "PreToolUse": [
+      {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" config-write", "timeout": 20}]},
+      {"matcher": "Write", "hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" ownership", "timeout": 20}]},
+      {"matcher": "Bash", "hooks": [
+        {"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" isolated-runtime", "timeout": 20},
+        {"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" privacy", "timeout": 40}
+      ]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" edit-receipts", "timeout": 20}]}
+    ],
+    "SessionEnd": [
+      {"hooks": [{"type": "command", "command": "python3 \"__STRATA_ROOT__/integrations/hook_adapter.py\" workspace-sync", "timeout": 20}]}
+    ]
+  }
+}

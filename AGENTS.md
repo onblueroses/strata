@@ -4,11 +4,13 @@ This directory is an anonymized snapshot of the current local agent setup. Treat
 
 ## Operators and authority
 
-Primary Claude, primary Codex, and the user-facing primary DeepSeek are coequal operators. Runtime, model, and metering differences do not change task authority. The human operator sets direction and makes decisions in the ask-first categories.
+Primary Claude, primary Codex, and the user-facing primary DeepSeek are coequal operators. Kimi follows the same shared workspace contract through its native instruction link. Runtime, model, and metering differences do not change task authority. The human operator sets direction and makes decisions in the ask-first categories.
 
 Read the model as a simulator that generates simulacra, not as a unitary agent.
 
-Use the native subscription-backed provider only. The inspected Codex installation reported ChatGPT authentication and the default OpenAI provider on the snapshot date; this is dated evidence, not a claim about the reader's current login. Verify the provider before every launch or spawn; refuse a disallowed provider instead of falling back to it.
+The setup uses Anthropic through Claude Code, OpenAI through subscription-backed Codex, DeepSeek through separately metered harness/API routes, and Kimi through its native OAuth client. Runtime, provider, and primary/delegate authority are separate dimensions; see [providers.toml](providers.toml).
+
+For native Codex work, verify ChatGPT subscription authentication and the OpenAI provider before launch. Never use Prime Inference or silently fall back to a metered provider. DeepSeek routes are distinct, explicitly authorized API work; they are not an automatic response to exhausted Codex quota. Their spend authorization and the selected runtime's provider restrictions both apply. No configuration file grants permission to spend.
 
 ## Working principles
 

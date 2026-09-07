@@ -1,8 +1,14 @@
-# Minimal portable example. Native roles are registered by placing *.toml files in
-# $CODEX_HOME/agents/; this file does not replace that directory registration.
-model = "gpt-5.6-sol"
+# Observed primary defaults; native role files select their own models.
+# Merge deliberately: this source installation permits full filesystem access.
+model = "gpt-6-astra"
 model_provider = "openai"
+model_reasoning_effort = "medium"
 service_tier = "default"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
 
-# Authentication is supplied by the local ChatGPT subscription login.
-# Keep credentials and machine-specific settings in the target config.
+[features]
+memories = false
+
+# Authentication comes from the local ChatGPT login, not this file.
+# The optional DeepSeek/Codex bridge is a distinct metered route; see deepseek/.
