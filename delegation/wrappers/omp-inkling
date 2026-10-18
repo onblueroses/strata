@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# omp-inkling - run one agentic prompt on OpenRouter's free Inkling through omp, in free-silo.
+# Free endpoints log prompts for provider training: public inputs only; never data we hold
+# (CRM rows, our addresses, vault text). The model sees an empty jail, not this machine.
+#
+#   omp-inkling "prompt"             full tools, auto-approved, confined to the jail
+#   omp-inkling --oneshot "prompt"   read-only tools (read, glob, grep, web_search)
+#   omp-inkling --small "prompt"     inkling-small:free (faster, lighter)
+#   omp-inkling --in FILE "prompt"   copy a reviewed, public input into the jail (repeatable)
+#   omp-inkling --cwd DIR "prompt"   files the run writes are copied to DIR afterwards
+#   omp-inkling --max-time 10m "prompt"
+#   echo "prompt" | omp-inkling
+#
+# inkling:free is 975B MoE / 41B active, 1M ctx; inkling-small is 276B / 12B. OpenRouter serves
+# both only to agentic harnesses, so they run through omp. Quota per key, shared by every :free
+# model: 20 req/min, 1000 req/day. Web research goes to omp-search.
+set -uo pipefail
+
+MODEL="thinkingmachines/inkling:free" MAX_TIME="15m"
+ARGS=( -p --auto-approve --no-rules --no-skills ) SILO=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --cwd) SILO+=(--out "$2"); shift 2 ;;
+    --in) SILO+=(--in "$2"); shift 2 ;;
+    --small) MODEL="thinkingmachines/inkling-small:free"; shift ;;
+    --max-time) MAX_TIME="$2"; shift 2 ;;
+    --oneshot) ARGS+=( --tools read,glob,grep,web_search ); shift ;;
+    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \?//' >&2; exit 1 ;;
+    *) break ;;
+  esac
+done
+PROMPT="$*"
+[[ -z "$PROMPT" && ! -t 0 ]] && PROMPT="$(cat)"
+[[ -z "$PROMPT" ]] && { echo "omp-inkling: no prompt" >&2; exit 1; }
+
+exec free-silo "${SILO[@]}" -- omp --model "openrouter/$MODEL" --max-time "$MAX_TIME" "${ARGS[@]}" "$PROMPT" < /dev/null

@@ -1,0 +1,21 @@
+[Unit]
+Description=Verified Linear webhook receiver and event log
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=linear-hook
+Group=linear-hook
+EnvironmentFile=/etc/linear-hook/env
+ExecStart=/usr/bin/python3 -I /usr/local/lib/linear-hook/linear-hook.py
+StateDirectory=linear-hook
+StateDirectoryMode=0750
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,606 @@
+#!/usr/bin/env python3
+"""Import reviewed origin/main changes into the vault with backup and conflict gates."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+import tempfile
+import uuid
+from pathlib import Path
+
+from bridge_common import (
+    BridgeError,
+    SHA_RE,
+    apply_files as shared_apply_files,
+    append_audit,
+    atomic_write,
+    build_backup as shared_build_backup,
+    bridge_lock,
+    check_disjoint,
+    check_disk,
+    check_repo,
+    ensure_external,
+    git,
+    git_blob,
+    git_blob_info,
+    git_text,
+    iter_allowed_candidates,
+    pinned_policy,
+    preflight_audit,
+    print_summary,
+    read_regular_file,
+    require_control_file,
+    require_directory,
+    require_regular_file,
+    reserve_audit,
+    rollback_files as shared_rollback_files,
+    run_command,
+    safe_rel,
+    scan_gitleaks,
+    secure_atomic_write,
+    secure_move_out,
+    secure_read_file,
+    sha256_bytes,
+    shown_path,
+    utc_now,
+    validate_frontmatter,
+    validate_run_id,
+    verify_private_attestation,
+)
+from bridge_policy import PolicyError, load_policy_bytes
+
+
+DEFAULT_DISK_FLOOR = 64 * 1024 * 1024
+
+
+def env_default(name: str, fallback: str | None = None) -> str | None:
+    return os.environ.get(name, fallback)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--vault", default=env_default("BRIDGE_VAULT", "/srv/brain-vault"))
+    parser.add_argument("--worktree", default=env_default("BRIDGE_WORKTREE", "/srv/assistant-bridge"))
+    parser.add_argument("--remote-url", default=env_default("BRIDGE_REMOTE_URL"), required=env_default("BRIDGE_REMOTE_URL") is None)
+    parser.add_argument("--policy", default=env_default("BRIDGE_POLICY"))
+    parser.add_argument("--gitleaks", default=env_default("BRIDGE_GITLEAKS", "/usr/local/bin/gitleaks"))
+    parser.add_argument("--gitleaks-config", default=env_default("BRIDGE_GITLEAKS_CONFIG", "/etc/assistant-bridge/gitleaks.toml"))
+    parser.add_argument("--audit-log", default=env_default("BRIDGE_AUDIT_LOG", "/var/lib/assistant-bridge/audit.jsonl"))
+    parser.add_argument("--state-file", default=env_default("BRIDGE_STATE_FILE", "/var/lib/assistant-bridge/import-state"))
+    parser.add_argument("--backup-dir", default=env_default("BRIDGE_BACKUP_DIR", "/var/lib/assistant-bridge/backups"))
+    parser.add_argument("--lock-file", default=env_default("BRIDGE_LOCK_FILE", "/var/lib/assistant-bridge/bridge.lock"))
+    parser.add_argument("--visibility-attestation", default=env_default("BRIDGE_VISIBILITY_ATTESTATION", "/etc/assistant-bridge/repository.json"))
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--run-id", default=env_default("BRIDGE_RUN_ID"))
+    return parser.parse_args(argv)
+
+
+def inbound_is_disabled(args: argparse.Namespace) -> bool:
+    """A disabled policy is a strict no-op, even when Git access is revoked."""
+    worktree = Path(args.worktree).resolve(strict=True)
+    expected = worktree / "bridge-policy.toml"
+    policy_path = Path(args.policy) if args.policy else expected
+    require_regular_file(policy_path, expected, "bridge policy")
+    policy = load_policy_bytes(expected, read_regular_file(policy_path, "bridge policy"))
+    return not policy.inbound.enabled or policy.inbound.mode != "review-gated"
+
+
+def make_record(args: argparse.Namespace, run_id: str) -> dict[str, object]:
+    return {
+        "time": utc_now(),
+        "run_id": run_id,
+        "mode": "dry-run" if args.dry_run else "review-gated",
+        "direction": "import",
+        "commit_before": None,
+        "commit_after": None,
+        "counts": {"added": 0, "modified": 0, "deleted": 0, "conflicted": 0},
+        "files": {"added": [], "modified": [], "conflicts": [], "proposed_deletions": [], "quarantined": []},
+        "policy_outcome": "not-run",
+        "scanner_outcome": "not-run",
+        "backup": None,
+        "result_category": "started",
+    }
+
+
+def read_state(path: Path) -> tuple[str, bytes]:
+    try:
+        raw = read_regular_file(path, "import state", max_bytes=1024)
+    except BridgeError as exc:
+        raise BridgeError("state-missing", "import state is missing or unreadable; initialize it to the reviewed baseline commit") from exc
+    try:
+        value = raw.decode("ascii").strip()
+    except UnicodeDecodeError as exc:
+        raise BridgeError("state-invalid", "import state is invalid; restore a reviewed commit id") from exc
+    if not SHA_RE.fullmatch(value):
+        raise BridgeError("state-invalid", "import state is invalid; restore a reviewed commit id")
+    return value, raw
+
+
+def parse_changes(raw: bytes, prefix: str) -> list[tuple[str, str]]:
+    parts = raw.split(b"\0")
+    if parts and parts[-1] == b"":
+        parts.pop()
+    if len(parts) % 2:
+        raise BridgeError("git-diff-invalid", "remote change list is invalid")
+    changes: list[tuple[str, str]] = []
+    expected = prefix.rstrip("/") + "/"
+    for index in range(0, len(parts), 2):
+        try:
+            status_text = parts[index].decode("ascii")
+            full_path = parts[index + 1].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise BridgeError("git-path-invalid", "remote contains a path that is not valid UTF-8") from exc
+        status_code = status_text[:1]
+        if status_code not in {"A", "M", "D"}:
+            raise BridgeError("remote-type-change", "remote contains an unsupported rename or file-type change")
+        if not full_path.startswith(expected):
+            continue
+        rel = safe_rel(full_path[len(expected) :])
+        changes.append((status_code, rel))
+    return changes
+
+
+def validate_remote_aggregate(worktree: Path, commit: str, policy, vault: Path) -> None:
+    """Enforce limits over every policy-eligible file in the resulting mirror."""
+    raw = git(
+        worktree,
+        ["ls-tree", "-r", "-z", "--long", commit, "--", f"{policy.publish_root}/"],
+        category="git-tree-invalid",
+        message="remote vault tree cannot be verified",
+    )
+    prefix = policy.publish_root.rstrip("/") + "/"
+    total = 0
+    for entry in (item for item in raw.split(b"\0") if item):
+        if b"\t" not in entry:
+            raise BridgeError("git-tree-invalid", "remote vault tree is invalid")
+        metadata, raw_path = entry.split(b"\t", 1)
+        fields = metadata.split()
+        try:
+            full_path = raw_path.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise BridgeError("git-path-invalid", "remote contains a path that is not valid UTF-8") from exc
+        if not full_path.startswith(prefix):
+            continue
+        rel = safe_rel(full_path[len(prefix) :])
+        path_decision = policy.evaluate(vault, rel, size=0, require_exists=False)
+        if not path_decision.allowed:
+            continue
+        if len(fields) != 4 or fields[0] not in {b"100644", b"100755"} or fields[1] != b"blob":
+            raise BridgeError("remote-special-file", f"remote special file rejected: {shown_path(rel)}")
+        try:
+            size = int(fields[3])
+        except ValueError as exc:
+            raise BridgeError("git-tree-invalid", f"remote file size is invalid: {shown_path(rel)}") from exc
+        decision = policy.evaluate(vault, rel, size=size, require_exists=False)
+        if not decision.allowed:
+            raise BridgeError(
+                "policy-denied",
+                f"remote path blocked by policy: {shown_path(rel)} ({decision.category})",
+            )
+        total += size
+        if total > policy.max_total_bytes:
+            raise BridgeError("total-size", "resulting remote files exceed the policy total-size limit")
+
+
+def projected_vault_sizes(policy, vault: Path) -> dict[str, int]:
+    sizes: dict[str, int] = {}
+    for rel in iter_allowed_candidates(vault, policy.allowed_roots):
+        decision = policy.evaluate(vault, rel)
+        if decision.allowed:
+            assert decision.size is not None
+            sizes[rel] = decision.size
+        elif decision.category in {
+            "oversized",
+            "special-file",
+            "unreadable",
+            "invalid-path",
+            "outside-vault",
+        }:
+            raise BridgeError(
+                "policy-denied",
+                f"local path blocks safe import: {shown_path(rel)} ({decision.category})",
+            )
+    return sizes
+
+
+def build_backup(
+    vault: Path,
+    backup_root: Path,
+    run_id: str,
+    incoming: dict[str, bytes],
+    expected_local: dict[str, str | None],
+) -> tuple[Path, list[dict[str, object]]]:
+    return shared_build_backup(
+        vault,
+        backup_root,
+        run_id,
+        incoming,
+        expected_local,
+        read_file=secure_read_file,
+    )
+
+
+def rollback_source(vault: Path, run_dir: Path, entries: list[dict[str, object]], applied: list[str]) -> None:
+    shared_rollback_files(
+        vault,
+        run_dir,
+        entries,
+        applied,
+        write_file=secure_atomic_write,
+        read_file=secure_read_file,
+        move_file=secure_move_out,
+    )
+
+
+def apply_incoming(
+    vault: Path,
+    incoming: dict[str, bytes],
+    entries: list[dict[str, object]],
+    run_dir: Path,
+    expected_local: dict[str, str | None],
+) -> list[str]:
+    return shared_apply_files(
+        vault,
+        incoming,
+        entries,
+        run_dir,
+        expected_local,
+        write_file=secure_atomic_write,
+        read_file=secure_read_file,
+        move_file=secure_move_out,
+    )
+
+
+def restore_state(path: Path, previous: bytes | None, run_dir: Path) -> None:
+    try:
+        if previous is not None:
+            atomic_write(path, previous, mode=0o600)
+        elif path.exists():
+            failed = run_dir / "failed-state"
+            os.replace(path, failed)
+    except (OSError, BridgeError) as exc:
+        raise BridgeError("state-rollback-failed", "import state rollback failed") from exc
+
+
+def update_state(path: Path, commit: str, previous: bytes, run_dir: Path) -> None:
+    """Write import state, restoring it even when failure follows the rename."""
+    try:
+        atomic_write(path, f"{commit}\n".encode("ascii"), mode=0o600)
+    except BaseException:
+        restore_state(path, previous, run_dir)
+        raise
+
+
+def execute(args: argparse.Namespace, record: dict[str, object]) -> None:
+    worktree = Path(args.worktree)
+    vault_input = Path(args.vault)
+    policy_path = Path(args.policy) if args.policy else worktree / "bridge-policy.toml"
+    vault, worktree = check_disjoint(vault_input, worktree)
+    audit_path = Path(args.audit_log)
+    state_path = Path(args.state_file)
+    backup_root = Path(args.backup_dir)
+    ensure_external(audit_path, vault, worktree, "audit log")
+    ensure_external(state_path, vault, worktree, "state file")
+    ensure_external(backup_root, vault, worktree, "backup directory")
+    if not args.dry_run:
+        preflight_audit(audit_path)
+        record["_audit_safe"] = True
+    local_head = check_repo(worktree, args.remote_url, require_clean_vault=True)
+    control_paths = (
+        (Path(args.visibility_attestation), "repository visibility attestation", False),
+        (Path(args.gitleaks), "gitleaks executable", True),
+        (Path(args.gitleaks_config), "gitleaks configuration", False),
+        (Path(args.lock_file), "bridge lock file", False),
+    )
+    for control_path, label, executable in control_paths:
+        ensure_external(control_path, vault, worktree, label)
+        require_control_file(control_path, label, executable=executable)
+    verify_private_attestation(Path(args.visibility_attestation), args.remote_url)
+    policy, policy_bytes = pinned_policy(worktree, policy_path, local_head)
+    record["policy_outcome"] = "loaded"
+    if not policy.inbound.enabled or policy.inbound.mode != "review-gated":
+        record["result_category"] = "inbound-disabled"
+        print("inbound disabled")
+        return
+
+    require_directory(worktree / policy.publish_root, worktree, "publish root")
+    check_disk(vault, max(DEFAULT_DISK_FLOOR, policy.max_total_bytes * 2))
+
+    base, old_state = read_state(state_path)
+    snapshot_context: tempfile.TemporaryDirectory[str] | None = None
+    inspection_repo = worktree
+    remote_ref = "refs/remotes/origin/main"
+    if args.dry_run:
+        snapshot_context = tempfile.TemporaryDirectory(prefix="bridge-import-remote-")
+        inspection_repo = Path(snapshot_context.name) / "remote.git"
+        cloned = run_command(
+            [
+                "git",
+                "clone",
+                "--bare",
+                "--no-tags",
+                "--single-branch",
+                "--branch",
+                "main",
+                "--",
+                args.remote_url,
+                str(inspection_repo),
+            ]
+        )
+        if cloned.returncode != 0:
+            raise BridgeError("fetch-failed", "origin/main could not be read; correct access and retry")
+        remote_ref = "refs/heads/main"
+    else:
+        fetched = run_command(["git", "fetch", "--no-tags", "origin", "main"], cwd=worktree)
+        if fetched.returncode != 0:
+            raise BridgeError("fetch-failed", "origin/main could not be fetched; correct access and retry")
+
+    exists = run_command(
+        ["git", "cat-file", "-e", f"{base}^{{commit}}"], cwd=inspection_repo
+    )
+    if exists.returncode != 0:
+        raise BridgeError("state-commit-missing", "last imported commit is unavailable; restore the reviewed baseline")
+    remote = git_text(inspection_repo, ["rev-parse", remote_ref])
+    remote_policy = git(
+        inspection_repo,
+        ["show", f"{remote}:bridge-policy.toml"],
+        category="policy-unverifiable",
+        message="remote bridge policy cannot be verified",
+    )
+    if remote_policy != policy_bytes:
+        raise BridgeError("policy-changed", "origin/main changes bridge-policy.toml; review and update it separately")
+    validate_remote_aggregate(inspection_repo, remote, policy, vault)
+    local_ancestor = run_command(
+        ["git", "merge-base", "--is-ancestor", local_head, remote], cwd=inspection_repo
+    )
+    if local_ancestor.returncode != 0:
+        raise BridgeError("history-diverged", "local main cannot fast-forward to origin/main")
+    full_diff = git(
+        inspection_repo,
+        ["diff", "--name-only", "-z", local_head, remote],
+        category="git-diff-failed",
+        message="remote change scope cannot be verified",
+    )
+    allowed_prefix = policy.publish_root.rstrip("/") + "/"
+    for raw_path in full_diff.split(b"\0"):
+        if not raw_path:
+            continue
+        try:
+            changed_path = raw_path.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise BridgeError("git-path-invalid", "remote contains a path that is not valid UTF-8") from exc
+        if not changed_path.startswith(allowed_prefix):
+            raise BridgeError(
+                "remote-out-of-scope",
+                "origin/main changes files outside vault/; deploy those changes separately",
+            )
+    record["commit_before"] = base
+    record["commit_after"] = remote
+    ancestor = run_command(
+        ["git", "merge-base", "--is-ancestor", base, remote], cwd=inspection_repo
+    )
+    if ancestor.returncode != 0:
+        raise BridgeError("history-diverged", "last imported commit is not an ancestor of origin/main; review history manually")
+
+    raw_changes = git(
+        inspection_repo,
+        ["diff", "--name-status", "-z", "--no-renames", base, remote, "--", f"{policy.publish_root}/"],
+        category="git-diff-failed",
+        message="remote changes cannot be listed",
+    )
+    changes = parse_changes(raw_changes, policy.publish_root)
+    incoming: dict[str, bytes] = {}
+    added: list[str] = []
+    modified: list[str] = []
+    proposed: list[str] = []
+    conflicts: list[str] = []
+    incoming_total = 0
+    expected_local: dict[str, str | None] = {}
+
+    for status_code, rel in changes:
+        if status_code == "D":
+            decision = policy.evaluate(vault, rel, size=0, require_exists=False)
+            if not decision.allowed:
+                raise BridgeError("policy-denied", f"remote path blocked by policy: {shown_path(rel)} ({decision.category})")
+            proposed.append(rel)
+            continue
+        object_id, blob_size = git_blob_info(
+            inspection_repo, remote, policy.publish_root, rel
+        )
+        decision = policy.evaluate(vault, rel, size=blob_size, require_exists=False)
+        if not decision.allowed:
+            raise BridgeError("policy-denied", f"remote path blocked by policy: {shown_path(rel)} ({decision.category})")
+        incoming_total += blob_size
+        if incoming_total > policy.max_total_bytes:
+            raise BridgeError("total-size", "incoming files exceed the policy total-size limit")
+        data = git_blob(inspection_repo, object_id, rel)
+        if len(data) != blob_size:
+            raise BridgeError("blob-changed", f"remote file size changed during read: {shown_path(rel)}")
+        validate_frontmatter(rel, data)
+        if status_code == "A":
+            local = secure_read_file(vault, rel, missing_ok=True, max_bytes=policy.max_file_bytes)
+            if local is not None and local[0] == data:
+                continue
+            if local is not None:
+                conflicts.append(rel)
+                expected_local[rel] = sha256_bytes(local[0])
+            else:
+                expected_local[rel] = None
+            added.append(rel)
+        else:
+            base_object, base_size = git_blob_info(
+                inspection_repo, base, policy.publish_root, rel
+            )
+            base_data = git_blob(inspection_repo, base_object, rel)
+            local = secure_read_file(vault, rel, missing_ok=True, max_bytes=max(policy.max_file_bytes, base_size))
+            if local is not None and local[0] == data:
+                continue
+            if local is None:
+                conflicts.append(rel)
+                expected_local[rel] = None
+            elif local[0] != base_data:
+                conflicts.append(rel)
+                expected_local[rel] = sha256_bytes(local[0])
+            else:
+                expected_local[rel] = sha256_bytes(local[0])
+            modified.append(rel)
+        incoming[rel] = data
+
+    projected_sizes = projected_vault_sizes(policy, vault)
+    for rel, data in incoming.items():
+        projected_sizes[rel] = len(data)
+    if sum(projected_sizes.values()) > policy.max_total_bytes:
+        raise BridgeError(
+            "total-size",
+            "resulting local approved files exceed the policy total-size limit",
+        )
+
+    if snapshot_context is not None:
+        snapshot_context.cleanup()
+        snapshot_context = None
+
+    summary = {
+        "added": added,
+        "modified": modified,
+        "conflicts": sorted(set(conflicts)),
+        "proposed_deletions": proposed,
+    }
+    record["files"] = {**record["files"], **summary}
+    record["counts"] = {
+        "added": len(added),
+        "modified": len(modified),
+        "deleted": len(proposed),
+        "conflicted": len(set(conflicts)),
+    }
+    if conflicts:
+        record["policy_outcome"] = "conflict"
+        print_summary(summary)
+        raise BridgeError("conflict", f"local and remote edits conflict: {shown_path(sorted(set(conflicts))[0])}; resolve before retry")
+    record["policy_outcome"] = "allowed"
+
+    with tempfile.TemporaryDirectory(prefix="bridge-import-scan-") as temp_name:
+        scan_root = Path(temp_name) / policy.publish_root
+        scan_root.mkdir()
+        for rel, data in incoming.items():
+            destination = scan_root.joinpath(*rel.split("/"))
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
+        if incoming:
+            try:
+                scanner, findings = scan_gitleaks(
+                    Path(args.gitleaks), Path(args.gitleaks_config), scan_root
+                )
+            except BridgeError:
+                record["scanner_outcome"] = "error"
+                raise
+            record["scanner_outcome"] = scanner
+            if findings:
+                first = findings[0]
+                raise BridgeError("secret-detected", f"secret detected in {shown_path(first['path'])} (rule {first['rule']}); reject the remote change")
+        else:
+            record["scanner_outcome"] = "clean"
+
+    print_summary(summary)
+    if args.dry_run:
+        record["result_category"] = "dry-run"
+        return
+
+    if read_regular_file(policy_path, "bridge policy") != policy_bytes:
+        raise BridgeError("policy-changed", "bridge policy changed during the run")
+
+    run_dir, entries = build_backup(vault, backup_root, record["run_id"], incoming, expected_local)
+    if vault.stat().st_dev != run_dir.stat().st_dev:
+        raise BridgeError("backup-filesystem", "backup directory must be on the vault filesystem")
+    record["backup"] = f"{record['run_id']}/manifest.json"
+    record["result_category"] = "pending-import"
+    record["_audit_written"] = True
+    reservation = reserve_audit(audit_path, record)
+    applied: list[str] = []
+    state_written = False
+    try:
+        try:
+            # Keep the publisher's main branch aligned with the reviewed remote history.
+            if local_head != remote:
+                fast_forward = run_command(
+                    ["git", "merge", "--ff-only", "refs/remotes/origin/main"],
+                    cwd=worktree,
+                )
+                if fast_forward.returncode != 0:
+                    raise BridgeError(
+                        "fast-forward-failed",
+                        "local main cannot fast-forward to reviewed origin/main",
+                    )
+
+            applied = apply_incoming(vault, incoming, entries, run_dir, expected_local)
+            update_state(state_path, remote, old_state, run_dir)
+            state_written = True
+            record["result_category"] = "success"
+            reservation.finalize(record)
+        except BaseException as operation_error:
+            failure: BaseException = operation_error
+            if state_written:
+                try:
+                    restore_state(state_path, old_state, run_dir)
+                except BaseException as rollback_error:
+                    failure = rollback_error
+            if applied:
+                try:
+                    rollback_source(vault, run_dir, entries, applied)
+                except BaseException as rollback_error:
+                    failure = rollback_error
+            record["result_category"] = (
+                failure.category if isinstance(failure, BridgeError) else "internal-error"
+            )
+            try:
+                reservation.finalize(record)
+            except BridgeError as audit_error:
+                failure = audit_error
+            raise failure
+    finally:
+        reservation.close()
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    try:
+        if inbound_is_disabled(args):
+            print("inbound disabled")
+            return 0
+    except (BridgeError, PolicyError, OSError):
+        # Enabled/invalid policies continue into the fully pinned fail-closed path.
+        pass
+    try:
+        run_id = validate_run_id(args.run_id or uuid.uuid4().hex)
+    except BridgeError as exc:
+        print(f"error: {exc.message}", file=sys.stderr)
+        return 2
+    record = make_record(args, run_id)
+    try:
+        with bridge_lock(Path(args.lock_file)):
+            execute(args, record)
+        return 0
+    except BridgeError as exc:
+        record["result_category"] = exc.category
+        if not args.dry_run and record.get("_audit_safe") and not record.get("_audit_written") and exc.category not in {"audit-unwritable", "audit-write-failed"}:
+            try:
+                append_audit(Path(args.audit_log), record)
+            except BridgeError:
+                print("error: audit log write failed", file=sys.stderr)
+                return 2
+        print(f"error: {exc.message}", file=sys.stderr)
+        return 2
+    except Exception:
+        record["result_category"] = "internal-error"
+        if not args.dry_run and record.get("_audit_safe") and not record.get("_audit_written"):
+            try:
+                append_audit(Path(args.audit_log), record)
+            except BridgeError:
+                pass
+        print("error: unexpected bridge failure; no note content was logged", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

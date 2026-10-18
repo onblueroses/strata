@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the vault root sweep hourly
+
+[Timer]
+OnCalendar=*-*-* *:17:00
+Persistent=true
+Unit=brain-sweep.service
+
+[Install]
+WantedBy=timers.target

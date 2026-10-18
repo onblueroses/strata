@@ -1,0 +1,1061 @@
+#!/usr/bin/env python3
+"""Publish the policy-approved vault subset to the dedicated Git worktree."""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import sys
+import tempfile
+import uuid
+from pathlib import Path
+
+from bridge_common import (
+    DEFAULT_PAUSE_DIR,
+    BridgeError,
+    append_audit,
+    atomic_write,
+    bridge_lock,
+    check_disjoint,
+    check_disk,
+    check_repo,
+    ensure_external,
+    git,
+    git_text,
+    is_within,
+    iter_allowed_candidates,
+    job_paused,
+    preflight_audit,
+    print_summary,
+    read_job_status,
+    read_regular_file,
+    require_control_file,
+    require_directory,
+    require_regular_file,
+    reserve_audit,
+    rsync_tree,
+    run_command,
+    safe_rel,
+    scan_gitleaks,
+    sha256_file,
+    shown_path,
+    summarize_trees,
+    utc_now,
+    validate_run_id,
+    verify_private_attestation,
+    write_job_status,
+)
+from bridge_policy import PolicyError, load_policy_bytes
+
+
+DEFAULT_DISK_FLOOR = 64 * 1024 * 1024
+# An apply run holds the shared lock for a few seconds every minute; giving up at
+# once would forfeit the whole five-minute slot.
+LOCK_WAIT_SECONDS = 30
+STATUS_FILE = "publish-status.json"
+SHA_RE = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+EMPTY_TREE = {
+    "sha1": "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+    "sha256": "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321",
+}
+
+
+def env_default(name: str, fallback: str | None = None) -> str | None:
+    return os.environ.get(name, fallback)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--vault", default=env_default("BRIDGE_VAULT", "/srv/brain-vault"))
+    parser.add_argument("--worktree", default=env_default("BRIDGE_WORKTREE", "/srv/assistant-bridge"))
+    parser.add_argument("--remote-url", default=env_default("BRIDGE_REMOTE_URL"), required=env_default("BRIDGE_REMOTE_URL") is None)
+    parser.add_argument("--policy", default=env_default("BRIDGE_POLICY"))
+    parser.add_argument("--gitleaks", default=env_default("BRIDGE_GITLEAKS", "/usr/local/bin/gitleaks"))
+    parser.add_argument("--gitleaks-config", default=env_default("BRIDGE_GITLEAKS_CONFIG", "/etc/assistant-bridge/gitleaks.toml"))
+    parser.add_argument("--audit-log", default=env_default("BRIDGE_AUDIT_LOG", "/var/lib/assistant-bridge/audit.jsonl"))
+    parser.add_argument("--push-state", default=env_default("BRIDGE_PUSH_STATE"))
+    parser.add_argument("--lock-file", default=env_default("BRIDGE_LOCK_FILE", "/var/lib/assistant-bridge/bridge.lock"))
+    parser.add_argument("--visibility-attestation", default=env_default("BRIDGE_VISIBILITY_ATTESTATION", "/etc/assistant-bridge/repository.json"))
+    parser.add_argument("--status-dir", default=env_default("BRIDGE_JOB_STATUS_DIR", "/var/lib/assistant-bridge"))
+    parser.add_argument("--pause-dir", default=env_default("BRIDGE_PAUSE_DIR"))
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--run-id", default=env_default("BRIDGE_RUN_ID"))
+    return parser.parse_args(argv)
+
+
+def copy_checked(vault: Path, rel: str, destination: Path, expected_size: int) -> None:
+    """Copy through no-follow directory descriptors to close path-swap escapes."""
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | nofollow
+    try:
+        with contextlib.ExitStack() as stack:
+            current_fd = os.open(vault, directory_flags)
+            stack.callback(os.close, current_fd)
+            parts = rel.split("/")
+            for component in parts[:-1]:
+                current_fd = os.open(component, directory_flags, dir_fd=current_fd)
+                stack.callback(os.close, current_fd)
+            fd = os.open(
+                parts[-1],
+                os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0),
+                dir_fd=current_fd,
+            )
+            stack.callback(os.close, fd)
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size != expected_size:
+                raise BridgeError("source-changed", f"source changed during read: {shown_path(rel)}")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            digest = hashlib.sha256()
+            with os.fdopen(fd, "rb", closefd=False) as incoming, destination.open("wb") as outgoing:
+                while chunk := incoming.read(1024 * 1024):
+                    digest.update(chunk)
+                    outgoing.write(chunk)
+            os.chmod(destination, stat.S_IMODE(info.st_mode))
+            if destination.stat().st_size != expected_size or sha256_file(destination) != digest.hexdigest():
+                raise BridgeError("staging-verify", f"staged copy verification failed: {shown_path(rel)}")
+    except BridgeError:
+        raise
+    except OSError as exc:
+        raise BridgeError("source-unreadable", f"approved file is unreadable: {shown_path(rel)}") from exc
+
+
+FILTERED_CATEGORIES = frozenset({"denied-path", "denied-name", "denied-extension", "outside-allowed-root"})
+
+
+def build_staging(policy, vault: Path, staging: Path) -> tuple[list[tuple[str, str]], list[str], int]:
+    violations: list[tuple[str, str]] = []
+    oversized: list[str] = []
+    total = 0
+    for rel in iter_allowed_candidates(vault, policy.allowed_roots):
+        decision = policy.evaluate(vault, rel)
+        if not decision.allowed:
+            if decision.category == "oversized":
+                oversized.append(rel)
+            elif decision.category in FILTERED_CATEGORIES:
+                violations.append((rel, decision.category))
+            else:
+                # Special files, escapes and unreadable sources are integrity failures, not filters.
+                raise BridgeError(decision.category, f"{decision.category}: {decision.detail}: {shown_path(rel)}")
+            continue
+        total += decision.size
+        if total > policy.max_total_bytes:
+            raise BridgeError("total-size", "approved files exceed the policy total-size limit")
+        destination = staging.joinpath(*rel.split("/"))
+        copy_checked(vault, rel, destination, decision.size)
+    return violations, oversized, total
+
+
+def make_record(args: argparse.Namespace, run_id: str) -> dict[str, object]:
+    return {
+        "time": utc_now(),
+        "run_id": run_id,
+        "mode": "dry-run" if args.dry_run else "scheduled",
+        "direction": "publish",
+        "commit_before": None,
+        "commit_after": None,
+        "counts": {"added": 0, "modified": 0, "deleted": 0},
+        "files": {"added": [], "modified": [], "deleted": [], "denied": [], "oversized": []},
+        "policy_outcome": "not-run",
+        "policy_source": "worktree",
+        "policy_drift": False,
+        "reverted_remote": [],
+        "dropped_unpushed": None,
+        "scanner_outcome": "not-run",
+        "result_category": "started",
+    }
+
+
+def isolated_scan(executable: Path, config: Path, source: Path) -> tuple[str, list[dict[str, str]]]:
+    """Scan from an empty working directory.
+
+    gitleaks reads a .gitleaksignore from its working directory by default, and the
+    service runs inside the worktree, whose root files follow origin/main. Scanning
+    from there would let a pushed .gitleaksignore suppress findings.
+    """
+    executable, config, source = executable.absolute(), config.absolute(), source.absolute()
+    with tempfile.TemporaryDirectory(prefix="bridge-publish-scan-") as empty, contextlib.chdir(empty):
+        return scan_gitleaks(executable, config, source)
+
+
+def with_reverted(summary: dict[str, list[str]], record: dict[str, object]) -> dict[str, list[str]]:
+    """Add the reverted count to the printed summary line without repeating its paths."""
+    return {**summary, "reverted": list(record.get("reverted_remote", []))}
+
+
+def push_checked(worktree: Path, commit_after: str) -> bool:
+    """Push once, then resolve an ambiguous failure from the remote before retry."""
+    push = run_command(["git", "push", "origin", "main"], cwd=worktree)
+    if push.returncode == 0:
+        return False
+    fetched = run_command(["git", "fetch", "--no-tags", "origin", "main"], cwd=worktree)
+    if fetched.returncode != 0:
+        raise BridgeError("push-ambiguous", "push outcome is ambiguous and remote state could not be checked; do not retry yet")
+    remote_head = git_text(
+        worktree,
+        ["rev-parse", "refs/remotes/origin/main"],
+        category="push-ambiguous",
+        message="push outcome is ambiguous and remote state could not be checked; do not retry yet",
+    )
+    if remote_head != commit_after:
+        raise BridgeError("push-failed", "push did not reach origin/main; correct access or remote state before retry")
+    return True
+
+
+def pinned_policy(worktree: Path, policy_path: Path, commit: str):
+    expected = worktree / "bridge-policy.toml"
+    require_regular_file(policy_path, expected, "bridge policy")
+    current = read_regular_file(policy_path, "bridge policy")
+    committed = git(
+        worktree,
+        ["show", f"{commit}:bridge-policy.toml"],
+        category="policy-unverifiable",
+        message="committed bridge policy cannot be verified",
+    )
+    if current != committed:
+        raise BridgeError("policy-changed", "bridge policy differs from the checked-out commit")
+    try:
+        return load_policy_bytes(expected, current), current
+    except PolicyError as exc:
+        raise BridgeError("policy-invalid", f"policy invalid: {exc}") from exc
+
+
+def policy_is_deployed(policy_path: Path, worktree: Path) -> bool:
+    """A policy that resolves outside the worktree cannot be changed by a push to main."""
+    try:
+        resolved = policy_path.resolve(strict=True)
+    except OSError as exc:
+        raise BridgeError("path-unreadable", "bridge policy is missing or unreadable") from exc
+    return not is_within(resolved, worktree)
+
+
+def deployed_policy(policy_path: Path, vault: Path, worktree: Path):
+    ensure_external(policy_path, vault, worktree, "bridge policy")
+    try:
+        info = policy_path.lstat()
+    except OSError as exc:
+        raise BridgeError("policy-untrusted", "deployed bridge policy is missing or unreadable") from exc
+    if (
+        stat.S_ISLNK(info.st_mode)
+        or not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or info.st_uid not in {0, os.geteuid()}
+        or info.st_mode & 0o022
+    ):
+        raise BridgeError(
+            "policy-untrusted",
+            "deployed bridge policy must be a regular, singly linked file owned by root or "
+            "this user and not group- or world-writable",
+        )
+    data = read_regular_file(policy_path, "bridge policy")
+    try:
+        return load_policy_bytes(policy_path, data), data
+    except PolicyError as exc:
+        raise BridgeError("policy-invalid", f"policy invalid: {exc}") from exc
+
+
+def repository_policy_differs(worktree: Path, commit: str, deployed: bytes) -> bool:
+    """Compare the repository's bridge-policy.toml at *commit* with the deployed bytes."""
+    entry = git(
+        worktree,
+        ["ls-tree", "--long", "-z", commit, "--", "bridge-policy.toml"],
+        category="policy-unverifiable",
+        message="repository bridge policy cannot be compared",
+    )
+    if not entry:
+        return True
+    fields = entry.split(b"\t", 1)[0].split()
+    if len(fields) != 4 or fields[1] != b"blob" or fields[0] not in {b"100644", b"100755"}:
+        return True
+    if not fields[3].isdigit() or int(fields[3]) != len(deployed):
+        return True
+    blob = git(
+        worktree,
+        ["cat-file", "blob", fields[2].decode("ascii")],
+        category="policy-unverifiable",
+        message="repository bridge policy cannot be compared",
+    )
+    return blob != deployed
+
+
+def remote_vault_paths(worktree: Path, base: str, head: str, root: str) -> list[str]:
+    """Publish-root-relative paths that the commits in base..head touched.
+
+    Merge commits are read as combined diffs so content introduced by a merge itself
+    counts; the net diff covers anything the history walk could miss.
+    """
+    scope = "remote change scope cannot be verified"
+    touched = git(
+        worktree,
+        [
+            "log", "--no-show-signature", "--format=", "--name-only", "-z", "--no-renames",
+            "--diff-merges=combined", f"{base}..{head}", "--", root,
+        ],
+        category="git-log-failed",
+        message=scope,
+    )
+    net = git(
+        worktree,
+        ["diff", "--name-only", "-z", "--no-renames", base, head, "--", root],
+        category="git-diff-failed",
+        message=scope,
+    )
+    prefix = root.rstrip("/") + "/"
+    paths: set[str] = set()
+    for raw in touched.split(b"\0") + net.split(b"\0"):
+        # Paths are data from main; surrogateescape keeps odd bytes identifiable
+        # without failing the run, and shown_path quotes them for output.
+        path = raw.decode("utf-8", "surrogateescape")
+        if path.startswith(prefix) and len(path) > len(prefix):
+            paths.add(path[len(prefix):])
+    return sorted(paths)
+
+
+def ensure_publish_root(worktree: Path, root: str) -> None:
+    """Recreate the publish root when main deleted every file under it."""
+    target = worktree / root
+    try:
+        target.lstat()
+    except FileNotFoundError:
+        try:
+            target.mkdir(mode=0o755)
+        except OSError as exc:
+            raise BridgeError("path-unreadable", "publish root cannot be recreated") from exc
+    except OSError as exc:
+        raise BridgeError("path-unreadable", "publish root is unreadable") from exc
+    require_directory(target, worktree, "publish root")
+
+
+def neutralize_repository_rules(worktree: Path) -> str | None:
+    """Keep Git rules that origin/main can carry away from the published bytes.
+
+    Root files such as .gitattributes follow main, which the assistant can push to. Every git
+    call of this process reads attributes from the empty tree (git 2.41 and later) and
+    runs with core.autocrlf off, so line-ending and filter rules neither rewrite what is
+    committed nor make the mirror look dirty. Older git ignores GIT_ATTR_SOURCE; the
+    tree check before each commit then fails closed instead. Returns the object format,
+    or None when the worktree is not a repository (check_repo reports that).
+    """
+    if not worktree.is_dir():
+        return None
+    result = run_command(["git", "rev-parse", "--show-object-format"], cwd=worktree)
+    if result.returncode != 0:
+        return None
+    object_format = result.stdout.decode("ascii", "replace").strip()
+    if object_format not in EMPTY_TREE:
+        raise BridgeError("git-unsupported", "repository object format is not supported")
+    count = os.environ.get("GIT_CONFIG_COUNT", "0")
+    if not count.isdigit():
+        raise BridgeError("git-environment-invalid", "GIT_CONFIG_COUNT is not a number")
+    os.environ[f"GIT_CONFIG_KEY_{count}"] = "core.autocrlf"
+    os.environ[f"GIT_CONFIG_VALUE_{count}"] = "false"
+    os.environ["GIT_CONFIG_COUNT"] = str(int(count) + 1)
+    os.environ["GIT_ATTR_SOURCE"] = EMPTY_TREE[object_format]
+    return object_format
+
+
+def blob_id(object_format: str, data: bytes) -> bytes:
+    digest = hashlib.new(object_format)
+    digest.update(b"blob %d\0" % len(data))
+    digest.update(data)
+    return digest.hexdigest().encode("ascii")
+
+
+def staged_entries(staging: Path, root: str, object_format: str) -> dict[bytes, tuple[bytes, bytes]]:
+    """The (mode, blob id) each staged vault file must have under *root* in Git."""
+    prefix = os.fsencode(root.rstrip("/")) + b"/"
+    entries: dict[bytes, tuple[bytes, bytes]] = {}
+    for directory, dirnames, filenames in os.walk(staging, followlinks=False):
+        base = Path(directory)
+        for name in dirnames:
+            if not stat.S_ISDIR((base / name).lstat().st_mode):
+                raise BridgeError("staging-verify", "staged vault holds a directory link")
+        for name in filenames:
+            path = base / name
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode):
+                raise BridgeError("staging-verify", "staged vault holds a non-regular file")
+            mode = b"100755" if info.st_mode & stat.S_IXUSR else b"100644"
+            relative = os.fsencode(path.relative_to(staging).as_posix())
+            entries[prefix + relative] = (mode, blob_id(object_format, path.read_bytes()))
+    return entries
+
+
+def tree_entries(worktree: Path, tree: str, root: str) -> dict[bytes, tuple[bytes, bytes]]:
+    mismatch = "vault/ in the Git index does not match the staged vault files; nothing was committed"
+    listing = git(
+        worktree,
+        ["ls-tree", "-r", "-z", tree, "--", root.rstrip("/") + "/"],
+        category="publish-verify-failed",
+        message=mismatch,
+    )
+    entries: dict[bytes, tuple[bytes, bytes]] = {}
+    for record in listing.split(b"\0"):
+        if not record:
+            continue
+        meta, separator, path = record.partition(b"\t")
+        fields = meta.split(b" ")
+        # Gitlinks and other non-blob entries never match a staged file.
+        if not separator or len(fields) != 3 or fields[1] != b"blob":
+            raise BridgeError("publish-verify-failed", mismatch)
+        entries[path] = (fields[0], fields[2])
+    return entries
+
+
+def stage_publish_root(worktree: Path, root: str, staging: Path, object_format: str) -> str:
+    """Stage *root* as exactly the staged vault files and return the verified tree.
+
+    The index is rebuilt from scratch because main can leave entries that git add does
+    not replace (a gitlink or link where the vault has a folder), and --force keeps a
+    .gitignore pushed to main from hiding a file. The written tree is then compared with
+    the staged bytes, so any rule that still rewrites content fails closed.
+    """
+    for arguments in (
+        ["rm", "-r", "--cached", "--quiet", "--force", "--ignore-unmatch", "--", root],
+        ["add", "--force", "--all", "--", root],
+    ):
+        git(worktree, arguments, category="git-add-failed", message="git add vault/ failed")
+    tree = git_text(
+        worktree,
+        ["write-tree"],
+        category="publish-verify-failed",
+        message="staged tree cannot be written",
+    )
+    if tree_entries(worktree, tree, root) != staged_entries(staging, root, object_format):
+        raise BridgeError(
+            "publish-verify-failed",
+            "vault/ in the Git index does not match the staged vault files; nothing was committed",
+        )
+    return tree
+
+
+def staged_changes(worktree: Path, root: str) -> dict[str, list[str]]:
+    """What the index changes against HEAD, by publish-root-relative path.
+
+    Every entry type counts, links, gitlinks and mode changes included, so the audit
+    describes the commit that is pushed. A staged change outside vault/ stops the run.
+    """
+    unverifiable = "staged change cannot be verified"
+    raw = git(
+        worktree,
+        ["diff", "--cached", "--name-status", "-z", "--no-renames", "HEAD"],
+        category="git-diff-failed",
+        message=unverifiable,
+    )
+    fields = raw.split(b"\0")
+    if fields and fields[-1] == b"":
+        fields.pop()
+    if len(fields) % 2:
+        raise BridgeError("git-diff-failed", unverifiable)
+    prefix = os.fsencode(root.rstrip("/")) + b"/"
+    kinds = {b"A": "added", b"M": "modified", b"T": "modified", b"D": "deleted"}
+    changes: dict[str, list[str]] = {"added": [], "modified": [], "deleted": []}
+    for status, path in zip(fields[0::2], fields[1::2]):
+        if not path.startswith(prefix):
+            raise BridgeError(
+                "index-unexpected",
+                "the Git index stages changes outside vault/; review the worktree",
+            )
+        if status not in kinds:
+            raise BridgeError("git-diff-failed", unverifiable)
+        changes[kinds[status]].append(path[len(prefix):].decode("utf-8", "surrogateescape"))
+    return {key: sorted(value) for key, value in changes.items()}
+
+
+def reconcile_remote(
+    worktree: Path,
+    commit_before: str,
+    remote_head: str,
+    root: str,
+    record: dict[str, object],
+    *,
+    deployed_bytes: bytes | None,
+) -> str:
+    """Fast-forward to origin/main; the publish that follows restores vault/ from the vault.
+
+    The vault is the source of truth for vault/: edits made on main are reverted by the
+    normal publish and reach the vault only as a pull request through bridge-apply.
+    *deployed_bytes* is the deployed policy, or None when the policy is read from the
+    worktree.
+    """
+    local_is_ancestor = run_command(
+        ["git", "merge-base", "--is-ancestor", commit_before, remote_head], cwd=worktree
+    )
+    if local_is_ancestor.returncode != 0:
+        raise BridgeError(
+            "remote-history-changed",
+            "origin/main diverged from local main; review history manually",
+        )
+    policy_changed = git(
+        worktree,
+        ["diff", "--name-only", "-z", commit_before, remote_head, "--", "bridge-policy.toml"],
+        category="git-diff-failed",
+        message="remote change scope cannot be verified",
+    )
+    if policy_changed.strip(b"\0"):
+        if deployed_bytes is None:
+            # A policy read from the worktree would follow main after a fast-forward.
+            raise BridgeError(
+                "remote-history-changed",
+                "origin/main changes bridge-policy.toml while the policy is read from the "
+                "worktree; deploy the reviewed policy outside the worktree first",
+            )
+        # bridge-apply, bridge-import and bridge-restore load the worktree copy pinned to
+        # local main, so a fast-forward may change it only to the bytes root deployed.
+        if repository_policy_differs(worktree, remote_head, deployed_bytes):
+            record["policy_drift"] = True
+            print("policy-drift origin/main changes bridge-policy.toml away from the deployed policy")
+            raise BridgeError(
+                "policy-drift",
+                "origin/main changes bridge-policy.toml to a policy that is not deployed; "
+                "deploy the reviewed policy or restore it on main",
+            )
+    root_entry = git(
+        worktree,
+        ["ls-tree", "-z", remote_head, "--", root],
+        category="git-failed",
+        message="remote publish root cannot be verified",
+    )
+    if root_entry and not root_entry.startswith(b"040000 tree "):
+        raise BridgeError(
+            "publish-root-replaced",
+            "origin/main replaced the publish root with a non-directory; review history manually",
+        )
+    reverted = remote_vault_paths(worktree, commit_before, remote_head, root)
+    fast_forward = run_command(["git", "merge", "--ff-only", "--no-edit", remote_head], cwd=worktree)
+    if fast_forward.returncode != 0:
+        raise BridgeError("fast-forward-failed", "local main cannot fast-forward to origin/main")
+    if git_text(worktree, ["rev-parse", "HEAD"], category="fast-forward-failed", message="fast-forward cannot be verified") != remote_head:
+        raise BridgeError("fast-forward-failed", "local main did not reach origin/main")
+    ensure_publish_root(worktree, root)
+    record["reverted_remote"] = reverted
+    for path in reverted:
+        print(f"reverted {shown_path(path)}")
+    return remote_head
+
+
+def read_push_state(state_path: Path) -> dict[str, object] | None:
+    if not state_path.exists() and not state_path.is_symlink():
+        return None
+    try:
+        state = json.loads(read_regular_file(state_path, "pending-push state", max_bytes=64 * 1024))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise BridgeError("pending-state-invalid", "pending-push state is invalid; review local main manually") from exc
+    if not isinstance(state, dict) or state.get("version") != 1 or state.get("status") not in {"pending", "clear"}:
+        raise BridgeError("pending-state-invalid", "pending-push state is invalid; review local main manually")
+    return state
+
+
+def verify_pending_commit(worktree: Path, state: dict[str, object] | None, commit: str, remote: str, publish_root: str) -> None:
+    if state is None or state.get("status") != "pending" or state.get("commit") != commit or state.get("remote_parent") != remote:
+        raise BridgeError("local-ahead-unverified", "local main is ahead without matching bridge pending state; review it manually")
+    parent = git_text(worktree, ["rev-parse", f"{commit}^"])
+    if parent != remote:
+        raise BridgeError("local-ahead-unverified", "pending publish is not a single commit on origin/main")
+    changed = git(
+        worktree,
+        ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit],
+        category="pending-state-invalid",
+        message="pending publish paths cannot be verified",
+    )
+    for raw in changed.split(b"\0"):
+        if not raw:
+            continue
+        try:
+            path = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise BridgeError("pending-state-invalid", "pending publish has an invalid path") from exc
+        if not path.startswith(publish_root.rstrip("/") + "/"):
+            raise BridgeError("local-ahead-unverified", "pending publish changes files outside vault/")
+
+
+def is_ancestor(worktree: Path, ancestor: str, descendant: str) -> bool:
+    return run_command(["git", "merge-base", "--is-ancestor", ancestor, descendant], cwd=worktree).returncode == 0
+
+
+def write_clear_state(state_path: Path, commit: str) -> None:
+    clear = {"version": 1, "status": "clear", "commit": commit}
+    atomic_write(state_path, (json.dumps(clear, sort_keys=True) + "\n").encode("utf-8"), mode=0o600)
+
+
+def drop_lost_race(
+    worktree: Path,
+    state: dict[str, object] | None,
+    state_path: Path,
+    head: str,
+    remote_head: str,
+    root: str,
+    record: dict[str, object],
+) -> str:
+    """Drop a bridge publish whose push lost a race with another push to main.
+
+    The pending state names the unpushed commit and the main it was built on. When that
+    main is an ancestor of the new origin/main and the commit itself is not, the commit
+    never reached origin: it is dropped and this run rebuilds it from the vault on top
+    of the new main. Anything else is left for the divergence stop.
+    """
+    if state is None or state.get("status") != "pending" or state.get("commit") != head:
+        return head
+    parent = state.get("remote_parent")
+    if not isinstance(parent, str) or not SHA_RE.fullmatch(parent) or parent == remote_head:
+        return head
+    if is_ancestor(worktree, head, remote_head) or not is_ancestor(worktree, parent, remote_head):
+        return head
+    # A single bridge commit on *parent* that changes only vault/, or a stop.
+    verify_pending_commit(worktree, state, head, parent, root)
+    git(
+        worktree,
+        ["reset", "--quiet", "--keep", parent],
+        category="drop-failed",
+        message="unpushed publish cannot be dropped; review local main manually",
+    )
+    if git_text(worktree, ["rev-parse", "HEAD"], category="drop-failed", message="drop cannot be verified") != parent:
+        raise BridgeError("drop-failed", "unpushed publish cannot be dropped; review local main manually")
+    write_clear_state(state_path, parent)
+    record["dropped_unpushed"] = head
+    print(f"dropped unpushed publish {head}")
+    return parent
+
+
+def audited_push(
+    worktree: Path,
+    state_path: Path,
+    commit: str,
+    remote_parent: str,
+    audit_path: Path,
+    record: dict[str, object],
+    *,
+    retry: bool,
+) -> None:
+    state = {"version": 1, "status": "pending", "commit": commit, "remote_parent": remote_parent}
+    atomic_write(state_path, (json.dumps(state, sort_keys=True) + "\n").encode("utf-8"), mode=0o600)
+    record["result_category"] = "pending-remote-write"
+    record["_audit_written"] = True
+    reservation = reserve_audit(audit_path, record)
+    try:
+        try:
+            checked = push_checked(worktree, commit)
+        except BridgeError as exc:
+            record["result_category"] = exc.category
+            reservation.finalize(record)
+            raise
+        record["result_category"] = (
+            "success-after-remote-check" if checked else ("success-retry" if retry else "success")
+        )
+        reservation.finalize(record)
+        clear = {"version": 1, "status": "clear", "commit": commit}
+        atomic_write(state_path, (json.dumps(clear, sort_keys=True) + "\n").encode("utf-8"), mode=0o600)
+    finally:
+        reservation.close()
+
+
+def execute(args: argparse.Namespace, record: dict[str, object]) -> None:
+    worktree = Path(args.worktree)
+    vault = Path(args.vault)
+    policy_path = Path(args.policy) if args.policy else worktree / "bridge-policy.toml"
+    audit_path = Path(args.audit_log)
+
+    vault, worktree = check_disjoint(vault, worktree)
+    ensure_external(audit_path, vault, worktree, "audit log")
+    state_path = Path(args.push_state) if args.push_state else audit_path.with_name("publish-pending.json")
+    ensure_external(state_path, vault, worktree, "pending-push state")
+    if not args.dry_run:
+        preflight_audit(audit_path)
+        record["_audit_safe"] = True
+    # Before the first git call that reads the worktree, so its clean check already
+    # ignores attributes that main carries.
+    object_format = neutralize_repository_rules(worktree)
+    commit_before = check_repo(worktree, args.remote_url, require_clean_vault=True)
+    if object_format is None:
+        raise BridgeError("repo-invalid", "repository object format cannot be verified")
+    record["commit_before"] = commit_before
+    record["commit_after"] = commit_before
+    control_paths = (
+        (Path(args.visibility_attestation), "repository visibility attestation", False),
+        (Path(args.gitleaks), "gitleaks executable", True),
+        (Path(args.gitleaks_config), "gitleaks configuration", False),
+        (Path(args.lock_file), "bridge lock file", False),
+    )
+    for control_path, label, executable in control_paths:
+        ensure_external(control_path, vault, worktree, label)
+        require_control_file(control_path, label, executable=executable)
+    verify_private_attestation(Path(args.visibility_attestation), args.remote_url)
+    # A deployed policy outside the worktree governs regardless of main; a policy read
+    # from the worktree must match the checked-out commit and can never follow main.
+    deployed = policy_is_deployed(policy_path, worktree)
+    if deployed:
+        policy, policy_bytes = deployed_policy(policy_path, vault, worktree)
+        record["policy_source"] = "deployed"
+    else:
+        policy, policy_bytes = pinned_policy(worktree, policy_path, commit_before)
+    record["policy_outcome"] = "loaded"
+    require_directory(worktree / policy.publish_root, worktree, "publish root")
+    for control_name in (".gitleaks.toml", ".gitleaksignore"):
+        control = vault / control_name
+        if control.exists() or control.is_symlink():
+            raise BridgeError(
+                "vault-scanner-config",
+                f"vault-supplied scanner control file blocked: {shown_path(control_name)}",
+            )
+    check_disk(worktree, max(DEFAULT_DISK_FLOOR, policy.max_total_bytes * 2))
+
+    pending_push = False
+    recover_pending = False
+    if not args.dry_run:
+        fetched = run_command(["git", "fetch", "--no-tags", "origin", "main"], cwd=worktree)
+        if fetched.returncode != 0:
+            raise BridgeError("fetch-failed", "origin/main could not be fetched; correct access and retry")
+        remote_head = git_text(worktree, ["rev-parse", "refs/remotes/origin/main"])
+        push_state = read_push_state(state_path)
+        if remote_head != commit_before:
+            remote_is_ancestor = run_command(
+                ["git", "merge-base", "--is-ancestor", remote_head, commit_before], cwd=worktree
+            )
+            if remote_is_ancestor.returncode == 0:
+                pending_push = True
+            else:
+                # origin/main moved. A bridge commit that lost a push race is rebuilt;
+                # divergence (history rewriting) stops; otherwise fast-forward and let
+                # this publish restore vault/ from the vault.
+                commit_before = drop_lost_race(
+                    worktree, push_state, state_path, commit_before, remote_head, policy.publish_root, record
+                )
+                if record["dropped_unpushed"]:
+                    push_state = None
+                commit_before = reconcile_remote(
+                    worktree,
+                    commit_before,
+                    remote_head,
+                    policy.publish_root,
+                    record,
+                    deployed_bytes=policy_bytes if deployed else None,
+                )
+                record["commit_before"] = commit_before
+                record["commit_after"] = commit_before
+                # A pending publish that reached origin before main moved on is settled;
+                # left pending, it would stop the next run as an unverified local commit.
+                pending_commit = push_state.get("commit") if push_state is not None else None
+                if (
+                    push_state is not None
+                    and push_state.get("status") == "pending"
+                    and isinstance(pending_commit, str)
+                    and SHA_RE.fullmatch(pending_commit)
+                    and is_ancestor(worktree, pending_commit, commit_before)
+                ):
+                    write_clear_state(state_path, pending_commit)
+        elif push_state is not None and push_state.get("status") == "pending":
+            recover_pending = True
+
+    if deployed:
+        record["policy_drift"] = repository_policy_differs(worktree, commit_before, policy_bytes)
+        if record["policy_drift"]:
+            print("policy-drift repository bridge-policy.toml differs from the deployed policy")
+
+    if recover_pending:
+        remote_parent = str(push_state.get("remote_parent", ""))
+        verify_pending_commit(worktree, push_state, commit_before, remote_parent, policy.publish_root)
+        record["commit_after"] = commit_before
+        record["result_category"] = "success-after-recovery"
+        append_audit(audit_path, record)
+        write_clear_state(state_path, commit_before)
+        return
+
+    if pending_push:
+        verify_pending_commit(worktree, push_state, commit_before, remote_head, policy.publish_root)
+        record["commit_after"] = commit_before
+        audited_push(
+            worktree,
+            state_path,
+            commit_before,
+            remote_head,
+            audit_path,
+            record,
+            retry=True,
+        )
+        return
+
+    with tempfile.TemporaryDirectory(prefix="bridge-publish-stage-") as temp_name:
+        staging = Path(temp_name) / "vault"
+        staging.mkdir()
+        violations, oversized, _ = build_staging(policy, vault, staging)
+        summary = summarize_trees(staging, worktree / policy.publish_root)
+        summary["denied"] = [f"{rel} ({category})" for rel, category in violations]
+        summary["oversized"] = oversized
+        record["files"] = {key: list(value) for key, value in summary.items()}
+        record["counts"] = {key: len(summary[key]) for key in ("added", "modified", "deleted")}
+        # Files the policy filters out (denied path, name or extension; oversized) are
+        # skipped and reported; only a vault-supplied scanner control file stops the run.
+        scanner_controls = [rel for rel, _ in violations if Path(rel).name in (".gitleaks.toml", ".gitleaksignore")]
+        if scanner_controls:
+            record["policy_outcome"] = "blocked"
+            print_summary(with_reverted(summary, record))
+            if args.dry_run:
+                record["result_category"] = "dry-run-policy-blocked"
+                return
+            raise BridgeError(
+                "vault-scanner-config",
+                f"vault-supplied scanner control file blocked: {shown_path(scanner_controls[0])}",
+            )
+        record["policy_outcome"] = "filtered" if (violations or oversized) else "allowed"
+        if not args.dry_run:
+            print_summary(with_reverted(summary, record))
+
+        if args.dry_run:
+            try:
+                scanner, findings = isolated_scan(
+                    Path(args.gitleaks), Path(args.gitleaks_config), staging
+                )
+            except BridgeError:
+                record["scanner_outcome"] = "error"
+                raise
+            record["scanner_outcome"] = scanner
+            if findings:
+                first = findings[0]
+                raise BridgeError("secret-detected", f"secret detected in {shown_path(first['path'])} (rule {first['rule']})")
+            print_summary(with_reverted(summary, record))
+            record["result_category"] = "dry-run"
+            return
+
+        with tempfile.TemporaryDirectory(prefix="bridge-publish-rollback-") as rollback_name:
+            rollback = Path(rollback_name) / "vault"
+            rollback.mkdir()
+            rsync_tree(worktree / policy.publish_root, rollback)
+            mirror_changed = False
+
+            def restore_local_mirror() -> None:
+                try:
+                    rsync_tree(rollback, worktree / policy.publish_root)
+                    git(
+                        worktree,
+                        ["reset", "--quiet", "HEAD", "--", policy.publish_root],
+                        category="publish-rollback-failed",
+                        message="publish failed and the Git index could not be restored",
+                    )
+                    # rsync --safe-links leaves out links that main committed under vault/;
+                    # restore them from Git so the next run does not find a dirty worktree.
+                    if git(worktree, ["ls-tree", "HEAD", "--", policy.publish_root.rstrip("/") + "/"]):
+                        git(
+                            worktree,
+                            ["checkout", "--quiet", "HEAD", "--", policy.publish_root],
+                            category="publish-rollback-failed",
+                            message="publish failed and the local mirror could not be restored",
+                        )
+                except BridgeError as rollback_error:
+                    raise BridgeError(
+                        "publish-rollback-failed",
+                        "publish failed and local mirror rollback failed",
+                    ) from rollback_error
+
+            try:
+                mirror_changed = True
+                rsync_tree(staging, worktree / policy.publish_root)
+                if read_regular_file(policy_path, "bridge policy") != policy_bytes:
+                    raise BridgeError("policy-changed", "bridge policy changed during the run")
+                try:
+                    scanner, findings = isolated_scan(
+                        Path(args.gitleaks),
+                        Path(args.gitleaks_config),
+                        worktree / policy.publish_root,
+                    )
+                except BridgeError:
+                    record["scanner_outcome"] = "error"
+                    raise
+                record["scanner_outcome"] = scanner
+                if findings:
+                    first = findings[0]
+                    raise BridgeError(
+                        "secret-detected",
+                        f"secret detected in {shown_path(first['path'])} (rule {first['rule']}); remove it and retry",
+                    )
+            except BaseException:
+                if mirror_changed:
+                    restore_local_mirror()
+                raise
+
+            try:
+                tree = stage_publish_root(worktree, policy.publish_root, staging, object_format)
+                changes = staged_changes(worktree, policy.publish_root)
+                files = record["files"]
+                record["files"] = {**changes, "denied": files["denied"], "oversized": files["oversized"]}
+                record["counts"] = {key: len(changes[key]) for key in ("added", "modified", "deleted")}
+                if not any(changes.values()):
+                    record["result_category"] = "no-change"
+                    append_audit(audit_path, record)
+                    return
+                if read_regular_file(policy_path, "bridge policy") != policy_bytes:
+                    raise BridgeError("policy-changed", "bridge policy changed during the run")
+            except BaseException:
+                restore_local_mirror()
+                raise
+
+            timestamp = utc_now()
+            name = os.environ.get("BRIDGE_GIT_NAME", "assistant-bridge publisher")
+            email = os.environ.get("BRIDGE_GIT_EMAIL", "assistant-bridge@localhost")
+            try:
+                git(
+                    worktree,
+                    [
+                        "-c",
+                        f"user.name={name}",
+                        "-c",
+                        f"user.email={email}",
+                        "commit",
+                        "-m",
+                        f"publish {timestamp}",
+                    ],
+                    category="commit-failed",
+                    message="publish commit failed",
+                )
+            except BaseException:
+                if git_text(worktree, ["rev-parse", "HEAD"]) == commit_before:
+                    restore_local_mirror()
+                raise
+            # The index was verified to change only vault/, so the whole index is the
+            # commit; a pathspec commit cannot record a folder that replaced a file or link.
+            committed = git_text(
+                worktree,
+                ["rev-parse", "HEAD^{tree}"],
+                category="publish-verify-failed",
+                message="publish commit cannot be verified",
+            )
+            if committed != tree:
+                raise BridgeError(
+                    "publish-verify-failed",
+                    "publish commit does not hold the verified tree; review local main manually",
+                )
+
+        commit_after = git_text(worktree, ["rev-parse", "HEAD"])
+        record["commit_after"] = commit_after
+        audited_push(
+            worktree,
+            state_path,
+            commit_after,
+            commit_before,
+            audit_path,
+            record,
+            retry=False,
+        )
+
+
+def write_status(status_dir: Path, outcome: str, *, real_run: bool) -> None:
+    """Record this run's outcome for operators; nothing reads it automatically.
+
+    An unreadable earlier status starts over; a failed write never changes the run's
+    own outcome.
+    """
+    path = status_dir / STATUS_FILE
+    try:
+        try:
+            previous = read_job_status(path) or {}
+        except BridgeError:
+            previous = {}
+        now = utc_now()
+        last_real_run = previous.get("last_real_run_at")
+        skips = previous.get("consecutive_skips")
+        if not isinstance(skips, int) or isinstance(skips, bool) or skips < 0:
+            skips = 0
+        if real_run:
+            last_real_run, skips = now, 0
+        elif outcome == "skipped-busy":
+            skips += 1
+        write_job_status(path, {
+            "job": "publish",
+            "last_run_at": now,
+            "last_real_run_at": last_real_run if isinstance(last_real_run, str) else None,
+            "last_outcome": outcome,
+            "consecutive_skips": skips,
+        })
+    except Exception:
+        print("status-write-failed", file=sys.stderr)
+
+
+def stand_down(pause_dir: str | None, progress: dict[str, bool]) -> int | None:
+    """The exit code when the owner's pause stops this run, or None when it may work.
+
+    job_paused fails closed on a marker directory it cannot read. Publish runs as
+    bridge-vault beneath a root-owned directory, so that stop fails loudly: a quiet pause
+    would show health a job that no longer runs.
+    """
+    directory = Path(pause_dir) if pause_dir else DEFAULT_PAUSE_DIR
+    if not job_paused("publish", directory):
+        return None
+    try:
+        os.lstat(directory / "publish")
+    except FileNotFoundError:
+        pass  # lifted after the first look; this run still stands down
+    except OSError:
+        print("error: pause state unreadable", file=sys.stderr)
+        return 2
+    progress["paused"] = True
+    print("publish paused")
+    return 0
+
+
+def run_publish(args: argparse.Namespace, progress: dict[str, bool]) -> int:
+    """One publish run; *progress* records work done, a busy lock or a pause."""
+    try:
+        run_id = validate_run_id(args.run_id or uuid.uuid4().hex)
+    except BridgeError as exc:
+        print(f"error: {exc.message}", file=sys.stderr)
+        return 2
+    record = make_record(args, run_id)
+    try:
+        with bridge_lock(Path(args.lock_file), wait_seconds=LOCK_WAIT_SECONDS):
+            # The owner may have paused publish while this run waited for the lock.
+            stopped = stand_down(args.pause_dir, progress)
+            if stopped is not None:
+                return stopped
+            progress["worked"] = True
+            execute(args, record)
+        return 0
+    except BridgeError as exc:
+        if exc.category == "bridge-busy" and not progress["worked"]:
+            # Apply or an operator held the shared lock past the wait; the next run publishes.
+            progress["busy"] = True
+            print("another bridge operation is running; skipped this run")
+            return 0
+        record["result_category"] = exc.category
+        if not args.dry_run and record.get("_audit_safe") and not record.get("_audit_written") and exc.category not in {"audit-unwritable", "audit-write-failed"}:
+            try:
+                append_audit(Path(args.audit_log), record)
+            except BridgeError:
+                print("error: audit log write failed", file=sys.stderr)
+                return 2
+        print(f"error: {exc.message}", file=sys.stderr)
+        return 2
+    except Exception:
+        record["result_category"] = "internal-error"
+        if not args.dry_run and record.get("_audit_safe") and not record.get("_audit_written"):
+            try:
+                append_audit(Path(args.audit_log), record)
+            except BridgeError:
+                pass
+        print("error: unexpected bridge failure; no note content was logged", file=sys.stderr)
+        return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    progress = {"worked": False, "busy": False, "paused": False}
+    # The owner's pause marker wins before the lock, the network or any other check.
+    returncode = stand_down(args.pause_dir, progress)
+    if returncode is None:
+        returncode = run_publish(args, progress)
+    if progress["busy"]:
+        outcome = "skipped-busy"
+    elif progress["paused"]:
+        outcome = "paused"
+    else:
+        outcome = "ran" if returncode == 0 else "failed"
+    if not args.dry_run:
+        write_status(Path(args.status_dir), outcome, real_run=progress["worked"])
+    return returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

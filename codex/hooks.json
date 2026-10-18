@@ -1,0 +1,44 @@
+{
+  "description": "Codex operating hooks: OptMem wake, post-compaction orientation, and shared privacy gates. The empty SessionStart slot preserves trust indices after retiring automatic queue loading; use brain-linear pickup codex when picking up work.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "python3 $HOME/.codex/hooks/pre_tool_use.py",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "python3 $HOME/.codex/hooks/optmem_start.py",
+            "statusMessage": "Loading OptMem wake context",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "startup|resume|clear|compact"
+      },
+      {
+        "hooks": [],
+        "matcher": "startup|resume|clear|compact"
+      },
+      {
+        "hooks": [
+          {
+            "command": "python3 $HOME/.codex/hooks/continuity.py",
+            "statusMessage": "Restoring pre-compaction orientation",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "compact"
+      }
+    ]
+  }
+}

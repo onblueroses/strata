@@ -1,0 +1,442 @@
+#!/usr/bin/env python3
+"""Restore one bridge-import run without disturbing unrelated vault files."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import shutil
+import sys
+import tempfile
+from typing import Any
+
+from bridge_common import (
+    BridgeError,
+    append_audit,
+    bridge_lock,
+    check_disjoint,
+    ensure_external,
+    git,
+    preflight_audit,
+    read_regular_file,
+    require_regular_file,
+    reserve_audit,
+    secure_atomic_write,
+    secure_move_out,
+    secure_parent,
+    secure_read_file,
+    utc_now,
+)
+from bridge_policy import PolicyError, load_policy_bytes
+
+
+RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
+SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
+MANIFEST_LIMIT = 16 * 1024 * 1024
+
+
+class RestoreError(Exception):
+    """A safe, user-facing restore failure."""
+
+
+def _relative_path(value: Any, field: str) -> PurePosixPath:
+    if (
+        not isinstance(value, str)
+        or not value
+        or "\\" in value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise RestoreError(f"invalid {field} in backup manifest")
+    path = PurePosixPath(value)
+    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+        raise RestoreError(f"invalid {field} in backup manifest")
+    if path.as_posix() != value:
+        raise RestoreError(f"non-canonical {field} in backup manifest")
+    return path
+
+
+def _inside(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _hash_field(value: Any, field: str, rel: str) -> str:
+    if not isinstance(value, str) or not SHA256_RE.fullmatch(value):
+        raise RestoreError(f"invalid {field} for {rel}")
+    return value
+
+
+def _load_manifest(path: Path, run_id: str) -> dict[str, Any]:
+    try:
+        raw = read_regular_file(path, "backup manifest", max_bytes=MANIFEST_LIMIT)
+        data = json.loads(raw.decode("utf-8"))
+    except (BridgeError, UnicodeError, json.JSONDecodeError):
+        raise RestoreError("backup manifest is unreadable or invalid") from None
+    if (
+        not isinstance(data, dict)
+        or type(data.get("version")) is not int
+        or data.get("version") != 1
+    ):
+        raise RestoreError("unsupported backup manifest")
+    if data.get("run_id") != run_id or not isinstance(data.get("files"), list):
+        raise RestoreError("backup manifest run id or file list is invalid")
+    return data
+
+
+def _manifest_summary(backup_value: str, run_id: str) -> tuple[list[str], list[str]]:
+    if not RUN_ID_RE.fullmatch(run_id) or run_id in {".", ".."}:
+        raise RestoreError("invalid run id")
+    try:
+        backup_root = Path(backup_value).resolve(strict=True)
+        run_dir = (backup_root / run_id).resolve(strict=True)
+    except OSError:
+        raise RestoreError("backup run is missing") from None
+    if run_dir.parent != backup_root:
+        raise RestoreError("backup run escapes the backup directory")
+    manifest = _load_manifest(run_dir / "manifest.json", run_id)
+    restored: list[str] = []
+    quarantined: list[str] = []
+    seen: set[str] = set()
+    for item in manifest["files"]:
+        if not isinstance(item, dict) or not isinstance(item.get("existed"), bool):
+            raise RestoreError("invalid file entry in backup manifest")
+        rel = _relative_path(item.get("path"), "vault path").as_posix()
+        if rel in seen:
+            raise RestoreError(f"duplicate backup entry for {rel}")
+        seen.add(rel)
+        (restored if item["existed"] else quarantined).append(rel)
+    return restored, quarantined
+
+
+def _fsync_dir(path: Path) -> None:
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError:
+        raise RestoreError("restore durability check failed") from None
+
+
+def _arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Restore files backed up by one bridge-import run."
+    )
+    parser.add_argument("run_id")
+    parser.add_argument("--vault", default=os.environ.get("BRIDGE_VAULT"))
+    parser.add_argument("--backup-dir", default=os.environ.get("BRIDGE_BACKUP_DIR"))
+    parser.add_argument("--audit-log", default=os.environ.get("BRIDGE_AUDIT_LOG"))
+    parser.add_argument("--worktree", default=os.environ.get("BRIDGE_WORKTREE", "/srv/assistant-bridge"))
+    parser.add_argument("--policy", default=os.environ.get("BRIDGE_POLICY"))
+    parser.add_argument("--lock-file", default=os.environ.get("BRIDGE_LOCK_FILE", "/var/lib/assistant-bridge/bridge.lock"))
+    args = parser.parse_args()
+    if not args.vault:
+        parser.error("--vault or BRIDGE_VAULT is required")
+    if not args.backup_dir:
+        parser.error("--backup-dir or BRIDGE_BACKUP_DIR is required")
+    return args
+
+
+def restore(run_id: str, vault_value: str, backup_value: str, policy) -> tuple[list[str], list[str]]:
+    if not RUN_ID_RE.fullmatch(run_id) or run_id in {".", ".."}:
+        raise RestoreError("invalid run id")
+    try:
+        vault = Path(vault_value).resolve(strict=True)
+        backup_root = Path(backup_value).resolve(strict=True)
+    except OSError:
+        raise RestoreError("vault or backup directory is missing") from None
+    if not vault.is_dir() or not backup_root.is_dir():
+        raise RestoreError("vault or backup directory is not a directory")
+    if _inside(vault, backup_root) or _inside(backup_root, vault):
+        raise RestoreError("vault and backup directory must be outside each other")
+
+    run_dir_raw = backup_root / run_id
+    if run_dir_raw.is_symlink():
+        raise RestoreError("backup run directory may not be a symlink")
+    try:
+        run_dir = run_dir_raw.resolve(strict=True)
+    except OSError:
+        raise RestoreError("backup run is missing") from None
+    if run_dir.parent != backup_root or not run_dir.is_dir():
+        raise RestoreError("backup run escapes the backup directory")
+
+    manifest_path = run_dir / "manifest.json"
+    if manifest_path.is_symlink():
+        raise RestoreError("backup manifest may not be a symlink")
+    manifest = _load_manifest(manifest_path, run_id)
+
+    entries: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in manifest["files"]:
+        if not isinstance(item, dict):
+            raise RestoreError("invalid file entry in backup manifest")
+        rel = _relative_path(item.get("path"), "vault path")
+        rel_text = rel.as_posix()
+        if rel_text in seen:
+            raise RestoreError(f"duplicate backup entry for {rel_text}")
+        seen.add(rel_text)
+        existed = item.get("existed")
+        if not isinstance(existed, bool):
+            raise RestoreError(f"invalid existed flag for {rel_text}")
+        after_hash = _hash_field(item.get("after_sha256"), "after_sha256", rel_text)
+
+        current = secure_read_file(vault, rel_text, max_bytes=policy.max_file_bytes)
+        if current is None:
+            raise RestoreError(f"vault target {rel_text} is missing")
+        current_data, current_mode = current
+        decision = policy.evaluate(vault, rel_text)
+        if not decision.allowed:
+            raise RestoreError(f"policy blocks restore target {rel_text}: {decision.category}")
+        if hashlib.sha256(current_data).hexdigest() != after_hash:
+            raise RestoreError(f"vault target changed since import: {rel_text}")
+
+        entry: dict[str, Any] = {
+            "rel": rel,
+            "rel_text": rel_text,
+            "existed": existed,
+            "target_size": len(current_data),
+            "target_mode": current_mode,
+            "current_data": current_data,
+        }
+        if existed:
+            before_hash = _hash_field(
+                item.get("before_sha256"), "before_sha256", rel_text
+            )
+            backup_rel = _relative_path(item.get("backup"), "backup path")
+            expected_backup = PurePosixPath("files", *rel.parts)
+            if backup_rel != expected_backup:
+                raise RestoreError(f"unexpected backup path for {rel_text}")
+            try:
+                backup_read = secure_read_file(
+                    run_dir,
+                    backup_rel.as_posix(),
+                    max_bytes=policy.max_file_bytes,
+                )
+            except BridgeError as error:
+                if error.category == "oversized":
+                    raise RestoreError(
+                        f"policy blocks backup for {rel_text}: oversized"
+                    ) from None
+                raise RestoreError(f"backup for {rel_text} is missing or unreadable") from None
+            if backup_read is None:
+                raise RestoreError(f"backup for {rel_text} is missing or unreadable")
+            backup_data, backup_mode = backup_read
+            if hashlib.sha256(backup_data).hexdigest() != before_hash:
+                raise RestoreError(f"backup checksum mismatch: {rel_text}")
+            backup_decision = policy.evaluate(
+                vault,
+                rel_text,
+                size=len(backup_data),
+                require_exists=False,
+            )
+            if not backup_decision.allowed:
+                raise RestoreError(
+                    f"policy blocks backup for {rel_text}: {backup_decision.category}"
+                )
+            entry["backup_data"] = backup_data
+            entry["mode"] = backup_mode
+            entry["backup_size"] = len(backup_data)
+        else:
+            if item.get("backup") is not None or item.get("before_sha256") is not None:
+                raise RestoreError(f"unexpected prior backup for {rel_text}")
+            quarantine = run_dir.joinpath("restore-quarantine", *rel.parts)
+            try:
+                quarantine_parent = quarantine.parent.resolve(strict=False)
+            except OSError:
+                raise RestoreError(f"invalid quarantine path for {rel_text}") from None
+            if not _inside(quarantine_parent, run_dir):
+                raise RestoreError(f"quarantine path escapes backup run: {rel_text}")
+            if quarantine.exists() or quarantine.is_symlink():
+                raise RestoreError(f"restore quarantine already exists: {rel_text}")
+            if not os.access(run_dir, os.W_OK | os.X_OK):
+                raise RestoreError("backup run is not writable for quarantine")
+            with secure_parent(vault, rel_text) as (parent_fd, _name):
+                target_device = os.fstat(parent_fd).st_dev
+            if target_device != run_dir.stat().st_dev:
+                raise RestoreError(
+                    f"vault and quarantine are on different filesystems: {rel_text}"
+                )
+            entry["quarantine"] = quarantine
+        entries.append(entry)
+
+    # All manifests, backups, targets, and hashes have been checked before mutation.
+    projected_free: dict[int, int] = {}
+    for entry in entries:
+        if not entry["existed"]:
+            continue
+        with secure_parent(vault, entry["rel_text"]) as (parent_fd, _name):
+            device = os.fstat(parent_fd).st_dev
+        if device not in projected_free:
+            try:
+                projected_free[device] = shutil.disk_usage(vault).free
+            except OSError:
+                raise RestoreError("free disk space cannot be verified") from None
+        if projected_free[device] < entry["backup_size"] + 1024 * 1024:
+            raise RestoreError(f"insufficient disk space to restore: {entry['rel_text']}")
+        projected_free[device] += entry["target_size"] - entry["backup_size"]
+
+    restored: list[str] = []
+    quarantined: list[str] = []
+    attempted: list[dict[str, Any]] = []
+    try:
+        for entry in entries:
+            rel_text = entry["rel_text"]
+            attempted.append(entry)
+            if entry["existed"]:
+                secure_atomic_write(
+                    vault,
+                    rel_text,
+                    entry["backup_data"],
+                    mode=entry["mode"],
+                )
+                restored.append(rel_text)
+            else:
+                quarantine: Path = entry["quarantine"]
+                secure_move_out(vault, rel_text, quarantine)
+                quarantined.append(rel_text)
+    except (OSError, BridgeError) as operation_error:
+        rollback_failed: str | None = None
+        for prior in reversed(attempted):
+            rel_text = prior["rel_text"]
+            try:
+                secure_atomic_write(
+                    vault,
+                    rel_text,
+                    prior["current_data"],
+                    mode=prior["target_mode"],
+                )
+                quarantine = prior.get("quarantine")
+                if isinstance(quarantine, Path) and (quarantine.exists() or quarantine.is_symlink()):
+                    failed = run_dir.joinpath("restore-failed-quarantine", *prior["rel"].parts)
+                    failed.parent.mkdir(parents=True, exist_ok=True)
+                    if failed.exists() or failed.is_symlink():
+                        raise OSError("failed-quarantine already exists")
+                    os.replace(quarantine, failed)
+            except (OSError, BridgeError):
+                rollback_failed = rel_text
+                break
+        if rollback_failed is not None:
+            raise RestoreError(
+                f"restore failed and rollback needs manual recovery: {rollback_failed}"
+            ) from operation_error
+        raise RestoreError("restore failed; all vault targets were rolled back") from operation_error
+    return restored, quarantined
+
+
+def main() -> int:
+    args = _arguments()
+    audit_path = Path(args.audit_log) if args.audit_log else Path(args.backup_dir).absolute().parent / "audit.jsonl"
+    record: dict[str, Any] = {
+        "time": utc_now(),
+        "run_id": args.run_id,
+        "mode": "manual",
+        "direction": "restore",
+        "commit_before": None,
+        "commit_after": None,
+        "counts": {"restored": 0, "quarantined": 0},
+        "files": {"restored": [], "quarantined": []},
+        "policy_outcome": "not-run",
+        "scanner_outcome": "not-applicable",
+        "backup": f"{args.run_id}/manifest.json",
+        "result_category": "started",
+    }
+    worktree = Path(args.worktree)
+    policy_path = Path(args.policy) if args.policy else worktree / "bridge-policy.toml"
+    audit_safe = False
+    audit_written = False
+    try:
+        with bridge_lock(Path(args.lock_file)):
+            vault, worktree_real = check_disjoint(Path(args.vault), worktree)
+            ensure_external(Path(args.backup_dir), vault, worktree_real, "backup directory")
+            ensure_external(Path(args.lock_file), vault, worktree_real, "bridge lock file")
+            expected = worktree_real / "bridge-policy.toml"
+            require_regular_file(policy_path, expected, "bridge policy")
+            policy_bytes = read_regular_file(policy_path, "bridge policy")
+            committed = git(
+                worktree_real,
+                ["show", "HEAD:bridge-policy.toml"],
+                category="policy-unverifiable",
+                message="committed bridge policy cannot be verified",
+            )
+            if policy_bytes != committed:
+                raise BridgeError("policy-changed", "bridge policy differs from the checked-out commit")
+            try:
+                policy = load_policy_bytes(expected, policy_bytes)
+            except PolicyError as exc:
+                raise BridgeError("policy-invalid", f"policy invalid: {exc}") from exc
+            record["policy_outcome"] = "loaded"
+            ensure_external(audit_path, vault, worktree_real, "audit log")
+            preflight_audit(audit_path)
+            audit_safe = True
+            expected_restored, expected_quarantined = _manifest_summary(args.backup_dir, args.run_id)
+            record["counts"] = {
+                "restored": len(expected_restored),
+                "quarantined": len(expected_quarantined),
+            }
+            record["files"] = {
+                "restored": expected_restored,
+                "quarantined": expected_quarantined,
+            }
+            record["result_category"] = "pending-restore"
+            reservation = reserve_audit(audit_path, record)
+            audit_written = True
+            try:
+                try:
+                    restored, quarantined = restore(args.run_id, args.vault, args.backup_dir, policy)
+                except (RestoreError, BridgeError) as error:
+                    if "policy blocks" in str(error):
+                        record["policy_outcome"] = "blocked"
+                    record["result_category"] = "restore-failed"
+                    reservation.finalize(record)
+                    print(f"restore stopped: {error}", file=sys.stderr)
+                    return 2
+                record["counts"] = {"restored": len(restored), "quarantined": len(quarantined)}
+                record["files"] = {"restored": restored, "quarantined": quarantined}
+                record["policy_outcome"] = "allowed"
+                record["result_category"] = "success"
+                reservation.finalize(record)
+            finally:
+                reservation.close()
+    except BridgeError as error:
+        record["result_category"] = error.category
+        if audit_safe and not audit_written and error.category not in {"audit-unwritable", "audit-write-failed"}:
+            try:
+                append_audit(audit_path, record)
+            except BridgeError:
+                print("restore stopped: audit log write failed", file=sys.stderr)
+                return 2
+        print(f"restore stopped: {error.message}", file=sys.stderr)
+        return 2
+    except RestoreError as error:
+        record["result_category"] = "restore-validation-failed"
+        if audit_safe and not audit_written:
+            try:
+                append_audit(audit_path, record)
+            except BridgeError:
+                print("restore stopped: audit log write failed", file=sys.stderr)
+                return 2
+        print(f"restore stopped: {error}", file=sys.stderr)
+        return 2
+    except Exception:
+        record["result_category"] = "internal-error"
+        if audit_safe and not audit_written:
+            try:
+                append_audit(audit_path, record)
+            except BridgeError:
+                pass
+        print("restore stopped: unexpected bridge failure", file=sys.stderr)
+        return 2
+    print(f"restore complete: restored={len(restored)} quarantined={len(quarantined)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

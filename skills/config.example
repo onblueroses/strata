@@ -1,0 +1,14 @@
+# Set these interfaces for the local installation. Paths below are placeholders.
+RESEARCH_ROOT=/path/to/research
+VAULT_ROOT=/path/to/vault
+MEMO_CMD=/path/to/memo
+CRM_PROBE=/path/to/crm/probe.py
+CRM_REGISTRY=/path/to/crm/registry
+SESSION_STATE_DIR=/path/to/session-state
+RUNTIME_REFERENCE_DIR=/path/to/runtime-reference
+VPS_RUNBOOK=/path/to/vps-runbook.md
+ISSUE_CLI=/path/to/issue-cli
+SECRET_SCANNER=/path/to/gitleaks
+FLEET_CODEX_HOME=/path/to/isolated-codex-home
+FLEET_PROGRESS_DIR=/path/to/fleet-progress
+OBSCURE_REPO=/path/to/obscuring-build-pass

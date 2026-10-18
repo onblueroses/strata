@@ -1,0 +1,9 @@
+[Unit]
+Description=Snapshot the shared vault to a private remote
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@BRAIN_USER@
+ExecStart=@BRAIN_BIN_DIR@/brain-snapshot

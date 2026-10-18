@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Start an explicitly selected local proxy on demand; never submit inference.
+# Shared service stays active until stopped; it is not enabled at login here.
+set -eu
+case "${1:-}" in
+  deepseek) unit=litellm-deepseek.service; url=http://127.0.0.1:4100/health/liveliness ;;
+  openrouter) unit=litellm-openrouter.service; url=http://127.0.0.1:4101/health/readiness ;;
+  *) echo 'usage: ensure-provider-bridge deepseek|openrouter' >&2; exit 2 ;;
+esac
+ready() { curl --noproxy '*' -fsS --connect-timeout 1 --max-time 2 "$url" >/dev/null 2>&1; }
+ready && exit 0
+if ! timeout 20 systemctl --user start "$unit"; then
+  echo "Could not start $unit; inspect systemctl --user status $unit" >&2
+  exit 2
+fi
+for ((attempt=0; attempt<15; attempt++)); do
+  ready && exit 0
+  sleep 1
+done
+echo "$unit did not become ready; inspect its user journal. No inference was submitted." >&2
+exit 2

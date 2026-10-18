@@ -1,0 +1,6 @@
+# Networks and DNS suffixes that make a pinned push destination private. Copy to
+# ~/.config/privacy/private-push-networks.txt (ignored local state). One entry per line:
+# a CIDR network, or a DNS suffix with a leading dot. The pre-push gate treats a missing
+# file as "unproven", so every pinned destination needs a matching line here.
+<overlay-network-cidr>
+.<overlay-dns-suffix>

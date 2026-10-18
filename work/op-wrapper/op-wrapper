@@ -1,0 +1,209 @@
+#!/usr/bin/python3 -I
+"""op-wrapper: a bounded root helper for the VPS worker.
+
+Installed root-owned at /usr/local/sbin/op-wrapper; sudoers can allow `worker` this path.
+Every action is checked against /etc/worker/op-allow.json (root-owned) and logged to syslog
+with the invoking user and the ticket. Nothing here takes a shell string. A worker's broader
+root authority, where granted, follows the ticket request and phone record rules.
+
+  op-wrapper pm2-list <user>
+  op-wrapper pm2-logs <user> <app> [lines]
+  op-wrapper ls  <root> [relative/path]
+  op-wrapper cat <root> <relative/path>
+  op-wrapper --ticket ABC-N restart-unit <unit.service>
+  op-wrapper --ticket ABC-N restart-pm2 <user> <app>
+
+Restart only: there is no stop, start, enable or edit. A target restarts at most
+`max_restarts_per_hour` times. Reads refuse secret-looking names and anything that resolves
+outside its root.
+"""
+import fnmatch
+import json
+import os
+import re
+import subprocess
+import sys
+import syslog
+import time
+from pathlib import Path
+
+ALLOW = Path("/etc/worker/op-allow.json")
+STATE = Path("/var/lib/op-wrapper/restarts.json")
+TICKET_RE = re.compile(r"^[A-Z]{2,6}-\d{1,6}$")
+NAME_RE = re.compile(r"^[A-Za-z0-9_.@-]{1,80}$")
+SECRET_PATTERNS = [".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_ed25519*", "id_ecdsa*",
+                   "*token*", "*secret*", "*passw*", "*api_key*", "*apikey*", "*_env", "*.env", "credentials*", "auth.json", ".netrc", ".npmrc", ".pypirc",
+                   "*.sqlite*", "*.db", "htpasswd*", ".htpasswd*", "*.kdbx", "cookies*"]
+SECRET_DIRS = {".git", ".ssh", ".gnupg", ".aws", ".config", ".local", ".pm2", ".codex", ".claude"}
+MAX_CAT_BYTES = 1_000_000
+PATH_ENV = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+
+def die(msg: str, code: int = 2) -> None:
+    audit(f"REFUSED {msg}")
+    print(f"op-wrapper: refused: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def audit(msg: str) -> None:
+    who = os.environ.get("SUDO_USER", "root")
+    syslog.openlog("op-wrapper", 0, syslog.LOG_AUTH)
+    syslog.syslog(syslog.LOG_NOTICE, f"user={who} argv={sys.argv[1:]!r} {msg}")
+
+
+def run(cmd: list[str], *, user: str = "root", timeout: int = 60) -> subprocess.CompletedProcess:
+    env = {"PATH": PATH_ENV, "LANG": "C.UTF-8"}
+    if user == "root":
+        env["HOME"] = "/root"
+    else:
+        import pwd
+        env["HOME"] = pwd.getpwnam(user).pw_dir
+        cmd = ["/usr/sbin/runuser", "-u", user, "--", "/usr/bin/env", f"HOME={env['HOME']}", f"PATH={PATH_ENV}", *cmd]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+
+
+def load_allow() -> dict:
+    st = ALLOW.stat()
+    if st.st_uid != 0 or st.st_mode & 0o022:
+        die("allowlist is not root-owned and unwritable by others")
+    return json.loads(ALLOW.read_text())
+
+
+def rate_limit(target: str, limit: int) -> None:
+    STATE.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    data = json.loads(STATE.read_text()) if STATE.exists() else {}
+    now = time.time()
+    recent = [t for t in data.get(target, []) if now - t < 3600]
+    if len(recent) >= limit:
+        die(f"{target} already restarted {len(recent)} times in the last hour (limit {limit})", 3)
+    data[target] = recent + [now]
+    tmp = STATE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data))
+    tmp.replace(STATE)
+
+
+def pm2_apps(user: str) -> list[dict]:
+    proc = run(["/usr/bin/pm2", "jlist"], user=user)
+    if proc.returncode != 0:
+        die(f"pm2 jlist failed for {user}: {proc.stderr.strip()[:200]}", 1)
+    return json.loads(proc.stdout[proc.stdout.index("["):])
+
+
+def check_pm2(allow: dict, user: str, app: str | None = None) -> None:
+    if user not in allow.get("pm2", {}):
+        die(f"pm2 user {user!r} is not allowlisted")
+    if app is not None and app not in allow["pm2"][user]:
+        die(f"pm2 app {user}:{app!r} is not allowlisted")
+
+
+def safe_path(allow: dict, root_name: str, rel: str) -> Path:
+    roots = allow.get("read_roots", {})
+    if root_name not in roots:
+        die(f"read root {root_name!r} is not allowlisted (have: {', '.join(sorted(roots))})")
+    root = Path(roots[root_name]).resolve()
+    target = (root / rel).resolve()
+    if target != root and root not in target.parents:
+        die("path resolves outside its root")
+    for part in target.relative_to(root).parts:
+        if part in SECRET_DIRS or any(fnmatch.fnmatch(part.lower(), pat) for pat in SECRET_PATTERNS):
+            die(f"path component {part!r} looks like a secret or private state")
+    return target
+
+
+def main() -> None:
+    args = sys.argv[1:]
+    ticket = None
+    if args[:1] == ["--ticket"]:
+        if len(args) < 2 or not TICKET_RE.match(args[1]):
+            die("--ticket needs an identifier like ABC-N")
+        ticket, args = args[1], args[2:]
+    if not args:
+        print(__doc__)
+        sys.exit(0)
+    if os.geteuid() != 0:
+        print("op-wrapper: run through sudo", file=sys.stderr)
+        sys.exit(2)
+    if any(not NAME_RE.match(a) and "/" not in a for a in args[1:]) or any("\x00" in a or "\n" in a for a in args):
+        die("argument has characters outside the allowed set")
+    allow = load_allow()
+    action, rest = args[0], args[1:]
+
+    if action == "pm2-list" and len(rest) == 1:
+        check_pm2(allow, rest[0])
+        for a in pm2_apps(rest[0]):
+            e = a["pm2_env"]
+            print(f"{a['name']}\t{e['status']}\trestarts={e.get('restart_time')}\tcwd={e.get('pm_cwd')}\t"
+                  f"allowed={'yes' if a['name'] in allow['pm2'][rest[0]] else 'no'}")
+        audit("ok")
+
+    elif action == "pm2-logs" and len(rest) in (2, 3):
+        user, app = rest[0], rest[1]
+        check_pm2(allow, user, app)
+        lines = min(int(rest[2]) if len(rest) == 3 and rest[2].isdigit() else 80, 500)
+        match = [a for a in pm2_apps(user) if a["name"] == app]
+        if not match:
+            die(f"pm2 app {user}:{app} does not exist", 1)
+        for label in ("pm_out_log_path", "pm_err_log_path"):
+            path = match[0]["pm2_env"].get(label)
+            print(f"==> {label} {path}")
+            if path and Path(path).is_file():
+                sys.stdout.write(run(["/usr/bin/tail", "-n", str(lines), path], user=user).stdout)
+        audit("ok")
+
+    elif action == "ls" and len(rest) in (1, 2):
+        target = safe_path(allow, rest[0], rest[1] if len(rest) == 2 else ".")
+        if not target.is_dir():
+            die("not a directory", 1)
+        for entry in sorted(target.iterdir()):
+            kind = "d" if entry.is_dir() else "l" if entry.is_symlink() else "-"
+            size = entry.lstat().st_size
+            print(f"{kind} {size:>10} {entry.name}")
+        audit("ok")
+
+    elif action == "cat" and len(rest) == 2:
+        target = safe_path(allow, rest[0], rest[1])
+        if not target.is_file():
+            die("not a regular file", 1)
+        if target.stat().st_size > MAX_CAT_BYTES:
+            die(f"file larger than {MAX_CAT_BYTES} bytes", 1)
+        sys.stdout.write(target.read_text(errors="replace"))
+        audit("ok")
+
+    elif action == "restart-unit" and len(rest) == 1:
+        unit = rest[0]
+        if not ticket:
+            die("restart needs --ticket ABC-N")
+        if unit not in allow.get("units", []):
+            die(f"unit {unit!r} is not allowlisted")
+        rate_limit(f"unit:{unit}", int(allow.get("max_restarts_per_hour", 3)))
+        proc = run(["/usr/bin/systemctl", "restart", unit], timeout=120)
+        time.sleep(3)
+        state = run(["/usr/bin/systemctl", "is-active", unit]).stdout.strip()
+        audit(f"ticket={ticket} restart-unit rc={proc.returncode} state={state}")
+        print(f"restart {unit}: rc={proc.returncode} state={state} {proc.stderr.strip()[:300]}")
+        sys.exit(0 if proc.returncode == 0 else 1)
+
+    elif action == "restart-pm2" and len(rest) == 2:
+        user, app = rest
+        if not ticket:
+            die("restart needs --ticket ABC-N")
+        check_pm2(allow, user, app)
+        before = [a for a in pm2_apps(user) if a["name"] == app]
+        if not before:
+            die(f"pm2 app {user}:{app} does not exist", 1)
+        if before[0]["pm2_env"]["status"] == "stopped":
+            die(f"{user}:{app} is stopped; restarting would start it, which is not an operator action")
+        rate_limit(f"pm2:{user}:{app}", int(allow.get("max_restarts_per_hour", 3)))
+        proc = run(["/usr/bin/pm2", "restart", app], user=user, timeout=120)
+        time.sleep(3)
+        after = [a["pm2_env"]["status"] for a in pm2_apps(user) if a["name"] == app]
+        audit(f"ticket={ticket} restart-pm2 rc={proc.returncode} status={after}")
+        print(f"restart {user}:{app}: rc={proc.returncode} status={after[0] if after else 'missing'}")
+        sys.exit(0 if proc.returncode == 0 else 1)
+
+    else:
+        die(f"unknown action or wrong arguments: {action!r}")
+
+
+if __name__ == "__main__":
+    main()

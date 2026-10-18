@@ -1,0 +1,89 @@
+# private-tokens.example.txt — template for the local leak inventory.
+#
+# Copy this file to ~/.claude/config/private-tokens.txt and fill it in:
+#
+#     cp ~/.claude/config/private-tokens.example.txt ~/.claude/config/private-tokens.txt
+#
+# The path is absolute because the gates read it from $HOME regardless of the repo you are
+# pushing from. Copying alone leaves the file token-empty, which the gates treat as a
+# configuration error and block on; the copy is step one of two.
+#
+# ~/.claude/config/private-tokens.txt is gitignored and never ships. Only this template does.
+# An optional ~/.claude/.local/private-tokens.txt is read on top of it, for values you want
+# kept out of even the private repo.
+#
+# FORMAT. One entry per line. Every entry begins with the word that says how it is matched,
+# then a space or a tab, then the value:
+#
+#     lit    a fixed string, matched case-insensitively   -> "private identifier"
+#     re     an extended regex, matched case-insensitively -> "private identifier"
+#     demo   a fixed string, matched case-insensitively   -> "domain-revealing demo data"
+#
+# A line whose first non-blank character is # is a comment and means nothing to the parser.
+# Blank lines are skipped. ANY OTHER LINE IS A CONFIGURATION ERROR that names itself and
+# blocks every push and gh write until you fix it. There is no way to write an entry whose
+# type depends on where it sits in the file, which is the entire design.
+#
+# WHY IT IS SHAPED THIS WAY. The previous version of this file used `# [section]` markers and
+# left entries untyped, so a line's meaning came from its position. Four review rounds each
+# found a new way to make a marker invisible to the parser: a trailing note after the closing
+# bracket, a misspelt name, a byte-order mark, a non-breaking space, a dropped #. Every one of
+# them failed in the same direction. The entries below the marker were filed as literals, so
+# `\bACME\b` became an eight-character string, matched nothing, and the gates reported content
+# clean that they had never checked. The set of ways to misspell a marker has no end, so the
+# marker had to go rather than the parser get one more special case.
+#
+# The separator after the keyword is an ASCII space or tab and nothing else. A non-breaking
+# space there would store the value with an invisible byte in front of it, which matches
+# nothing: the same silent failure through a different door.
+#
+# Entries are trimmed, so trailing spaces cannot turn a token into a pattern that matches
+# nothing. If a trailing space is genuinely part of what you are matching, write it as a regex:
+# `re ACME[ ]`.
+#
+# NOT SHAREABLE with a fixed-string loader such as strata's. It skips # lines and takes every
+# other line whole, so it would look for the literal string "lit ACME" and never the identifier.
+# Give each install its own inventory rather than pointing two loaders at one file.
+#
+# Structural classes go here too, as `re` shapes: the address range of your overlay network,
+# its DNS suffix, the phone-number shape of your country. A shape leaks no value, but it names
+# the network and the country, so it belongs in this private file, never in the hooks. A literal
+# host list is what rotted the gh gate (a ticket); a shape cannot rot.
+#
+#   re <overlay-network-address-shape>
+#   re [a-z0-9-]+\.<overlay-dns-suffix>
+#   re <phone-number-shape>
+#
+# CHOOSING lit OR re is mechanical, not a judgement call. A value that carries boundary or
+# spelling logic needs `re`; a plain substring takes `lit`. Two kinds of entry genuinely need
+# a regex:
+#
+#   - a name with more than one spelling or spacing
+#         re Ada[[:space:]]+Lovel(a|e)ce
+#   - a short token that would otherwise match inside ordinary words, where \b is the point.
+#     As a fixed string, ACME would also flag "acmeCorpHelper".
+#         re \bACME\b
+#
+# A regex that matches the empty string is rejected: `foo|` is valid to grep and matches EVERY
+# line, which turns the gate into a wall rather than switching it off. An invalid regex is
+# rejected too, one entry at a time, because a bad pattern spliced into an alternation raises
+# no error at all and silently stops the patterns after it from matching.
+#
+# A `lit` value is matched byte for byte, so a backslash in it is a backslash: `lit C:\work\x`
+# is a literal path and needs no escaping.
+
+# --- literals -----------------------------------------------------------------------------
+# Your full name, in each spelling that occurs (with diacritics and transliterated)
+# Personal email addresses. A GitHub noreply address is public; leave it out.
+# Private business names and client names
+# Internal project codenames not on your public profile
+# Public IP addresses of servers you run
+# Hostnames of private services
+# Home directory path, if it reveals more than your public handle
+
+# --- demo data ------------------------------------------------------------------------------
+# Domain-revealing vocabulary from example data, fixtures, and READMEs: the terms that
+# would tell a reader which industry a private project serves.
+
+# --- regexes --------------------------------------------------------------------------------
+# Entries whose boundary or spelling logic a fixed string would lose. See CHOOSING above.

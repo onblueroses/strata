@@ -1,0 +1,7 @@
+[Unit]
+Description=Check that the vault snapshot is recent
+
+[Service]
+Type=oneshot
+User=@BRAIN_USER@
+ExecStart=@BRAIN_BIN_DIR@/brain-deadman

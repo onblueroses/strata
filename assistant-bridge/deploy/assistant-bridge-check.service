@@ -1,0 +1,11 @@
+# Render @...@ values from deploy/env.example before installing.
+[Unit]
+Description=Check the assistant bridge jobs: restart a failed one, page when it stays failed
+OnFailure=bridge-alarm@%n.service
+
+[Service]
+Type=oneshot
+User=root
+TimeoutStartSec=2m
+EnvironmentFile=@BRIDGE_CONFIG_DIR@/bridge.env
+ExecStart=@BRIDGE_EXEC_DIR@/bridge-check

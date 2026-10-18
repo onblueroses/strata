@@ -1,0 +1,2 @@
+# Install root-owned as a sudoers drop-in after replacing the account if needed.
+worker ALL=(root) NOPASSWD: /usr/local/sbin/op-wrapper

@@ -1,0 +1,13 @@
+# Subscription-backed Codex defaults. Hook trust state and credentials stay local.
+model = "gpt-6.1-sol"
+model_provider = "openai"
+model_reasoning_effort = "high"
+service_tier = "default"
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[features]
+memories = false # External OptMem wake owns session memory.
+hooks = true
+
+# hooks.json keeps an empty second SessionStart slot to preserve hook trust indices.

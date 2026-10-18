@@ -1,0 +1,187 @@
+#!/usr/bin/env -S python3 -I
+"""worker-run: the forced SSH command that runs one worker for the dispatcher.
+
+Installed as the `command=` of the dispatcher's key in this account's authorized_keys, so the dispatcher
+can only ever do this: `run <ABC-N> <run-xxxxxx> <codex|claude> <seconds>` with the prompt on stdin.
+Arguments are validated by regex, nothing passes through a shell, and the worker is killed when the cap
+or the SSH session ends. The last model message is echoed after `=== LAST MESSAGE ===` so the dispatcher
+can quote it when no signed outcome landed.
+
+Config (optional): ~/.config/dispatcher/worker.env with KEY=VALUE lines:
+  WORKDIR       clones and scratch (default ~/work)
+  STATE         logs and last messages (default ~/.local/state/dispatcher-worker)
+  CODEX_MODEL   default gpt-6.1-sol        CODEX_EFFORT  default xhigh
+  CODEX_SANDBOX default danger-full-access (the ticket request and phone record govern its authority)
+  CLAUDE_MODEL  default opus               CLAUDE_CHROME 1 to pass --chrome (laptop)
+  PATH          prepended to the inherited PATH (sshd gives a bare one)
+  CODEX_BRAIN_LINEAR_AUTH / _CLIENT_ID / _CLIENT_SECRET_FILE   the Codex worker's Linear app identity
+                (Worker VPS or Worker Laptop), exported as BRAIN_LINEAR_* for the codex engine only; Claude Code
+                carries the Claude app's identity in its own settings.
+"""
+import os
+import hashlib
+import json
+import re
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ARGS_RE = re.compile(r"^run ([A-Z]{2,8}-\d{1,6}) (run-[0-9a-f]{6}) (codex|claude) (\d{2,5})$")
+MAX_PROMPT = 2_000_000
+
+
+def receipt(state, ticket, run_id, digest, phase, **fields):
+    directory = state / 'receipts'
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / (ticket + '-' + run_id + '.json')
+    tmp = path.with_suffix('.tmp')
+    with tmp.open('w') as f:
+        json.dump({'ticket': ticket, 'run': run_id, 'packet_digest': digest, 'phase': phase,
+                   'at': time.time(), **fields}, f)
+        f.flush(); os.fsync(f.fileno())
+    tmp.replace(path)
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try: os.fsync(fd)
+    finally: os.close(fd)
+
+
+def load_env() -> dict:
+    cfg = {"WORKDIR": str(Path.home() / "work"), "STATE": str(Path.home() / ".local/state/dispatcher-worker"),
+           "CODEX_MODEL": "gpt-6.1-sol", "CODEX_EFFORT": "xhigh", "CODEX_SANDBOX": "danger-full-access",
+           "CLAUDE_MODEL": "opus", "CLAUDE_CHROME": "0", "PATH": "",
+           "CODEX_BRAIN_LINEAR_AUTH": "", "CODEX_BRAIN_LINEAR_CLIENT_ID": "", "CODEX_BRAIN_LINEAR_CLIENT_SECRET_FILE": ""}
+    path = Path.home() / ".config/dispatcher/worker.env"
+    if path.is_file():
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                if k.strip() in cfg:
+                    cfg[k.strip()] = v.strip().strip('"')
+    return cfg
+
+
+def parse(command: str):
+    m = ARGS_RE.match(command or "")
+    if not m:
+        return None
+    ticket, run_id, engine, seconds = m.groups()
+    seconds = int(seconds)
+    if not 60 <= seconds <= 14400:
+        return None
+    return ticket, run_id, engine, seconds
+
+
+def has_playwright_server() -> bool:
+    config = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "config.toml"
+    try:
+        return "[mcp_servers.playwright]" in config.read_text()
+    except OSError:
+        return False
+
+
+def command_for(engine: str, cfg: dict, workdir: Path, last: Path, playwright: bool | None = None) -> list[str]:
+    if engine == "codex":
+        cmd = ["codex", "exec", "--model", cfg["CODEX_MODEL"], "-c", f'model_reasoning_effort="{cfg["CODEX_EFFORT"]}"',
+               "--sandbox", cfg["CODEX_SANDBOX"]]
+        if cfg["CODEX_SANDBOX"] == "workspace-write":
+            cmd += ["-c", "sandbox_workspace_write.network_access=true"]
+        if has_playwright_server() if playwright is None else playwright:
+            cmd += ["-c", "mcp_servers.playwright.enabled=false"]   # @Chrome only; disabling an absent table is an error
+        return cmd + ["--cd", str(workdir), "--skip-git-repo-check", "-o", str(last), "-"]
+    cmd = ["claude", "-p", "--model", cfg["CLAUDE_MODEL"], "--permission-mode", "bypassPermissions",
+           "--output-format", "text"]
+    if cfg["CLAUDE_CHROME"] == "1":
+        cmd.insert(2, "--chrome")
+    return cmd
+
+
+def main() -> int:
+    parsed = parse(os.environ.get("SSH_ORIGINAL_COMMAND", ""))
+    if not parsed:
+        sys.stdout.write("worker-run: usage over ssh: run <ABC-N> <run-xxxxxx> <codex|claude> <seconds 60..14400>\n")
+        return 64
+    ticket, run_id, engine, seconds = parsed
+    cfg = load_env()
+    if cfg["PATH"]:
+        os.environ["PATH"] = cfg["PATH"] + ":" + os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+    prompt = sys.stdin.read(MAX_PROMPT + 1)
+    if len(prompt) > MAX_PROMPT or not prompt.strip():
+        sys.stdout.write("worker-run: prompt empty or too large\n")
+        return 65
+    workdir = Path(cfg["WORKDIR"]).expanduser()
+    state = Path(cfg["STATE"]).expanduser()
+    workdir.mkdir(parents=True, exist_ok=True)
+    state.mkdir(parents=True, exist_ok=True)
+    last = state / f"last-{ticket}-{run_id}.md"
+    packet_digest = hashlib.sha256(prompt.encode()).hexdigest()
+    receipt(state, ticket, run_id, packet_digest, 'accepted')
+    cmd = command_for(engine, cfg, workdir, last)
+    sys.stdout.write(f"worker-run: {ticket} {run_id} {engine} cap {seconds}s on {os.uname().nodename}, "
+                     f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n")
+    sys.stdout.flush()
+    sys.stdout.write(f'WORKER RECEIPT {ticket} {run_id} {packet_digest} ACCEPTED\n')
+    sys.stdout.flush()
+    env = dict(os.environ, DISPATCHER_TICKET=ticket, DISPATCHER_RUN=run_id)
+    if engine == "codex":
+        for k in ("AUTH", "CLIENT_ID", "CLIENT_SECRET_FILE"):
+            if cfg[f"CODEX_BRAIN_LINEAR_{k}"]:
+                env[f"BRAIN_LINEAR_{k}"] = os.path.expanduser(cfg[f"CODEX_BRAIN_LINEAR_{k}"])
+    # Claude's final message is its stdout; Codex writes it to `last` (-o). Stream everything, keep Claude's copy.
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                            cwd=str(workdir), env=env, start_new_session=True)
+    receipt(state, ticket, run_id, packet_digest, 'engine_started', engine_pid=proc.pid)
+
+    def stop(*_):   # the cap, or the dispatcher's SSH session going away: take the whole worker tree down
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+
+    for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, stop)
+    try:
+        proc.stdin.write(prompt)
+        proc.stdin.close()
+    except BrokenPipeError:
+        pass
+    import threading
+    captured: list[str] = []
+
+    def pump():
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            if engine == "claude":
+                captured.append(line)
+
+    t = threading.Thread(target=pump, daemon=True)
+    t.start()
+    rc: object
+    try:
+        rc = proc.wait(timeout=seconds)
+    except subprocess.TimeoutExpired:
+        stop()
+        try:
+            proc.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+        rc = "timeout"
+    t.join(timeout=10)
+    text = ""
+    if engine == "codex" and last.exists():
+        text = last.read_text(errors="replace")
+    elif engine == "claude":
+        text = "".join(captured)
+        last.write_text(text)
+    receipt(state, ticket, run_id, packet_digest, 'engine_finished', engine_pid=proc.pid, rc=rc)
+    sys.stdout.write("\n=== LAST MESSAGE ===\n" + text.strip() + f"\nWORKER-RUN END rc={rc}\n")
+    sys.stdout.write(f'WORKER RECEIPT {ticket} {run_id} {packet_digest} FINISHED\n')
+    sys.stdout.flush()
+    return 0 if rc == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,188 @@
+#!/usr/bin/bash
+# dsh-primary - user-facing DeepSeek primary with automatic shared-state startup.
+#
+# Usage:
+#   dsh-primary --print-prompt "task"       # read-only startup; no API call
+#   dsh-primary --confirm-spend "task"      # paid deepseek-v4-flash run
+#   dsh-primary --pro --confirm-spend "task" # paid deepseek-v4-pro run
+#
+# Every paid run requires --confirm-spend. The launcher validates the installed
+# primary/delegate isolation and exact official provider before model dispatch.
+
+set -uo pipefail
+umask 077
+
+SELF=$(/usr/bin/readlink -f -- "$0") || { echo "dsh-primary: cannot resolve launcher path" >&2; exit 65; }
+PRIMARY_ROOT=$(/usr/bin/dirname "$(/usr/bin/dirname "$SELF")")
+DRIVER_ROOT="${DSH_DRIVER_ROOT:-$HOME/.local/share/dsh-driver}"
+DRIVER_BIN="$DRIVER_ROOT/node_modules/.bin/dsh"
+ENV_FILE="${DELEGATE_ENV_FILE:-$HOME/.config/delegate/.env}"
+STARTUP="$PRIMARY_ROOT/startup.py"
+DOCTOR="$PRIMARY_ROOT/doctor.py"
+RUNTIME_OVERLAY_WRITER="$PRIMARY_ROOT/runtime_overlay.py"
+OVERLAY="$PRIMARY_ROOT/primary-overlay.yml"
+
+MODEL="deepseek-v4-flash"
+TIMEOUT_SECS=1800 # Existing dsh-agent pilot backstop; a ticket owns remeasurement.
+TIMEOUT_KILL_GRACE_SECONDS=15 # Existing dsh-agent TERM-to-KILL backstop.
+BRIEF=""
+BRIEF_FILE=""
+PRINT_PROMPT=0
+CONFIRM_SPEND=0
+
+usage() { /usr/bin/awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; }
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --pro) MODEL="deepseek-v4-pro"; shift ;;
+    --file)
+      [ "$#" -ge 2 ] || { echo "dsh-primary: --file wants a path" >&2; exit 64; }
+      BRIEF_FILE="$2"; shift 2 ;;
+    --timeout)
+      [ "$#" -ge 2 ] || { echo "dsh-primary: --timeout wants seconds" >&2; exit 64; }
+      TIMEOUT_SECS="$2"; shift 2 ;;
+    --print-prompt) PRINT_PROMPT=1; shift ;;
+    --confirm-spend) CONFIRM_SPEND=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "dsh-primary: unknown flag $1" >&2; exit 64 ;;
+    *)
+      [ -z "$BRIEF" ] || { echo "dsh-primary: multiple tasks given" >&2; exit 64; }
+      BRIEF="$1"; shift ;;
+  esac
+done
+
+if [ -n "$BRIEF_FILE" ]; then
+  [ -z "$BRIEF" ] || { echo "dsh-primary: both --file and a positional task given" >&2; exit 64; }
+  [ -r "$BRIEF_FILE" ] || { echo "dsh-primary: cannot read --file $BRIEF_FILE" >&2; exit 64; }
+  BRIEF=$(<"$BRIEF_FILE")
+fi
+[ -n "$BRIEF" ] || { echo "dsh-primary: no task given" >&2; exit 64; }
+case "$TIMEOUT_SECS" in ''|*[!0-9]*) echo "dsh-primary: --timeout wants positive seconds" >&2; exit 64 ;; esac
+[ "$TIMEOUT_SECS" -gt 0 ] || { echo "dsh-primary: --timeout wants positive seconds" >&2; exit 64; }
+
+for required in "$STARTUP" "$DOCTOR" "$RUNTIME_OVERLAY_WRITER" "$OVERLAY" "$PRIMARY_ROOT/AGENTS.md"; do
+  [ -r "$required" ] || { echo "dsh-primary: managed file missing at $required" >&2; exit 65; }
+done
+[ -x "$DRIVER_BIN" ] || { echo "dsh-primary: DSH driver missing at $DRIVER_BIN" >&2; exit 65; }
+
+SCOPE=$(/usr/bin/python3 - <<'PY'
+import secrets
+print(secrets.token_hex(4))
+PY
+) || { echo "dsh-primary: failed to create the logical session scope" >&2; exit 65; }
+case "$SCOPE" in ????????) ;; *) echo "dsh-primary: invalid generated session scope" >&2; exit 65 ;; esac
+
+START_CONTEXT=$(/usr/bin/python3 "$STARTUP" --scope "$SCOPE") || {
+  echo "dsh-primary: startup context renderer failed" >&2
+  exit 65
+}
+TASK=$(printf '%s\n\nDIRECT USER TASK\n%s' "$START_CONTEXT" "$BRIEF")
+
+if [ "$PRINT_PROMPT" -eq 1 ]; then
+  printf '%s\n' "$TASK"
+  exit 0
+fi
+[ "$CONFIRM_SPEND" -eq 1 ] || {
+  echo "dsh-primary: paid dispatch refused; inspect with --print-prompt, then pass --confirm-spend after authorization" >&2
+  exit 77
+}
+
+if [ -z "${DEEPSEEK_API_KEY:-}" ]; then
+  [ -r "$ENV_FILE" ] || { echo "dsh-primary: credential file unreadable at $ENV_FILE" >&2; exit 65; }
+  DEEPSEEK_API_KEY=$(/usr/bin/python3 - "$ENV_FILE" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+found = None
+for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    line = raw.strip()
+    if not line or line.startswith("#"):
+        continue
+    if "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    if key.strip() != "DEEPSEEK_API_KEY":
+        continue
+    if found is not None:
+        raise SystemExit(f"duplicate DEEPSEEK_API_KEY at line {number}")
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        value = value[1:-1]
+    if not value or any(character in value for character in "\r\n\0"):
+        raise SystemExit(f"invalid DEEPSEEK_API_KEY at line {number}")
+    found = value
+if found is None:
+    raise SystemExit("DEEPSEEK_API_KEY is absent")
+print(found)
+PY
+  ) || { echo "dsh-primary: could not load DEEPSEEK_API_KEY" >&2; exit 65; }
+  export DEEPSEEK_API_KEY
+fi
+
+for inherited_name in $(compgen -v DSH_); do unset "$inherited_name"; done
+unset DEEPSEEK_BASE_URL DEEPSEEK_SEARCH_BASE_URL
+export DSH_HOME="$PRIMARY_ROOT"
+export DSH_TELEMETRY_DISABLED=1
+export DSH_PERMISSION_MODE=danger-full-access
+export DSH_PRIMARY_MODEL="$MODEL"
+export DSH_PRIMARY_SESSION_SCOPE="$SCOPE"
+
+INSTALL_LOCK="$PRIMARY_ROOT/../.dsh-primary-install.lock"
+[ -f "$INSTALL_LOCK" ] && [ ! -L "$INSTALL_LOCK" ] || {
+  echo "dsh-primary: install lock is unsafe or absent: $INSTALL_LOCK" >&2
+  exit 65
+}
+exec 9<>"$INSTALL_LOCK" || {
+  echo "dsh-primary: cannot open the install lock: $INSTALL_LOCK" >&2
+  exit 65
+}
+/usr/bin/flock -s 9 || {
+  echo "dsh-primary: cannot hold the installed layer stable" >&2
+  exit 65
+}
+
+DISPATCH_ROOT="$PRIMARY_ROOT/dispatches"
+if [ ! -e "$DISPATCH_ROOT" ] && ! /usr/bin/mkdir -m 700 "$DISPATCH_ROOT"; then
+  [ -d "$DISPATCH_ROOT" ] && [ ! -L "$DISPATCH_ROOT" ] || {
+    echo "dsh-primary: dispatch root is unsafe: $DISPATCH_ROOT" >&2
+    exit 65
+  }
+fi
+[ -d "$DISPATCH_ROOT" ] && [ ! -L "$DISPATCH_ROOT" ] || {
+  echo "dsh-primary: dispatch root is unsafe: $DISPATCH_ROOT" >&2
+  exit 65
+}
+RUN_ROOT="$DISPATCH_ROOT/$SCOPE"
+if ! /usr/bin/mkdir -m 700 "$RUN_ROOT"; then
+  echo "dsh-primary: dispatch scope already exists or cannot be created: $RUN_ROOT" >&2
+  exit 65
+fi
+RUNTIME_OVERLAY="$RUN_ROOT/runtime-overlay.json"
+STATIC_OVERLAY="$RUN_ROOT/primary-overlay.yml"
+/usr/bin/python3 "$RUNTIME_OVERLAY_WRITER" \
+  --destination "$RUNTIME_OVERLAY" \
+  --sessions "$RUN_ROOT/sessions" \
+  --model "$MODEL" \
+  --static-source "$OVERLAY" \
+  --static-destination "$STATIC_OVERLAY" || {
+  echo "dsh-primary: could not freeze the run overlays" >&2
+  exit 65
+}
+
+PREFLIGHT_REPORT="$RUN_ROOT/preflight.json"
+/usr/bin/python3 "$DOCTOR" --preflight --json --model "$MODEL" \
+  --runtime-overlay "$RUNTIME_OVERLAY" \
+  --static-overlay "$STATIC_OVERLAY" >"$PREFLIGHT_REPORT" || {
+  echo "dsh-primary: setup/provider preflight failed; inspect $PREFLIGHT_REPORT" >&2
+  exit 65
+}
+
+/usr/bin/mkdir -m 700 "$RUN_ROOT/sessions" || {
+  echo "dsh-primary: could not create the session log root" >&2
+  exit 65
+}
+echo "dsh-primary: SESSION SCOPE @s/$SCOPE; provider deepseek-official; model $MODEL" >&2
+/usr/bin/timeout --kill-after="$TIMEOUT_KILL_GRACE_SECONDS" "$TIMEOUT_SECS" \
+  "$DRIVER_BIN" --profile headless --patch "$STATIC_OVERLAY" --patch "$RUNTIME_OVERLAY" "$TASK" < /dev/null
+exit $?

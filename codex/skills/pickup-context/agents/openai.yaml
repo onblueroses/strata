@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pickup Context"
+  short_description: "Orient from memory, ledger, and repo state"
+  default_prompt: "Use $pickup-context to orient this Codex run from current memory, ledger, and repository state."

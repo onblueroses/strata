@@ -1,0 +1,13 @@
+# Render @...@ values from deploy/env.example before installing.
+[Unit]
+Description=Run the assistant bridge responder every minute
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=1m
+Persistent=true
+RandomizedDelaySec=10s
+Unit=assistant-bridge-respond.service
+
+[Install]
+WantedBy=timers.target

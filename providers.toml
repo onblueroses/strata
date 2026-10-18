@@ -1,0 +1,112 @@
+# Public route inventory, not a client configuration or launch authorization.
+snapshot_date = "2026-10-17"
+
+[routes.claude]
+runtime = "claude-code"
+provider = "anthropic"
+model = "opus"
+role = "primary"
+authentication = "native-client-login"
+
+[routes.codex]
+runtime = "codex"
+provider = "openai"
+model = "gpt-6.1-sol"
+role = "primary"
+authentication = "chatgpt-subscription"
+
+[routes.codex_fast]
+runtime = "codex"
+provider = "openai"
+model = "gpt-6-luna"
+role = "delegate"
+authentication = "chatgpt-subscription"
+
+[routes.codex_bounded]
+runtime = "codex"
+provider = "openai"
+model = "gpt-5.6-terra"
+role = "delegate"
+authentication = "chatgpt-subscription"
+
+[routes.codex_strong]
+runtime = "codex"
+provider = "openai"
+model = "gpt-6-sol"
+role = "delegate"
+authentication = "chatgpt-subscription"
+
+[routes.dsh_primary]
+runtime = "deepseek-harness"
+provider = "deepseek-official"
+model = "deepseek-v4-flash"
+role = "primary"
+metered = true
+spend_authorization_required = true
+
+[routes.dsh_agent]
+runtime = "deepseek-harness"
+provider = "deepseek-official"
+model = "deepseek-v4-flash"
+role = "delegate"
+metered = true
+spend_authorization_required = true
+
+[routes.ds_flash]
+runtime = "pydantic-ai"
+provider = "deepseek-official"
+model = "deepseek-v4-flash"
+role = "delegate"
+metered = true
+spend_authorization_required = true
+
+[routes.ds_pro]
+runtime = "pydantic-ai"
+provider = "deepseek-official"
+model = "deepseek-v4-pro"
+role = "delegate"
+metered = true
+spend_authorization_required = true
+
+[routes.ds_codex]
+runtime = "codex-via-litellm"
+provider = "deepseek-official"
+model = "deepseek-v4-flash"
+role = "delegate"
+metered = true
+spend_authorization_required = true
+
+[routes.kimi]
+runtime = "kimi-code"
+provider = "managed:kimi-code"
+model = "kimi-code/k3-256k"
+role = "primary"
+authentication = "native-oauth"
+
+[routes.omp_search]
+runtime = "omp-in-free-silo"
+provider = "openrouter"
+model = "thinkingmachines/inkling-small:free"
+role = "delegate"
+public_inputs_only = true
+
+[routes.omp_inkling]
+runtime = "omp-in-free-silo"
+provider = "openrouter"
+model = "thinkingmachines/inkling:free"
+role = "delegate"
+public_inputs_only = true
+
+[routes.codex_union]
+runtime = "codex-in-free-silo"
+provider = "openrouter"
+role = "delegate"
+model_required = true
+public_inputs_only = true
+
+[routes.omp_union]
+runtime = "omp-in-free-silo"
+provider = "openrouter"
+role = "delegate"
+model_required = true
+public_inputs_only = true

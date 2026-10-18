@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# dsh-agent - delegated DeepSeek agentic route via DeepSeek Harness (headless).
+# Full rc.6 toolset: bash, read/write/edit, glob/grep, web_search,
+# jobs, todo, skills, plan mode, goals, subagent/subagent_fork (+ control),
+# workflow (scripted multi-agent), ralph (bounded fresh-child rounds).
+# The house contract (~/.claude/agents-core/CORE-compact.md) is embedded in the
+# system prefix - briefs do NOT restate it. Workspace AGENTS.md is read natively.
+#
+# WHEN TO DISPATCH HERE (delegation guidance for the calling model):
+#   Agentic DS work on the metered API: implementation probes, repo surveys,
+#   bulk agentic edits, multi-round loops. The subagent can itself fan out
+#   (subagent/workflow) or loop (ralph, goals) - say so in the brief when wanted.
+#   Brief discipline: Goal / Success means / Stop when (model-delegation.md).
+#
+# Usage:
+#   dsh-agent "brief"
+#   dsh-agent --file brief.md
+#
+# Flags:
+#   --pro          deepseek-v4-pro (default: deepseek-v4-flash)
+#   --file PATH    Read brief from file
+#   --read-only    Sandbox: no writes (recommended when mutation is unneeded)
+#   --danger       Sandbox: danger-full-access, approval never. Deliberate use only.
+#   --code         Code mode: one run_code tool over a generated TS SDK instead of
+#                  native tool calls. CACHE FORK: different schema bytes, separate
+#                  prefix-cache namespace - pay one cold prompt per workspace*mode.
+#   --timeout SECS Default 1800. Basis: inherited from ds-flash as a pilot value;
+#                  re-derive from dsh duration telemetry once n>=20 (a ticket area).
+#   --print-prompt Print the constructed brief and exit before dispatch
+#
+# Exit codes (NOT the ds_agent 0-4 family):
+#   0 ok; 64 usage (bad flag or brief); 65 setup (driver, overlay, or env file
+#   missing); 6 model mismatch (ROOT session only - workflow child steps may
+#   pin other models legitimately); 124 timeout; anything else: dsh's own code.
+#
+# Failure semantics: workspace-write dispatches are NON-TRANSACTIONAL. A nonzero
+# exit does not roll back file changes. The session log path is printed to stderr;
+# inspect the workspace diff before retrying. Dispatch artifacts accumulate under
+# $DRIVER_HOME/dispatches/ (session log + overlay per run) for audit.
+#
+# Cache discipline: the system prefix (persona + house contract + tool schemas)
+# is byte-stable per workspace via the static overlay - do not edit
+# ~/.config/delegate/dsh/dsh-agent.yml casually. In briefs, keep the opening
+# stable per workspace and put volatile content (timestamps, run ids, fresh
+# data) at the END. Not shipped in rc.6 npm (revisit on upgrade): terminal,
+# lsp, session-query tools, MCP client, web_fetch provider (tool errors
+# WEB_PROVIDER_UNAVAILABLE; agents fall back to curl where the sandbox allows).
+# Briefs that use background subagents: demand the final answer AFTER all
+# children are collected - a late completion notice otherwise displaces the
+# real answer on stdout (rc.6 harness behavior). Env hygiene: inherited DSH_*
+# vars are cleared before dispatch; a non-empty caller DEEPSEEK_API_KEY wins
+# over the env file.
+
+set -uo pipefail
+umask 077
+
+DRIVER_ROOT="${DSH_DRIVER_ROOT:-$HOME/.local/share/dsh-driver}"
+DRIVER_BIN="$DRIVER_ROOT/node_modules/.bin/dsh"
+DRIVER_HOME="$DRIVER_ROOT/home"
+ENV_FILE="${DELEGATE_ENV_FILE:-$HOME/.config/delegate/.env}"
+
+STATIC_OVERLAY="${DSH_AGENT_OVERLAY:-$HOME/.config/delegate/dsh/dsh-agent.yml}"
+
+MODEL="deepseek-v4-flash"
+PERMISSION_MODE="workspace-write"
+TIMEOUT_SECS=1800
+TOOLS_MODE=""
+BRIEF=""
+BRIEF_FILE=""
+PRINT_PROMPT=0
+
+usage() { awk 'NR==1{next} /^#/{sub(/^# ?/,""); print; next} {exit}' "$0"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --pro) MODEL="deepseek-v4-pro"; shift ;;
+    --file) [ $# -ge 2 ] || { echo "dsh-agent: --file wants a path" >&2; exit 64; }
+            BRIEF_FILE="$2"; shift 2 ;;
+    --read-only) PERMISSION_MODE="read-only"; shift ;;
+    --danger) PERMISSION_MODE="danger-full-access"; shift ;;
+    --code) TOOLS_MODE="code"; shift ;;
+    --timeout) [ $# -ge 2 ] || { echo "dsh-agent: --timeout wants seconds" >&2; exit 64; }
+               TIMEOUT_SECS="$2"; shift 2 ;;
+    --print-prompt) PRINT_PROMPT=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "dsh-agent: unknown flag $1" >&2; exit 64 ;;
+    *) [ -z "$BRIEF" ] || { echo "dsh-agent: multiple briefs given" >&2; exit 64; }
+       BRIEF="$1"; shift ;;
+  esac
+done
+
+[ -r "$STATIC_OVERLAY" ] || { echo "dsh-agent: static overlay missing at $STATIC_OVERLAY" >&2; exit 65; }
+
+if [ -n "$BRIEF_FILE" ]; then
+  [ -z "$BRIEF" ] || { echo "dsh-agent: both --file and a positional brief given" >&2; exit 64; }
+  [ -r "$BRIEF_FILE" ] || { echo "dsh-agent: cannot read --file $BRIEF_FILE" >&2; exit 64; }
+  BRIEF="$(cat "$BRIEF_FILE")"
+fi
+[ -n "$BRIEF" ] || { echo "dsh-agent: no brief given (arg or --file)" >&2; exit 64; }
+case "$TIMEOUT_SECS" in ''|*[!0-9]*) echo "dsh-agent: --timeout wants seconds" >&2; exit 64 ;; esac
+[ -x "$DRIVER_BIN" ] || { echo "dsh-agent: driver missing at $DRIVER_BIN (npm ci in $DRIVER_ROOT)" >&2; exit 65; }
+[ -r "$ENV_FILE" ] || { echo "dsh-agent: $ENV_FILE unreadable" >&2; exit 65; }
+command -v zstd >/dev/null 2>&1 || { echo "dsh-agent: zstd decoder is required for session-log verification" >&2; exit 65; }
+
+if [ "$PRINT_PROMPT" = 1 ]; then printf '%s\n' "$BRIEF"; exit 0; fi
+
+# --- delegation telemetry (additive, fail-open), mirrors ds-flash conventions ---
+__telem_t0=$(date +%s%3N 2>/dev/null || echo 0)
+TOKENS_JSON='{}'
+__telem_emit() {
+  local rc=$?
+  trap - EXIT
+  local now dur status p
+  now=$(date +%s%3N 2>/dev/null || echo 0)
+  dur=$(( now - __telem_t0 )); [ "$dur" -lt 0 ] && dur=0
+  case "$rc" in 0) status=success ;; 124) status=timeout ;; 6) status=model_mismatch ;; *) status=error ;; esac
+  p=$(jq -cn --arg w dsh-agent --arg s "$status" --argjson e "$rc" --argjson d "$dur" \
+        --arg m "$MODEL" --argjson tk "$TOKENS_JSON" \
+        '{wrapper:$w,status:$s,exit:$e,duration_ms:$d,model:$m,tokens:$tk}' 2>/dev/null) || p='{}'
+  emitter="${DELEGATE_TELEMETRY_EMITTER:-$HOME/.local/bin/telemetry-emit}"
+  [[ -f "$emitter" ]] && timeout 5 bash "$emitter" delegation \
+      "${CLAUDE_CODE_SESSION_ID:-${CODEX_COMPANION_SESSION_ID:-unknown}}" "$p" >/dev/null 2>&1 || true
+  return 0
+}
+trap __telem_emit EXIT
+
+# --- per-dispatch isolation: own persistence root kills newest-log races ---
+DISPATCH_DIR="$DRIVER_HOME/dispatches/$(date +%s)-$$-$RANDOM"
+mkdir -p "$DISPATCH_DIR/sessions"
+OVERLAY="$DISPATCH_DIR/overlay.yml"
+cat > "$OVERLAY" <<EOF
+- id: agent-default-model
+  config:
+    provider: deepseek-official
+    model: $MODEL
+- id: session-persistence-jsonl
+  config:
+    root: $DISPATCH_DIR/sessions
+EOF
+
+for __v in $(compgen -v DSH_); do unset "$__v"; done
+__caller_key="${DEEPSEEK_API_KEY:-}"
+set -a; source "$ENV_FILE"; set +a
+[ -n "$__caller_key" ] && DEEPSEEK_API_KEY="$__caller_key"
+export DSH_HOME="$DRIVER_HOME" DSH_TELEMETRY_DISABLED=1 DSH_PERMISSION_MODE="$PERMISSION_MODE"
+[ -n "$TOOLS_MODE" ] && export DSH_TOOLS_MODE="$TOOLS_MODE"
+
+timeout --kill-after=15 "$TIMEOUT_SECS" \
+  "$DRIVER_BIN" --profile headless --patch "$STATIC_OVERLAY" --patch "$OVERLAY" "$BRIEF" < /dev/null
+RC=$?
+
+# --- post-run: usage fold + model verification from THIS dispatch's logs only ---
+PARSE_STATUS=0
+PARSE=$(python3 - "$DISPATCH_DIR/sessions" "$MODEL" <<'PYEOF'
+import json, pathlib, subprocess, sys
+root, expected = pathlib.Path(sys.argv[1]), sys.argv[2]
+tot = {"input":0,"output":0,"cache_read":0,"cache_write":0,"reasoning":0,"requests":0}
+mismatch, errors, root_log = [], [], None
+for log in sorted(root.rglob("session.jsonl.zstd")):
+    try:
+        decoded = subprocess.run(["zstd","-dc",str(log)], capture_output=True, timeout=15)
+    except Exception as exc:
+        errors.append(f"{log}: decoder failed: {exc}")
+        continue
+    if decoded.returncode != 0:
+        errors.append(f"{log}: decoder returned {decoded.returncode}")
+        continue
+    raw = decoded.stdout
+    per_step = {}
+    depth = None
+    log_mismatch = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        try: e = json.loads(line)
+        except Exception:
+            errors.append(f"{log}: invalid JSON record")
+            continue
+        t, d = e.get("type"), e.get("data") or {}
+        if t == "session": depth = e.get("delegationDepth")
+        elif t == "request/header":
+            m = ((d.get("header") or {}).get("config") or {}).get("model")
+            if m and m != expected: log_mismatch.append(m)
+        elif t == "assistant/message":
+            u = (d.get("message") or {}).get("usage") or d.get("usage")
+            if u: per_step[(d.get("turn"), d.get("step"))] = u
+        elif t == "assistant/chunk":
+            u = d.get("usage")
+            if u: per_step.setdefault((d.get("turn"), d.get("step")), u)
+    if depth == 0:
+        root_log = str(log)
+        mismatch.extend(log_mismatch)
+    for u in per_step.values():
+        tot["input"] += u.get("inputTokens",0); tot["output"] += u.get("outputTokens",0)
+        tot["cache_read"] += u.get("cacheReadTokens",0); tot["cache_write"] += u.get("cacheWriteTokens",0)
+        tot["reasoning"] += u.get("reasoningTokens",0); tot["requests"] += 1
+tot["total"] = tot["input"] + tot["output"]
+print(json.dumps({"tokens":tot,"mismatch":sorted(set(mismatch)),"root_log":root_log,"errors":errors}))
+PYEOF
+)
+PARSE_STATUS=$?
+
+if [ "$PARSE_STATUS" -ne 0 ]; then
+  echo "dsh-agent: session-log verification parser failed: embedded python3 exited $PARSE_STATUS" >&2
+  exit 65
+fi
+if ! printf '%s' "$PARSE" | jq -e '
+  type == "object" and
+  (.tokens | type == "object") and
+  (.mismatch | type == "array") and
+  (.errors | type == "array") and
+  (.root_log == null or (.root_log | type == "string"))
+' >/dev/null 2>&1; then
+  echo "dsh-agent: session-log verification parser failed: embedded python3 produced unusable output" >&2
+  exit 65
+fi
+
+TOKENS_JSON=$(printf '%s' "$PARSE" | jq -c '.tokens // {}' 2>/dev/null) || TOKENS_JSON='{}'
+ROOT_LOG=$(printf '%s' "$PARSE" | jq -r '.root_log // empty' 2>/dev/null)
+MISMATCH=$(printf '%s' "$PARSE" | jq -r '(.mismatch // []) | join(",")' 2>/dev/null)
+PARSE_ERROR=$(printf '%s' "$PARSE" | jq -r '(.errors // []) | join("; ")' 2>/dev/null)
+
+[ -n "$ROOT_LOG" ] && echo "dsh-agent: session log: $ROOT_LOG" >&2
+if [ -n "$PARSE_ERROR" ]; then
+  echo "dsh-agent: session-log verification failed: $PARSE_ERROR" >&2
+  exit 65
+fi
+if [ -n "$MISMATCH" ]; then
+  echo "dsh-agent: MODEL MISMATCH: requested $MODEL, root request/header saw: $MISMATCH" >&2
+  [ "$RC" -eq 0 ] && exit 6
+fi
+exit "$RC"

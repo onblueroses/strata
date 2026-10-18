@@ -1,0 +1,44 @@
+{
+  "description": "Codex OptMem wake, compaction continuity and privacy gates. Install hook scripts and approve native hook trust. The empty SessionStart slot preserves trust indices.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "python3 \"__STRATA_ROOT__/codex/hooks/pre_tool_use.py\"",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "python3 \"__STRATA_ROOT__/codex/hooks/optmem_start.py\"",
+            "statusMessage": "Loading OptMem wake context",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "startup|resume|clear|compact"
+      },
+      {
+        "hooks": [],
+        "matcher": "startup|resume|clear|compact"
+      },
+      {
+        "hooks": [
+          {
+            "command": "python3 \"__STRATA_ROOT__/codex/hooks/continuity.py\"",
+            "statusMessage": "Restoring pre-compaction orientation",
+            "timeout": 5,
+            "type": "command"
+          }
+        ],
+        "matcher": "compact"
+      }
+    ]
+  }
+}

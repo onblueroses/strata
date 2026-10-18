@@ -1,0 +1,23 @@
+*{box-sizing:border-box}
+:root{color-scheme:dark;background:#111316;color:#e5e7eb}
+body{margin:0;background:#111316;font:16px/1.4 system-ui,-apple-system,sans-serif}
+main{max-width:42rem;margin:auto;padding:12px 16px}
+a{color:#a9c9f8;text-underline-offset:3px}
+.request{border-bottom:1px solid #454a53;padding:16px 0;scroll-margin-top:12px;overflow-wrap:anywhere}
+.ticket{font-size:14px}
+.label{font-size:16px;margin:12px 0 2px;color:#b9bfc9}
+.request p{margin:0;white-space:pre-wrap}
+.action{font-size:18px}
+.buttons{display:flex;gap:12px;margin-top:16px}
+button{cursor:pointer;touch-action:manipulation;border:1px solid #687180;border-radius:4px;background:#242830;color:#e5e7eb;min-height:44px;padding:10px 14px;font:600 16px/1.2 system-ui}
+.buttons button{flex:1;min-width:0;min-height:52px}
+.approve{background:#254631;border-color:#79a387}
+.confirm{background:#51411c;border-color:#d3b66b}
+button:active:not(:disabled){filter:brightness(1.25)}
+button:disabled{opacity:.6;cursor:wait}
+:focus-visible{outline:3px solid #a9c9f8;outline-offset:3px}
+.request .confirm-note{margin-top:8px;font-size:14px}
+#message{margin:12px 0;font-size:14px;overflow-wrap:anywhere}
+#message:empty{display:none}
+.empty{margin:16px 0}
+.fixture-note{margin:12px 16px;font-size:14px}

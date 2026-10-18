@@ -1,0 +1,14 @@
+# Private runtime configuration and scratch
+.local/
+.codex/
+.claude/
+.env
+*.env
+
+# Interpreter and editor artifacts
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+*.swp
+*~

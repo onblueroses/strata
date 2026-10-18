@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the vault snapshot deadman check
+
+[Timer]
+OnCalendar=*-*-* *:30:00
+Persistent=true
+Unit=brain-deadman.service
+
+[Install]
+WantedBy=timers.target

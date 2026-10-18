@@ -1,0 +1,4 @@
+interface:
+  display_name: "Close Session"
+  short_description: "Reconcile state and leave a restartable close"
+  default_prompt: "Use $close-session to reconcile this run and leave a restartable handoff."

@@ -1,0 +1,138 @@
+{
+  "hooks": {
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/notify.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/observe-track-edits.sh\"",
+            "timeout": 3
+          }
+        ],
+        "matcher": "Edit|Write"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/allow-claude-dir-edits.sh\"",
+            "timeout": 2
+          }
+        ],
+        "matcher": "Edit|Write"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/warn-file-ownership.sh\"",
+            "timeout": 2
+          }
+        ],
+        "matcher": "Write"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/gate-repo-pair-isolation.sh\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/gate-pre-push.sh\"",
+            "timeout": 20
+          }
+        ],
+        "matcher": "Bash"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/gate-gh-public-actions.sh\"",
+            "timeout": 3
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/lifecycle-sync-life-repo.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/optmem-wake.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/optmem-core.sh\""
+          },
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/lifecycle-sync-life-repo.sh\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/session-cleanup-codex.sh\"",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/session-post-compaction-restore.sh\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/session-inject-time.sh\"",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/guard-paid-compute.sh\" --report"
+          },
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/guard-estate-backup.sh\" --report"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"__STRATA_ROOT__/claude/hooks/notify.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

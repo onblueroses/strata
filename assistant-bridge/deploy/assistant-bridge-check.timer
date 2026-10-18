@@ -1,0 +1,12 @@
+# Render @...@ values from deploy/env.example before installing.
+[Unit]
+Description=Check the assistant bridge jobs every fifteen minutes
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=15m
+Persistent=true
+Unit=assistant-bridge-check.service
+
+[Install]
+WantedBy=timers.target

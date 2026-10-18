@@ -1,0 +1,363 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+umask 077
+
+optmem_dir="${OPTMEM_DIR:-$HOME/.optmem}"
+queue_file="$optmem_dir/proposals"
+lock_file="$optmem_dir/proposals.lock"
+claims_dir="$optmem_dir/proposal-claims"
+archive_dir="$optmem_dir/proposal-archive"
+contract_file="${OPTMEM_CONTRACT_FILE:-$(dirname "$(dirname "$(dirname "$(realpath "$0")")")")/reference/knowledge-management.md}"
+telemetry_sink="${OPTMEM_DRAIN_TELEMETRY_SINK:-$HOME/.local/bin/telemetry-emit}"
+
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  optmem-proposals append SOURCE NOTE
+  optmem-proposals claim DRAINER
+  optmem-proposals inspect CLAIM
+  optmem-proposals archive CLAIM DECISIONS
+  optmem-proposals pending
+
+Read the Proposal Inbox section of reference/knowledge-management.md.
+Set OPTMEM_CONTRACT_FILE if installed outside this repository.
+EOF
+}
+
+fail() {
+  printf 'optmem-proposals: %s\n' "$*" >&2
+  exit 2
+}
+
+require_contract() {
+  [[ -r "$contract_file" ]] \
+    || fail "cannot read the canonical inbox contract: $contract_file"
+}
+
+prepare_lock() {
+  [[ ! -L "$optmem_dir" ]] || fail "refusing symlink OptMem directory: $optmem_dir"
+  mkdir -p "$optmem_dir"
+  [[ -d "$optmem_dir" ]] || fail "OptMem path is not a directory: $optmem_dir"
+  [[ ! -L "$lock_file" ]] || fail "refusing symlink lock file: $lock_file"
+  [[ ! -e "$lock_file" || -f "$lock_file" ]] \
+    || fail "lock path is not a regular file: $lock_file"
+  : >>"$lock_file"
+  chmod 600 "$lock_file"
+}
+
+prepare_private_dir() {
+  local path=$1
+  [[ ! -L "$path" ]] || fail "refusing symlink directory: $path"
+  mkdir -p "$path"
+  [[ -d "$path" && ! -L "$path" ]] || fail "path is not a directory: $path"
+  chmod 700 "$path"
+}
+
+check_queue_path() {
+  [[ ! -L "$queue_file" ]] || fail "refusing symlink queue: $queue_file"
+  [[ ! -e "$queue_file" || -f "$queue_file" ]] \
+    || fail "queue path is not a regular file: $queue_file"
+}
+
+validate_source() {
+  local source=$1
+  [[ "$source" =~ ^[a-z0-9][a-z0-9._/-]*$ ]] \
+    || fail "invalid source '$source'; use lowercase letters, digits, dot, underscore, slash, or hyphen"
+  [[ "$source" != */ && "$source" != *//* ]] \
+    || fail "invalid source '$source'; use non-empty slash-separated components"
+}
+
+validate_label() {
+  local label=$1
+  [[ "$label" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+    || fail "invalid drainer '$label'; use lowercase letters, digits, or hyphens"
+}
+
+validate_note() {
+  local note=$1
+  python3 - "$note" <<'PY'
+import re
+import sys
+
+note = sys.argv[1]
+size = len(note.encode("utf-8"))
+if size > 280:
+    raise SystemExit(f"candidate is {size} UTF-8 bytes; maximum is 280")
+if any(ord(char) < 32 or ord(char) == 127 for char in note):
+    raise SystemExit("candidate contains a control character")
+pattern = re.compile(
+    r"^[FSEP] @e/[a-z0-9-]+ @(?:g|s/[a-z0-9]{8}) "
+    r"@k/[a-z0-9-]+(?:/[a-z0-9-]+)* .+$"
+)
+if not pattern.fullmatch(note):
+    raise SystemExit(
+        "candidate must match TYPE @e/<slug> @g|@s/<8 lowercase alphanumerics> "
+        "@k/<lowercase-key> PAYLOAD"
+    )
+key = note.split(" ", 4)[3]
+if key.startswith("@k/core/"):
+    raise SystemExit("@k/core/ is reserved for the operator; proposals under the core namespace are not accepted")
+PY
+}
+
+# One row per drained claim: how many candidates the judgment pass took in,
+# and what it decided. Without it the inbox is a black box between the sessions
+# that fill it and the drain that empties it. The dispositions are counts of
+# this script's own three literals; no proposal text is emitted.
+#
+# Called only after the archive is committed on disk, and its every failure
+# path returns 0: telemetry may never cost a drain that already succeeded.
+emit_drain_telemetry() {
+  local decisions=$1 sid payload
+  [[ -f "$telemetry_sink" ]] || return 0
+  sid=${OPTMEM_SESSION_ID:-${CLAUDE_CODE_SESSION_ID:-}}
+  sid=${sid:0:8}
+  [[ "$sid" =~ ^[a-z0-9]{8}$ ]] || sid=optmem-cli
+  if ! payload=$(awk -F'\t' '
+      { n++; c[$1]++ }
+      END { printf "{\"op\":\"archive\",\"claimed\":%d,\"keep\":%d,\"rewrite\":%d,\"reject\":%d}",
+                   n + 0, c["KEEP"] + 0, c["REWRITE"] + 0, c["REJECT"] + 0 }' \
+      "$decisions"); then
+    printf 'optmem-proposals: could not count archived decisions for telemetry\n' >&2
+    return 0
+  fi
+  if ! timeout 2s bash "$telemetry_sink" optmem_drain "$sid" "$payload" >/dev/null; then
+    printf 'optmem-proposals: configured telemetry sink failed after archive\n' >&2
+  fi
+  return 0
+}
+
+resolve_claim() {
+  local requested=$1
+  local resolved parent
+  [[ -e "$requested" ]] || fail "claim does not exist: $requested"
+  [[ ! -L "$requested" && -f "$requested" ]] \
+    || fail "claim is not a regular non-symlink file: $requested"
+  resolved=$(realpath -e -- "$requested")
+  parent=$(dirname -- "$resolved")
+  [[ "$parent" == "$claims_dir" ]] \
+    || fail "claim is outside $claims_dir: $requested"
+  printf '%s\n' "$resolved"
+}
+
+append_proposal() {
+  [[ $# -eq 2 ]] || fail "append requires SOURCE and NOTE"
+  local source=$1 note=$2 today
+  validate_source "$source"
+  if ! validation_error=$(validate_note "$note" 2>&1); then
+    fail "$validation_error"
+  fi
+  prepare_lock
+  exec 9>>"$lock_file"
+  flock -x 9
+  check_queue_path
+  today=$(date +%F)
+  printf '%s\t%s\t%s\n' "$today" "$source" "$note" >>"$queue_file"
+  chmod 600 "$queue_file"
+}
+
+claim_queue() {
+  [[ $# -eq 1 ]] || fail "claim requires DRAINER"
+  local drainer=$1 claim stamp
+  validate_label "$drainer"
+  prepare_lock
+  prepare_private_dir "$claims_dir"
+  exec 9>>"$lock_file"
+  flock -x 9
+  check_queue_path
+  [[ -s "$queue_file" ]] || exit 0
+  stamp=$(date '+%Y%m%dT%H%M%S%N%z')
+  claim="$claims_dir/$stamp-$drainer-$$.tsv"
+  [[ ! -e "$claim" ]] || fail "claim path already exists: $claim"
+  mv -- "$queue_file" "$claim"
+  : >"$queue_file"
+  chmod 600 "$claim" "$queue_file"
+  printf '%s\n' "$claim"
+}
+
+inspect_claim() {
+  [[ $# -eq 1 ]] || fail "inspect requires CLAIM"
+  local claim
+  claim=$(resolve_claim "$1")
+  python3 - "$claim" <<'PY'
+import datetime
+import json
+import re
+import sys
+
+path = sys.argv[1]
+source_pattern = re.compile(r"^[a-z0-9][a-z0-9._/-]*$")
+note_pattern = re.compile(
+    r"^[FSEP] @e/[a-z0-9-]+ @(?:g|s/[a-z0-9]{8}) "
+    r"@k/[a-z0-9-]+(?:/[a-z0-9-]+)* .+$"
+)
+
+with open(path, "r", encoding="utf-8", newline="") as handle:
+    for number, raw in enumerate(handle, 1):
+        line = raw.removesuffix("\n")
+        fields = line.split("\t")
+        if len(fields) != 3:
+            print(f"{number}\tMALFORMED\tfields={len(fields)}\treason=expected three tab-separated fields")
+            continue
+        date, source, note = fields
+        source_json = json.dumps(source, ensure_ascii=False)
+        note_json = json.dumps(note, ensure_ascii=False)
+        try:
+            datetime.date.fromisoformat(date)
+        except ValueError:
+            print(f"{number}\tMALFORMED\tsource={source_json}\treason=invalid ISO date")
+            continue
+        if (
+            not source_pattern.fullmatch(source)
+            or source.endswith("/")
+            or "//" in source
+        ):
+            print(f"{number}\tMALFORMED\tsource={source_json}\treason=invalid source token")
+            continue
+        size = len(note.encode("utf-8"))
+        if size > 280:
+            print(f"{number}\tOVERLONG\tsource={source_json}\tbytes={size}\tnote={note_json}")
+            continue
+        if (
+            any(ord(char) < 32 or ord(char) == 127 for char in note)
+            or not note_pattern.fullmatch(note)
+        ):
+            print(f"{number}\tMALFORMED\tsource={source_json}\tbytes={size}\tnote={note_json}")
+            continue
+        if note.split(" ", 4)[3].startswith("@k/core/"):
+            print(f"{number}\tREJECTED\tsource={source_json}\treason=@k/core/ is reserved for the operator; proposals under the core namespace are not accepted\tnote={note_json}")
+            continue
+        print(f"{number}\tVALID\tdate={date}\tsource={source_json}\tbytes={size}\tnote={note_json}")
+PY
+}
+
+archive_claim() {
+  [[ $# -eq 2 ]] || fail "archive requires CLAIM and DECISIONS"
+  local claim decisions basename final temp
+  claim=$(resolve_claim "$1")
+  decisions=$2
+  [[ ! -L "$decisions" && -f "$decisions" ]] \
+    || fail "decisions path is not a regular non-symlink file: $decisions"
+
+  prepare_lock
+  prepare_private_dir "$archive_dir"
+  exec 9>>"$lock_file"
+  flock -x 9
+  claim=$(resolve_claim "$claim")
+  basename=$(basename -- "$claim" .tsv)
+  final="$archive_dir/$basename.judged.tsv"
+  temp=$(mktemp "$archive_dir/.${basename}.XXXXXX")
+
+  if ! archive_error=$(python3 - "$claim" "$decisions" "$temp" 2>&1 <<'PY'
+import datetime
+import os
+import re
+import sys
+
+claim_path, decision_path, output_path = sys.argv[1:]
+source_pattern = re.compile(r"^[a-z0-9][a-z0-9._/-]*$")
+note_pattern = re.compile(
+    r"^[FSEP] @e/[a-z0-9-]+ @(?:g|s/[a-z0-9]{8}) "
+    r"@k/[a-z0-9-]+(?:/[a-z0-9-]+)* .+$"
+)
+
+with open(claim_path, "r", encoding="utf-8", newline="") as handle:
+    proposals = [line.removesuffix("\n") for line in handle]
+with open(decision_path, "r", encoding="utf-8", newline="") as handle:
+    decisions = [line.removesuffix("\n") for line in handle]
+
+if len(proposals) != len(decisions):
+    raise SystemExit(
+        f"decision count {len(decisions)} does not match proposal count {len(proposals)}"
+    )
+
+rows = []
+for number, (proposal, decision) in enumerate(zip(proposals, decisions), 1):
+    decision_fields = decision.split("\t")
+    if len(decision_fields) != 2:
+        raise SystemExit(f"decision {number} must contain disposition and reason separated by one tab")
+    disposition, reason = decision_fields
+    if disposition not in {"KEEP", "REWRITE", "REJECT"}:
+        raise SystemExit(f"decision {number} has invalid disposition: {disposition}")
+    if not reason or any(ord(char) < 32 or ord(char) == 127 for char in reason):
+        raise SystemExit(f"decision {number} needs a non-empty reason without control characters")
+
+    proposal_fields = proposal.split("\t")
+    valid = False
+    if len(proposal_fields) == 3:
+        date, source, note = proposal_fields
+        try:
+            datetime.date.fromisoformat(date)
+            date_ok = True
+        except ValueError:
+            date_ok = False
+        valid = (
+            date_ok
+            and source_pattern.fullmatch(source) is not None
+            and not source.endswith("/")
+            and "//" not in source
+            and len(note.encode("utf-8")) <= 280
+            and not any(ord(char) < 32 or ord(char) == 127 for char in note)
+            and note_pattern.fullmatch(note) is not None
+            and not note.split(" ", 4)[3].startswith("@k/core/")
+        )
+    if not valid and disposition != "REJECT":
+        raise SystemExit(f"decision {number} must REJECT a malformed or overlong proposal")
+
+    rows.append(f"{disposition}\t{reason}\t{proposal}\n")
+
+with open(output_path, "w", encoding="utf-8", newline="") as handle:
+    handle.writelines(rows)
+    handle.flush()
+    os.fsync(handle.fileno())
+PY
+  ); then
+    rm -f -- "$temp"
+    fail "$archive_error"
+  fi
+
+  chmod 600 "$temp"
+  if [[ -e "$final" ]]; then
+    if ! cmp -s -- "$temp" "$final"; then
+      rm -f -- "$temp"
+      fail "archive already exists with different decisions: $final"
+    fi
+    rm -f -- "$temp"
+  else
+    mv -- "$temp" "$final"
+  fi
+  rm -- "$claim"
+  printf '%s\n' "$final"
+  emit_drain_telemetry "$decisions"
+}
+
+list_pending() {
+  [[ $# -eq 0 ]] || fail "pending takes no arguments"
+  [[ -d "$claims_dir" ]] || exit 0
+  [[ ! -L "$claims_dir" ]] || fail "refusing symlink directory: $claims_dir"
+  find "$claims_dir" -mindepth 1 -maxdepth 1 -type f -name '*.tsv' -print | sort
+}
+
+require_contract
+command_name=${1:-}
+[[ -n "$command_name" ]] || {
+  usage
+  exit 2
+}
+shift
+
+case "$command_name" in
+  append) append_proposal "$@" ;;
+  claim) claim_queue "$@" ;;
+  inspect) inspect_claim "$@" ;;
+  archive) archive_claim "$@" ;;
+  pending) list_pending "$@" ;;
+  -h|--help|help)
+    usage
+    ;;
+  *)
+    usage
+    fail "unknown command: $command_name"
+    ;;
+esac

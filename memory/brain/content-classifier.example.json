@@ -1,0 +1,7 @@
+{
+  "folder_pattern": "^private-notes?$",
+  "record_type": "private-note",
+  "index_type": "index",
+  "index_title_pattern": "^Private notes(?: index)?$",
+  "reason": "out-of-scope personal material; keep outside the shared vault"
+}

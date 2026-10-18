@@ -1,0 +1,32 @@
+# Bridge policy: what may cross from the vault into this repository and back.
+# Deny matches win over allow matches. Paths are relative to the vault root and
+# mirrored under `vault/` here. Edited by the operator only; the jobs refuse to run when
+# this file is missing, unparsable, or changed on a branch.
+version = 1
+publish_root = "vault"
+
+[allow]
+roots = ["0 Company", "1 CRM", "2 Market", "3 Research", "4 Calendar", "5 Inbox", "9 Agents/library", "ef-wiki", "Start here.md", "AGENTS.md", "CLAUDE.md"]
+extensions = ["md", "base", "canvas", "json", "csv", "pdf", "png", "jpg", "jpeg", "gif", "svg", "webp"]
+
+[deny]
+# 2026-09-23: a credential-bearing access note escaped into the vault. Keep its
+# path and basename denied even if sync restores it or it moves.
+paths = [".obsidian", ".local", ".codex", ".trash", ".git", "9 Agents/machine", "9 Agents/library/restricted-account-access.md"]
+names = ["restricted-account-access*", ".env", ".env.*", "*.pem", "*.key", "id_rsa*", "id_ed25519*", "*.p12", "*.pfx", "*.kdbx", "*.sqlite", "*.sqlite3", "*.db", ".DS_Store", ".gitleaks.toml", ".gitleaksignore"]
+special_files = "reject"        # symlinks, devices, sockets, fifos, hard links out of the root
+
+[limits]
+max_file_bytes = 10485760       # 10 MiB
+max_total_bytes = 524288000     # 500 MiB
+
+[secret_scan]
+tool = "gitleaks"
+on_failure = "stop"             # a hit or a scanner error blocks the run; never auto-redact
+
+[inbound]
+mode = "review-gated"           # "one-way" | "review-gated" | "continuous"
+enabled = true                  # inbox-only, content-checked apply; other proposals wait for a person
+propagate_deletions = false
+on_conflict = "stop"            # same file changed on both sides: stop, never last-writer-wins
+backup_before_write = "required"

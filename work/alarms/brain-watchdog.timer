@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the pipeline watchdog periodically
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+Unit=brain-watchdog.service
+
+[Install]
+WantedBy=timers.target
