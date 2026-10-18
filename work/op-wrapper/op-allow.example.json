@@ -1,0 +1,12 @@
+{
+  "max_restarts_per_hour": 3,
+  "units": ["example-api.service", "example-sync.service"],
+  "pm2": {
+    "root": ["example-web"],
+    "app-user": ["example-job"]
+  },
+  "read_roots": {
+    "service-code": "/srv/example-app",
+    "service-logs": "/var/log/example-app"
+  }
+}

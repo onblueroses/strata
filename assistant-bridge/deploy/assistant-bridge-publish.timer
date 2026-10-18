@@ -1,0 +1,12 @@
+# Render @...@ values from deploy/env.example before installing.
+[Unit]
+Description=Run the assistant bridge publish every five minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+RandomizedDelaySec=30s
+Unit=assistant-bridge-publish.service
+
+[Install]
+WantedBy=timers.target

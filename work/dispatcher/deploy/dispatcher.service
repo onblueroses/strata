@@ -1,0 +1,25 @@
+[Unit]
+Description=dispatcher: the one claimer of the Linear issue queue; spawns one worker per ticket over SSH
+After=network-online.target linear-hook.service
+Wants=network-online.target
+OnFailure=brain-alarm@%n.service
+
+[Service]
+User=dispatcher
+Group=dispatcher
+WorkingDirectory=/var/lib/dispatcher
+EnvironmentFile=/etc/dispatcher/env
+ExecStart=/usr/bin/python3 /usr/local/lib/dispatcher/dispatcher.py serve
+Restart=always
+RestartSec=10
+# Running workers are ssh children; they must outlive a restart of the service and are adopted by pid.
+KillMode=process
+TimeoutStopSec=20
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/dispatcher
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,3 @@
+# Add one line to each worker account's authorized_keys. Use the local runner path: the example installer places it at /usr/local/lib/dispatcher/worker-run on the vps and ~/.local/lib/dispatcher/worker-run on the laptop.
+# The key can invoke only the forced command. Restrict from= to the dispatcher's source address on that hand.
+command="<absolute-worker-run-path>",from="<dispatcher-source-address>",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty,no-user-rc ssh-ed25519 <public-key> dispatcher@vps

@@ -1,0 +1,16 @@
+# free-silo omp profile config; installed by free-silo on every run. Free, prompt-logging endpoints only; no Codex credentials exist in the silo.
+# Context files off (a ticket): nothing from cwd ancestors or harness dirs reaches the prompt.
+disabledProviders: [agents-md, claude-md, agents, native, claude, codex, gemini, github, opencode]
+modelRoles:
+  default: openrouter/thinkingmachines/inkling:free
+  smol: openrouter/thinkingmachines/inkling-small:free
+  slow: openrouter/thinkingmachines/inkling:free
+  plan: openrouter/thinkingmachines/inkling:free
+  commit: openrouter/thinkingmachines/inkling-small:free
+  task: openrouter/thinkingmachines/inkling:free
+# Search: Codex-hosted search through codex-search-bridge on the host; the Codex login stays
+# outside the silo, which holds only the bridge's localhost token (SEARXNG_TOKEN, via free-silo).
+searxng:
+  endpoint: http://127.0.0.1:4102
+providers:
+  webSearchOrder: [searxng]

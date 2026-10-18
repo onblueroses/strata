@@ -1,0 +1,9 @@
+{
+  "files": {
+    "bin/bend": "7f2e1b8a2352cfc0e6610449e44426c7b3e64933d7eb452681f1b5ac958254f2",
+    "bend2/base.bend": "485705690d8927389bd156f18e42653176a5e139afe363a7e9bc217eb6f5e716",
+    "bend2/bendtt.lean": "7f6ef51c9f75d7de91c15f790fb3385189b1129e7bc13812c9d8aa30a2c73dec"
+  },
+  "lean_version": "Lean (version 4.34.0, x86_64-unknown-linux-gnu, commit 293d5d0c0c3f3dded4688b3ccd6a33939ac5102b, Release)",
+  "version": "bend 2.0.32"
+}

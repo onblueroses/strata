@@ -1,0 +1,13 @@
+# Render @...@ values from deploy/env.example before installing.
+[Unit]
+Description=Publish the policy-approved vault subset to the assistant bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=@BRIDGE_VAULT_USER@
+TimeoutStartSec=20m
+WorkingDirectory=@BRIDGE_WORKTREE@
+EnvironmentFile=@BRIDGE_CONFIG_DIR@/bridge.env
+ExecStart=@BRIDGE_EXEC_DIR@/bridge-publish

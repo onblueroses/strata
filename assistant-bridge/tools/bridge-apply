@@ -1,0 +1,1354 @@
+#!/usr/bin/env python3
+"""Apply the assistant pull requests that change only auto-apply roots to the vault."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import stat
+import sys
+import tempfile
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib import error as urlerror
+from urllib import parse as urlparse
+from urllib import request as urlrequest
+
+import bridge_common
+from bridge_common import (
+    DEFAULT_PAUSE_DIR,
+    SHA_RE,
+    BridgeError,
+    append_audit,
+    apply_files,
+    bridge_lock,
+    build_backup,
+    check_disjoint,
+    check_disk,
+    check_repo,
+    ensure_external,
+    git,
+    git_blob,
+    git_blob_info,
+    git_text,
+    iter_allowed_candidates,
+    job_paused,
+    pinned_policy,
+    preflight_audit,
+    read_job_status,
+    read_regular_file,
+    require_control_file,
+    require_directory,
+    require_regular_file,
+    reserve_audit,
+    rollback_files,
+    run_command,
+    safe_rel,
+    scan_gitleaks,
+    secure_read_file,
+    sha256_bytes,
+    shown_path,
+    utc_now,
+    validate_frontmatter,
+    validate_run_id,
+    verify_private_attestation,
+    write_job_status,
+)
+from bridge_policy import PolicyError, load_policy_bytes
+
+DEFAULT_REPO = "owner/assistant-bridge"
+DEFAULT_AUTHOR = "assistant-account"
+DEFAULT_API_URL = "https://api.github.com"
+DEFAULT_DISK_FLOOR = 64 * 1024 * 1024
+MAX_API_BYTES = 4 * 1024 * 1024
+MAX_API_PAGES = 100
+REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+LOGIN_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$|^[A-Za-z0-9_.-]+\[bot\]$")
+DEFAULT_AUTO_APPLY_ROOTS = "5 Inbox"
+DEFAULT_STATUS_DIR = "/var/lib/assistant-bridge"
+STATUS_FILE = "apply-status.json"
+
+
+def env_default(name: str, fallback: str | None = None) -> str | None:
+    return os.environ.get(name, fallback)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--vault",
+        default=env_default("BRIDGE_VAULT", "/srv/brain-vault"),
+    )
+    parser.add_argument(
+        "--worktree",
+        default=env_default("BRIDGE_WORKTREE", "/srv/assistant-bridge"),
+    )
+    parser.add_argument(
+        "--remote-url",
+        default=env_default("BRIDGE_REMOTE_URL"),
+        required=env_default("BRIDGE_REMOTE_URL") is None,
+    )
+    parser.add_argument("--policy", default=env_default("BRIDGE_POLICY"))
+    parser.add_argument(
+        "--gitleaks",
+        default=env_default("BRIDGE_GITLEAKS", "/usr/local/bin/gitleaks"),
+    )
+    parser.add_argument(
+        "--gitleaks-config",
+        default=env_default(
+            "BRIDGE_GITLEAKS_CONFIG", "/etc/assistant-bridge/gitleaks.toml"
+        ),
+    )
+    parser.add_argument(
+        "--audit-log",
+        default=env_default(
+            "BRIDGE_AUDIT_LOG",
+            "/var/lib/assistant-bridge/audit.jsonl",
+        ),
+    )
+    parser.add_argument(
+        "--backup-dir",
+        default=env_default(
+            "BRIDGE_BACKUP_DIR",
+            "/var/lib/assistant-bridge/backups",
+        ),
+    )
+    parser.add_argument(
+        "--lock-file",
+        default=env_default(
+            "BRIDGE_LOCK_FILE",
+            "/var/lib/assistant-bridge/bridge.lock",
+        ),
+    )
+    parser.add_argument(
+        "--visibility-attestation",
+        default=env_default(
+            "BRIDGE_VISIBILITY_ATTESTATION",
+            "/etc/assistant-bridge/repository.json",
+        ),
+    )
+    parser.add_argument(
+        "--token-file",
+        default=env_default(
+            "BRIDGE_TOKEN_FILE", "/etc/assistant-bridge/apply.token"
+        ),
+    )
+    parser.add_argument("--repo", default=env_default("BRIDGE_REPO", DEFAULT_REPO))
+    parser.add_argument(
+        "--author", default=env_default("BRIDGE_AUTHOR", DEFAULT_AUTHOR)
+    )
+    parser.add_argument(
+        "--require-label", default=env_default("BRIDGE_REQUIRE_LABEL")
+    )
+    parser.add_argument(
+        "--api-url", default=env_default("BRIDGE_API_URL", DEFAULT_API_URL)
+    )
+    parser.add_argument("--run-id", default=env_default("BRIDGE_RUN_ID"))
+    parser.add_argument(
+        "--auto-apply-roots",
+        default=env_default("BRIDGE_AUTO_APPLY_ROOTS", DEFAULT_AUTO_APPLY_ROOTS),
+        help="comma-separated vault-relative roots that apply automatically; "
+        "an empty value holds every pull request",
+    )
+    parser.add_argument(
+        "--status-dir",
+        default=env_default("BRIDGE_JOB_STATUS_DIR", DEFAULT_STATUS_DIR),
+    )
+    parser.add_argument("--pause-dir", default=env_default("BRIDGE_PAUSE_DIR"))
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args(argv)
+
+
+class ApiError(BridgeError):
+    def __init__(self, category: str, message: str, *, status: int | None = None):
+        super().__init__(category, message)
+        self.status = status
+
+
+class Refusal(BridgeError):
+    def __init__(
+        self,
+        category: str,
+        comment: str,
+        *,
+        path: str | None = None,
+    ):
+        super().__init__(category, comment)
+        self.comment = comment
+        self.path = path
+
+
+class NoRedirect(urlrequest.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class GitHubAPI:
+    def __init__(self, api_url: str, repo: str, token: str):
+        parsed = urlparse.urlsplit(api_url)
+        loopback = parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        if (
+            parsed.scheme not in {"https", "http"}
+            or (parsed.scheme == "http" and not loopback)
+            or not parsed.netloc
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise BridgeError("api-url-invalid", "GitHub API URL is invalid")
+        self.base = api_url.rstrip("/")
+        self.repo = repo
+        self.token = token
+        self.opener = urlrequest.build_opener(NoRedirect())
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, object] | None = None,
+    ) -> object:
+        data = None
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {self.token}",
+            "User-Agent": "assistant-bridge-apply/1",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if payload is not None:
+            data = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        request = urlrequest.Request(
+            f"{self.base}{path}",
+            data=data,
+            headers=headers,
+            method=method,
+        )
+        try:
+            with self.opener.open(request, timeout=20) as response:
+                raw = response.read(MAX_API_BYTES + 1)
+        except urlerror.HTTPError as exc:
+            raise ApiError(
+                "api-http",
+                f"GitHub API {method} failed with HTTP {exc.code}",
+                status=exc.code,
+            ) from exc
+        except (urlerror.URLError, TimeoutError, OSError) as exc:
+            raise ApiError(
+                "api-unavailable", "GitHub API request failed"
+            ) from exc
+        if len(raw) > MAX_API_BYTES:
+            raise ApiError("api-response-invalid", "GitHub API response is too large")
+        if not raw:
+            return None
+        try:
+            return json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ApiError(
+                "api-response-invalid", "GitHub API returned invalid JSON"
+            ) from exc
+
+    def paginated(self, path: str, query: dict[str, str] | None = None) -> list[object]:
+        items: list[object] = []
+        for page in range(1, MAX_API_PAGES + 1):
+            parameters = dict(query or {})
+            parameters.update({"per_page": "100", "page": str(page)})
+            document = self.request(
+                "GET", f"{path}?{urlparse.urlencode(parameters)}"
+            )
+            if not isinstance(document, list):
+                raise ApiError(
+                    "api-response-invalid", "GitHub API returned an invalid list"
+                )
+            items.extend(document)
+            if len(document) < 100:
+                return items
+        raise ApiError("api-response-invalid", "GitHub API pagination limit exceeded")
+
+    def pulls(self) -> list[object]:
+        return self.paginated(
+            f"/repos/{self.repo}/pulls",
+            {"state": "open", "base": "main"},
+        )
+
+    def pull(self, number: int) -> object:
+        return self.request("GET", f"/repos/{self.repo}/pulls/{number}")
+
+    def issue(self, number: int) -> object:
+        return self.request("GET", f"/repos/{self.repo}/issues/{number}")
+
+    def comment(self, number: int, body: str) -> None:
+        self.request(
+            "POST", f"/repos/{self.repo}/issues/{number}/comments", {"body": body}
+        )
+
+    def close(self, number: int) -> None:
+        self.request(
+            "PATCH", f"/repos/{self.repo}/pulls/{number}", {"state": "closed"}
+        )
+
+
+def read_token(path: Path) -> str:
+    try:
+        info = path.lstat()
+    except OSError as exc:
+        raise BridgeError("token-invalid", "GitHub token file is missing") from exc
+    if (
+        stat.S_ISLNK(info.st_mode)
+        or not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or stat.S_IMODE(info.st_mode) != 0o600
+        or info.st_uid not in {0, os.geteuid()}
+    ):
+        raise BridgeError(
+            "token-invalid",
+            "GitHub token file must be singly linked, owner-controlled, and mode 0600",
+        )
+    raw = read_regular_file(path, "GitHub token", max_bytes=4096)
+    try:
+        token = raw.decode("ascii").strip()
+    except UnicodeDecodeError as exc:
+        raise BridgeError("token-invalid", "GitHub token file is invalid") from exc
+    if (
+        not token
+        or len(token) > 2048
+        or any(character.isspace() or ord(character) < 33 for character in token)
+    ):
+        raise BridgeError("token-invalid", "GitHub token file is invalid")
+    return token
+
+
+def safe_login(value: object, label: str) -> str:
+    if not isinstance(value, str) or not LOGIN_RE.fullmatch(value):
+        raise BridgeError("configuration-invalid", f"configured {label} is invalid")
+    return value
+
+
+def validate_configuration(args: argparse.Namespace) -> None:
+    if not isinstance(args.repo, str) or not REPO_RE.fullmatch(args.repo):
+        raise BridgeError("configuration-invalid", "configured repository is invalid")
+    safe_login(args.author, "author")
+    if args.require_label is not None and (
+        not args.require_label
+        or args.require_label != args.require_label.strip()
+        or any(ord(character) < 32 for character in args.require_label)
+    ):
+        raise BridgeError("configuration-invalid", "required label is invalid")
+
+
+def parse_auto_apply_roots(value: str) -> tuple[tuple[str, ...], ...]:
+    """Parse comma-separated vault-relative roots into path components."""
+    roots: list[tuple[str, ...]] = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            relative = safe_rel(item)
+        except BridgeError as exc:
+            raise BridgeError(
+                "configuration-invalid", "an auto-apply root is invalid"
+            ) from exc
+        components = tuple(relative.split("/"))
+        if components not in roots:
+            roots.append(components)
+    return tuple(roots)
+
+
+def in_auto_scope(relative: str, roots: tuple[tuple[str, ...], ...]) -> bool:
+    """Exact, case-sensitive component prefix match of a vault-relative path."""
+    parts = tuple(relative.split("/"))
+    return any(
+        len(parts) >= len(root) and parts[: len(root)] == root for root in roots
+    )
+
+
+def roots_record(roots: tuple[tuple[str, ...], ...]) -> list[str]:
+    """Canonical audit form of the auto-apply roots a hold was decided under."""
+    return sorted("/".join(root) for root in roots)
+
+
+def held_scopes(audit_path: Path, repo: str, number: int, head: str) -> list[object]:
+    """Return the auto-apply roots recorded by every earlier hold of this PR head.
+
+    A non-empty result means the hold comment for this head was already posted.
+    A hold only short-circuits later runs while its recorded roots equal the
+    current ones, so a changed scope configuration is re-evaluated.
+    """
+    scopes: list[object] = []
+    try:
+        audit_path.lstat()
+    except FileNotFoundError:
+        return scopes
+    except OSError as exc:
+        raise BridgeError("audit-history-invalid", "audit history is unreadable") from exc
+    try:
+        raw = read_regular_file(
+            audit_path, "audit history", max_bytes=128 * 1024 * 1024
+        )
+    except BridgeError as exc:
+        raise BridgeError("audit-history-invalid", "audit history is unreadable") from exc
+    for raw_line in raw.splitlines():
+        if not raw_line.strip():
+            continue
+        try:
+            document = json.loads(raw_line)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BridgeError(
+                "audit-history-invalid", "audit history contains an invalid record"
+            ) from exc
+        if not isinstance(document, dict):
+            raise BridgeError(
+                "audit-history-invalid", "audit history contains an invalid record"
+            )
+        if (
+            document.get("direction") == "apply"
+            and document.get("repo") == repo
+            and document.get("pr_number") == number
+            and document.get("head_sha") == head
+            and document.get("result_category") == "held"
+        ):
+            scopes.append(document.get("auto_apply_roots"))
+    return scopes
+
+
+# Refusals decided by the head's diff and content alone. A later run with the same head
+# and the same rules (policy plus this code) would refuse again, so it skips the
+# inspection. Every other refusal can depend on the vault (policy denials walk it), on
+# GitHub or on a scanner run, and is re-checked every run.
+HEAD_STABLE_REFUSALS = frozenset(
+    {
+        "deletion",
+        "duplicate-path",
+        "empty-change",
+        "frontmatter-invalid",
+        "git-path-invalid",
+        "outside-vault",
+        "path-invalid",
+        "remote-special-file",
+        "unsupported-change",
+    }
+)
+
+
+def refusal_rules_digest(policy_bytes: bytes) -> str:
+    """Digest of what decides a refusal: the policy and the apply code itself.
+
+    A deploy of either re-checks every refused head once.
+    """
+    digest = hashlib.sha256(policy_bytes)
+    for source in (Path(__file__), Path(bridge_common.__file__)):
+        digest.update(b"\0" + source.read_bytes())
+    return digest.hexdigest()
+
+
+def earlier_refusals(
+    audit_path: Path, repo: str, number: int, head: str
+) -> set[tuple[str, object, object]]:
+    """Return (category, path, rules digest) of every refusal already reported for this head.
+
+    The audit log is the record, not a comment marker: the assistant can post comments
+    through the owner's account and could forge one.
+    """
+    found: set[tuple[str, object]] = set()
+    try:
+        audit_path.lstat()
+    except FileNotFoundError:
+        return found
+    except OSError as exc:
+        raise BridgeError("audit-history-invalid", "audit history is unreadable") from exc
+    try:
+        raw = read_regular_file(
+            audit_path, "audit history", max_bytes=128 * 1024 * 1024
+        )
+    except BridgeError as exc:
+        raise BridgeError("audit-history-invalid", "audit history is unreadable") from exc
+    for raw_line in raw.splitlines():
+        if not raw_line.strip():
+            continue
+        try:
+            document = json.loads(raw_line)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BridgeError(
+                "audit-history-invalid", "audit history contains an invalid record"
+            ) from exc
+        if not isinstance(document, dict):
+            raise BridgeError(
+                "audit-history-invalid", "audit history contains an invalid record"
+            )
+        if (
+            document.get("direction") == "apply"
+            and document.get("repo") == repo
+            and document.get("pr_number") == number
+            and document.get("head_sha") == head
+            and document.get("refusal_reported") is True
+            and isinstance(document.get("result_category"), str)
+        ):
+            found.add(
+                (
+                    document["result_category"],
+                    document.get("refusal_path", ""),
+                    document.get("rules_sha256"),
+                )
+            )
+    return found
+
+
+def hold_comment(head: str, roots: tuple[tuple[str, ...], ...]) -> str:
+    if roots:
+        scope = " or ".join(
+            shown_path("vault/" + "/".join(root) + "/") for root in roots
+        )
+        reason = f"this proposal changes files outside {scope}"
+    else:
+        reason = "auto-apply is switched off for every path"
+    return (
+        f"{reason}, so it is not applied automatically (head `{head}`). A person reads "
+        "it and makes the change in the vault by hand, and this pull request stays "
+        "open until then."
+    )
+
+
+def inbound_is_disabled(args: argparse.Namespace) -> bool:
+    """Treat the repository policy's inbound switch as a strict kill switch."""
+    worktree = Path(args.worktree).resolve(strict=True)
+    expected = worktree / "bridge-policy.toml"
+    policy_path = Path(args.policy) if args.policy else expected
+    require_regular_file(policy_path, expected, "bridge policy")
+    policy = load_policy_bytes(
+        expected, read_regular_file(policy_path, "bridge policy")
+    )
+    return not policy.inbound.enabled or policy.inbound.mode != "review-gated"
+
+
+def signed(body: str) -> str:
+    day = datetime.now(timezone.utc).date().isoformat()
+    return f"{body}\n\n(bridge-apply, {day})"
+
+
+def object_login(document: object) -> str | None:
+    if not isinstance(document, dict):
+        return None
+    user = document.get("user")
+    if not isinstance(user, dict) or not isinstance(user.get("login"), str):
+        return None
+    return user["login"]
+
+
+def pull_number(document: object) -> int | None:
+    if not isinstance(document, dict):
+        return None
+    value = document.get("number")
+    if type(value) is not int or value <= 0:
+        return None
+    return value
+
+
+def eligible_pull(document: object, author: str) -> bool:
+    if not isinstance(document, dict):
+        return False
+    number = pull_number(document)
+    base = document.get("base")
+    state = document.get("state")
+    return bool(
+        number is not None
+        and object_login(document)
+        and object_login(document).casefold() == author.casefold()
+        and isinstance(base, dict)
+        and base.get("ref") == "main"
+        and state == "open"
+    )
+
+
+def has_required_label(api: GitHubAPI, number: int, required: str) -> bool:
+    document = api.issue(number)
+    if not isinstance(document, dict) or not isinstance(document.get("labels"), list):
+        raise ApiError("api-response-invalid", "GitHub issue labels are invalid")
+    names: list[str] = []
+    for label in document["labels"]:
+        if isinstance(label, str):
+            names.append(label)
+        elif isinstance(label, dict) and isinstance(label.get("name"), str):
+            names.append(label["name"])
+    return any(name.casefold() == required.casefold() for name in names)
+
+
+def recheck_head(
+    api: GitHubAPI, number: int, expected_head: str, author: str, required_label: str | None
+) -> None:
+    """Refuse the write when the pull request changed since inspection: closed, retargeted,
+    reassigned, its label removed, or pointing at another head."""
+    current = api.pull(number)
+    if not eligible_pull(current, author):
+        raise Refusal(
+            "pull-changed",
+            "refused: pull request closed, retargeted or reassigned before apply",
+        )
+    if required_label and not has_required_label(api, number, required_label):
+        raise Refusal("label-changed", "refused: required label removed before apply")
+    head_document = current.get("head") if isinstance(current, dict) else None
+    current_head = (
+        head_document.get("sha") if isinstance(head_document, dict) else None
+    )
+    if current_head != expected_head:
+        raise Refusal(
+            "head-changed",
+            "refused: pull request head changed before apply; the new head is checked "
+            "on the next run",
+        )
+
+
+def parse_changes(raw: bytes) -> list[tuple[str, str, str]]:
+    parts = raw.split(b"\0")
+    if parts and parts[-1] == b"":
+        parts.pop()
+    if len(parts) % 2:
+        raise BridgeError("git-diff-invalid", "pull request change list is invalid")
+    changes: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for index in range(0, len(parts), 2):
+        try:
+            status = parts[index].decode("ascii")
+            full_path = parts[index + 1].decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise Refusal(
+                "git-path-invalid", "refused: a changed path is not valid UTF-8"
+            ) from exc
+        code = status[:1]
+        if code not in {"A", "M", "D"}:
+            raise Refusal(
+                "unsupported-change",
+                f"refused: unsupported change type for {shown_path(full_path)}",
+                path=full_path,
+            )
+        if not full_path.startswith("vault/"):
+            raise Refusal(
+                "outside-vault",
+                f"refused: changed path is outside vault/: {shown_path(full_path)}",
+                path=full_path,
+            )
+        try:
+            relative = safe_rel(full_path[len("vault/") :])
+        except BridgeError as exc:
+            raise Refusal(
+                "path-invalid",
+                f"refused: changed path is invalid: {shown_path(full_path)}",
+                path=full_path,
+            ) from exc
+        if relative in seen:
+            raise Refusal(
+                "duplicate-path",
+                f"refused: duplicate changed path: {shown_path(full_path)}",
+                path=full_path,
+            )
+        seen.add(relative)
+        if code == "D":
+            raise Refusal(
+                "deletion",
+                f"refused: deletion is not allowed: {shown_path(full_path)}",
+                path=full_path,
+            )
+        changes.append((code, full_path, relative))
+    return changes
+
+
+def projected_size(policy, vault: Path, incoming: dict[str, bytes]) -> int:
+    sizes: dict[str, int] = {}
+    for relative in iter_allowed_candidates(vault, policy.allowed_roots):
+        decision = policy.evaluate(vault, relative)
+        if decision.allowed:
+            assert decision.size is not None
+            sizes[relative] = decision.size
+        elif decision.category in {
+            "oversized",
+            "special-file",
+            "unreadable",
+            "invalid-path",
+            "outside-vault",
+        }:
+            raise Refusal(
+                "local-policy-denied",
+                f"refused: local path blocks safe apply: {shown_path(relative)} ({decision.category})",
+                path=relative,
+            )
+    for relative, data in incoming.items():
+        sizes[relative] = len(data)
+    return sum(sizes.values())
+
+
+def inspect_pull(
+    repository: Path,
+    vault: Path,
+    policy,
+    number: int,
+    api_head: str,
+    args: argparse.Namespace,
+) -> tuple[str, str, dict[str, bytes], dict[str, str | None], dict[str, int]]:
+    fetched = run_command(
+        ["git", "fetch", "--no-tags", "origin", f"refs/pull/{number}/head"],
+        cwd=repository,
+    )
+    if fetched.returncode != 0:
+        raise BridgeError("fetch-failed", f"PR #{number} head could not be fetched")
+    head = git_text(repository, ["rev-parse", "FETCH_HEAD"])
+    if not SHA_RE.fullmatch(head) or head != api_head:
+        raise Refusal(
+            "head-changed",
+            "refused: pull request head changed during inspection; the new head is "
+            "checked on the next run",
+        )
+    base = git_text(
+        repository,
+        ["merge-base", "refs/remotes/origin/main", head],
+        category="merge-base-failed",
+        message=f"PR #{number} merge-base cannot be determined",
+    )
+    raw = git(
+        repository,
+        ["diff", "--name-status", "-z", "--no-renames", base, head],
+        category="git-diff-failed",
+        message=f"PR #{number} changes cannot be listed",
+    )
+    changes = parse_changes(raw)
+    if not changes:
+        raise Refusal("empty-change", "refused: pull request has no changes")
+
+    incoming: dict[str, bytes] = {}
+    expected_local: dict[str, str | None] = {}
+    counts = {"added": 0, "modified": 0, "deleted": 0}
+    for code, _full_path, relative in changes:
+        try:
+            object_id, blob_size = git_blob_info(
+                repository, head, policy.publish_root, relative
+            )
+            decision = policy.evaluate(
+                vault, relative, size=blob_size, require_exists=False
+            )
+            if not decision.allowed:
+                raise Refusal(
+                    "policy-denied",
+                    f"refused: policy denied {shown_path(relative)} ({decision.category})",
+                    path=relative,
+                )
+            data = git_blob(repository, object_id, relative)
+            if len(data) != blob_size:
+                raise Refusal(
+                    "blob-changed",
+                    f"refused: blob size changed while reading {shown_path(relative)}",
+                    path=relative,
+                )
+            try:
+                validate_frontmatter(relative, data)
+            except BridgeError as exc:
+                raise Refusal(
+                    "frontmatter-invalid",
+                    f"refused: frontmatter is invalid: {shown_path(relative)}",
+                    path=relative,
+                ) from exc
+            local = secure_read_file(
+                vault, relative, missing_ok=True, max_bytes=policy.max_file_bytes
+            )
+            if code == "A":
+                if local is not None:
+                    raise Refusal(
+                        "conflict",
+                        f"conflict: {relative} changed in the vault since the PR was opened",
+                        path=relative,
+                    )
+                expected_local[relative] = None
+                counts["added"] += 1
+            else:
+                base_object, base_size = git_blob_info(
+                    repository, base, policy.publish_root, relative
+                )
+                base_data = git_blob(repository, base_object, relative)
+                if len(base_data) != base_size:
+                    raise Refusal(
+                        "blob-changed",
+                        f"refused: base blob size changed while reading {shown_path(relative)}",
+                        path=relative,
+                    )
+                if local is None or local[0] != base_data:
+                    raise Refusal(
+                        "conflict",
+                        f"conflict: {relative} changed in the vault since the PR was opened",
+                        path=relative,
+                    )
+                expected_local[relative] = sha256_bytes(local[0])
+                counts["modified"] += 1
+            incoming[relative] = data
+        except Refusal:
+            raise
+        except BridgeError as exc:
+            # A special file, an unreadable blob or an oversized local file refuses
+            # this PR; it must never abort the run and starve every other PR.
+            raise Refusal(exc.category, f"refused: {exc.message}", path=relative) from exc
+
+    if projected_size(policy, vault, incoming) > policy.max_total_bytes:
+        raise Refusal(
+            "total-size", "refused: resulting files exceed the total-size limit"
+        )
+
+    with tempfile.TemporaryDirectory(prefix="bridge-apply-scan-") as temp_name:
+        scan_root = Path(temp_name) / policy.publish_root
+        scan_root.mkdir()
+        for relative, data in incoming.items():
+            destination = scan_root.joinpath(*relative.split("/"))
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
+        try:
+            scanner, findings = scan_gitleaks(
+                Path(args.gitleaks), Path(args.gitleaks_config), scan_root
+            )
+        except BridgeError as exc:
+            raise Refusal(
+                "scanner-error", "refused: secret scanner errored"
+            ) from exc
+        if scanner != "clean" or findings:
+            finding = findings[0] if findings else {"path": "unknown", "rule": "unknown"}
+            raise Refusal(
+                "secret-detected",
+                f"refused: secret scanner finding in {shown_path(finding['path'])} (rule {finding['rule']})",
+                path=finding["path"],
+            )
+    return base, head, incoming, expected_local, counts
+
+
+def make_record(
+    run_id: str,
+    number: int,
+    head: str | None,
+    counts: dict[str, int] | None,
+    outcome: str,
+    *,
+    dry_run: bool,
+) -> dict[str, object]:
+    return {
+        "time": utc_now(),
+        "run_id": run_id,
+        "mode": "dry-run" if dry_run else "review-gated",
+        "direction": "apply",
+        "pr_number": number,
+        "head_sha": head,
+        "counts": counts or {"added": 0, "modified": 0, "deleted": 0},
+        "backup": None,
+        "outcome": outcome,
+        "result_category": outcome,
+    }
+
+
+def previous_success(
+    audit_path: Path,
+    repo: str,
+    number: int,
+    head: str,
+) -> tuple[str, int] | None:
+    """Return the durable apply marker for an already-applied PR head."""
+    try:
+        audit_path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise BridgeError("audit-history-invalid", "audit history is unreadable") from exc
+    try:
+        raw = read_regular_file(
+            audit_path, "audit history", max_bytes=128 * 1024 * 1024
+        )
+    except BridgeError as exc:
+        raise BridgeError("audit-history-invalid", "audit history is unreadable") from exc
+    match: tuple[str, int] | None = None
+    for raw_line in raw.splitlines():
+        if not raw_line.strip():
+            continue
+        try:
+            document = json.loads(raw_line)
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise BridgeError(
+                "audit-history-invalid", "audit history contains an invalid record"
+            ) from exc
+        if not isinstance(document, dict):
+            raise BridgeError(
+                "audit-history-invalid", "audit history contains an invalid record"
+            )
+        if (
+            document.get("direction") != "apply"
+            or document.get("repo") != repo
+            or document.get("pr_number") != number
+            or document.get("head_sha") != head
+            or document.get("result_category") != "success"
+        ):
+            continue
+        run_id = document.get("run_id")
+        counts = document.get("counts")
+        if not isinstance(run_id, str) or not isinstance(counts, dict):
+            raise BridgeError(
+                "audit-history-invalid", "successful apply record is invalid"
+            )
+        added = counts.get("added")
+        modified = counts.get("modified")
+        if type(added) is not int or type(modified) is not int:
+            raise BridgeError(
+                "audit-history-invalid", "successful apply record is invalid"
+            )
+        match = (validate_run_id(run_id), added + modified)
+    return match
+
+
+def report_success(
+    api: GitHubAPI,
+    number: int,
+    run_id: str,
+    total_files: int,
+) -> bool:
+    """Report a durable apply; return false only for an allowed close denial."""
+    api.comment(
+        number,
+        signed(
+            f"applied to the vault (run {run_id}, {total_files} files); "
+            "it appears in the repository with the next publish"
+        ),
+    )
+    try:
+        api.close(number)
+    except ApiError as exc:
+        if exc.status not in {401, 403}:
+            raise
+        api.comment(
+            number,
+            signed(
+                "applied to the vault, but the pull request could not be closed; "
+                "close it manually"
+            ),
+        )
+        return False
+    return True
+
+
+def report_refusal(
+    api: GitHubAPI,
+    audit_path: Path,
+    record: dict[str, object],
+    refusal: Refusal,
+    number: int,
+    reported: set[tuple[str, object, object]],
+    rules_digest: str,
+    *,
+    dry_run: bool,
+) -> None:
+    """Comment and audit a refusal once per (head, category, path, rules); later runs only print.
+
+    The comment goes first: if the audit write then fails the run exits 2 and a later
+    run may comment again, which beats a refusal nobody was told about.
+    """
+    shown = f" {shown_path(refusal.path)}" if refusal.path else ""
+    key = (refusal.category, refusal.path or "", rules_digest)
+    if not dry_run and key in reported:
+        print(f"PR #{number} refused {refusal.category} already-reported{shown}")
+        return
+    print(f"PR #{number} refused {refusal.category}{shown}")
+    if dry_run:
+        return
+    api.comment(number, signed(refusal.comment))
+    record["outcome"] = refusal.category
+    record["result_category"] = refusal.category
+    record["refusal_path"] = refusal.path or ""
+    record["rules_sha256"] = rules_digest
+    record["refusal_reported"] = True
+    append_audit(audit_path, record)
+    reported.add(key)
+
+
+def apply_transaction(
+    vault: Path,
+    backup_root: Path,
+    audit_path: Path,
+    run_id: str,
+    incoming: dict[str, bytes],
+    expected_local: dict[str, str | None],
+    record: dict[str, object],
+) -> None:
+    run_dir, entries = build_backup(
+        vault, backup_root, run_id, incoming, expected_local
+    )
+    if vault.stat().st_dev != run_dir.stat().st_dev:
+        raise BridgeError(
+            "backup-filesystem", "backup directory must be on the vault filesystem"
+        )
+    record["backup"] = f"{run_id}/manifest.json"
+    record["outcome"] = "pending-apply"
+    record["result_category"] = "pending-apply"
+    reservation = reserve_audit(audit_path, record)
+    applied: list[str] = []
+    try:
+        try:
+            applied = apply_files(
+                vault, incoming, entries, run_dir, expected_local
+            )
+            record["outcome"] = "success"
+            record["result_category"] = "success"
+            reservation.finalize(record)
+        except BaseException as operation_error:
+            failure: BaseException = operation_error
+            if applied:
+                try:
+                    rollback_files(vault, run_dir, entries, applied)
+                except BaseException as rollback_error:
+                    failure = rollback_error
+            category = (
+                failure.category if isinstance(failure, BridgeError) else "internal-error"
+            )
+            record["outcome"] = category
+            record["result_category"] = category
+            try:
+                reservation.finalize(record)
+            except BridgeError as audit_error:
+                failure = audit_error
+            raise failure
+    finally:
+        reservation.close()
+
+
+def prepare_repository(
+    args: argparse.Namespace, worktree: Path
+) -> tuple[tempfile.TemporaryDirectory[str] | None, Path]:
+    if not args.dry_run:
+        fetched = run_command(
+            ["git", "fetch", "--no-tags", "origin", "main"], cwd=worktree
+        )
+        if fetched.returncode != 0:
+            raise BridgeError("fetch-failed", "origin/main could not be fetched")
+        return None, worktree
+
+    context = tempfile.TemporaryDirectory(prefix="bridge-apply-remote-")
+    repository = Path(context.name) / "remote.git"
+    initialized = run_command(["git", "init", "--bare", str(repository)])
+    if initialized.returncode != 0:
+        context.cleanup()
+        raise BridgeError("git-init-failed", "dry-run repository could not be created")
+    added = run_command(
+        ["git", "remote", "add", "origin", args.remote_url], cwd=repository
+    )
+    if added.returncode != 0:
+        context.cleanup()
+        raise BridgeError("remote-invalid", "dry-run origin could not be configured")
+    fetched = run_command(
+        [
+            "git",
+            "fetch",
+            "--no-tags",
+            "origin",
+            "refs/heads/main:refs/remotes/origin/main",
+        ],
+        cwd=repository,
+    )
+    if fetched.returncode != 0:
+        context.cleanup()
+        raise BridgeError("fetch-failed", "origin/main could not be read")
+    return context, repository
+
+
+def execute(args: argparse.Namespace) -> None:
+    validate_configuration(args)
+    auto_roots = parse_auto_apply_roots(args.auto_apply_roots or "")
+    worktree_input = Path(args.worktree)
+    vault_input = Path(args.vault)
+    vault, worktree = check_disjoint(vault_input, worktree_input)
+    audit_path = Path(args.audit_log)
+    backup_root = Path(args.backup_dir)
+    token_path = Path(args.token_file)
+    policy_path = Path(args.policy) if args.policy else worktree / "bridge-policy.toml"
+    for path, label in (
+        (audit_path, "audit log"),
+        (backup_root, "backup directory"),
+        (token_path, "GitHub token"),
+    ):
+        ensure_external(path, vault, worktree, label)
+    if not args.dry_run:
+        preflight_audit(audit_path)
+    local_head = check_repo(worktree, args.remote_url, require_clean_vault=True)
+    controls = (
+        (Path(args.visibility_attestation), "repository visibility attestation", False),
+        (Path(args.gitleaks), "gitleaks executable", True),
+        (Path(args.gitleaks_config), "gitleaks configuration", False),
+        (Path(args.lock_file), "bridge lock file", False),
+    )
+    for control, label, executable in controls:
+        ensure_external(control, vault, worktree, label)
+        require_control_file(control, label, executable=executable)
+    verify_private_attestation(Path(args.visibility_attestation), args.remote_url)
+    policy, policy_bytes = pinned_policy(worktree, policy_path, local_head)
+    if not policy.inbound.enabled or policy.inbound.mode != "review-gated":
+        print("inbound disabled")
+        return
+    require_directory(worktree / policy.publish_root, worktree, "publish root")
+    check_disk(vault, max(DEFAULT_DISK_FLOOR, policy.max_total_bytes * 2))
+    token = read_token(token_path)
+    api = GitHubAPI(args.api_url, args.repo, token)
+
+    context, repository = prepare_repository(args, worktree)
+    try:
+        remote_policy = git(
+            repository,
+            ["show", "refs/remotes/origin/main:bridge-policy.toml"],
+            category="policy-unverifiable",
+            message="origin/main bridge policy cannot be verified",
+        )
+        if remote_policy != policy_bytes:
+            raise BridgeError(
+                "policy-changed",
+                "origin/main bridge policy differs from the installed policy",
+            )
+
+        rules_digest = refusal_rules_digest(policy_bytes)
+        scope_record = roots_record(auto_roots)
+        inspected = 0
+        for pull in api.pulls():
+            if not eligible_pull(pull, args.author):
+                continue
+            number = pull_number(pull)
+            assert number is not None
+            if args.require_label and not has_required_label(
+                api, number, args.require_label
+            ):
+                print(f"PR #{number} skipped missing-label")
+                continue
+            head_document = pull.get("head") if isinstance(pull, dict) else None
+            api_head = head_document.get("sha") if isinstance(head_document, dict) else None
+            if not isinstance(api_head, str) or not SHA_RE.fullmatch(api_head):
+                raise ApiError(
+                    "api-response-invalid", f"PR #{number} head SHA is invalid"
+                )
+            already_applied = previous_success(
+                audit_path, args.repo, number, api_head
+            )
+            if already_applied is not None and not args.dry_run:
+                prior_run_id, prior_files = already_applied
+                closed = report_success(
+                    api, number, prior_run_id, prior_files
+                )
+                print(
+                    f"PR #{number} already-applied "
+                    + ("reported" if closed else "close-failed")
+                )
+                continue
+            reported = earlier_refusals(audit_path, args.repo, number, api_head)
+            stable = sorted(
+                category
+                for category, _path, digest in reported
+                if category in HEAD_STABLE_REFUSALS and digest == rules_digest
+            )
+            if stable and not args.dry_run:
+                print(f"PR #{number} refused-before {stable[0]}")
+                continue
+            earlier_holds = held_scopes(audit_path, args.repo, number, api_head)
+            held_before = bool(earlier_holds)
+            if scope_record in earlier_holds and not args.dry_run:
+                print(f"PR #{number} held already-reported")
+                continue
+            inspected += 1
+            if args.run_id:
+                base_run = validate_run_id(args.run_id)
+                run_id = (
+                    base_run
+                    if inspected == 1
+                    else validate_run_id(f"{base_run[:110]}-pr{number}")
+                )
+            else:
+                run_id = uuid.uuid4().hex
+            record = make_record(
+                run_id, number, api_head, None, "inspect", dry_run=args.dry_run
+            )
+            record["repo"] = args.repo
+            try:
+                _base, head, incoming, expected_local, counts = inspect_pull(
+                    repository, vault, policy, number, api_head, args
+                )
+                record["head_sha"] = head
+                record["counts"] = counts
+            except Refusal as refusal:
+                report_refusal(
+                    api, audit_path, record, refusal, number, reported,
+                    rules_digest, dry_run=args.dry_run,
+                )
+                continue
+
+            total_files = len(incoming)
+            outside = sorted(
+                relative
+                for relative in incoming
+                if not in_auto_scope(relative, auto_roots)
+            )
+            if outside:
+                if args.dry_run:
+                    print(f"PR #{number} dry-run held out-of-scope {len(outside)}")
+                    for relative in outside:
+                        print(f"would-hold {shown_path(relative)}")
+                    continue
+                if not held_before:
+                    api.comment(number, signed(hold_comment(head, auto_roots)))
+                # A head held under other roots keeps its one comment; the new
+                # record lets later runs skip it under the current roots.
+                record["out_of_scope"] = len(outside)
+                record["auto_apply_roots"] = scope_record
+                record["hold_comment"] = "already-posted" if held_before else "posted"
+                record["outcome"] = "held"
+                record["result_category"] = "held"
+                append_audit(audit_path, record)
+                print(f"PR #{number} held out-of-scope {len(outside)}")
+                continue
+            if args.dry_run:
+                print(f"PR #{number} dry-run ready")
+                for relative in sorted(incoming):
+                    print(f"would-apply {shown_path(relative)}")
+                continue
+
+            try:
+                recheck_head(api, number, head, args.author, args.require_label)
+            except Refusal as refusal:
+                report_refusal(
+                    api, audit_path, record, refusal, number, reported,
+                    rules_digest, dry_run=False,
+                )
+                continue
+            if read_regular_file(policy_path, "bridge policy") != policy_bytes:
+                raise BridgeError("policy-changed", "bridge policy changed during the run")
+            apply_transaction(
+                vault,
+                backup_root,
+                audit_path,
+                run_id,
+                incoming,
+                expected_local,
+                record,
+            )
+            closed = report_success(api, number, run_id, total_files)
+            if not closed:
+                print(f"PR #{number} applied close-failed")
+                continue
+            print(f"PR #{number} applied success")
+    finally:
+        if context is not None:
+            context.cleanup()
+
+
+def write_status(status_dir: Path, outcome: str, *, real_run: bool) -> None:
+    """Record this run's outcome for operators; nothing reads it automatically.
+
+    An unreadable earlier status starts over; a failed write never changes the run's
+    own outcome.
+    """
+    path = status_dir / STATUS_FILE
+    try:
+        try:
+            previous = read_job_status(path) or {}
+        except BridgeError:
+            previous = {}
+        now = utc_now()
+        last_real_run = previous.get("last_real_run_at")
+        skips = previous.get("consecutive_skips")
+        if not isinstance(skips, int) or isinstance(skips, bool) or skips < 0:
+            skips = 0
+        if real_run:
+            last_real_run, skips = now, 0
+        elif outcome == "skipped-busy":
+            skips += 1
+        write_job_status(
+            path,
+            {
+                "job": "apply",
+                "last_run_at": now,
+                "last_real_run_at": (
+                    last_real_run if isinstance(last_real_run, str) else None
+                ),
+                "last_outcome": outcome,
+                "consecutive_skips": skips,
+            },
+        )
+    except Exception:
+        print("status-write-failed", file=sys.stderr)
+
+
+def stand_down(pause_dir: str | None, progress: dict[str, bool]) -> int | None:
+    """The exit code when the owner's pause stops this run, or None when it may work.
+
+    job_paused fails closed on a marker directory it cannot read. Apply runs as
+    bridge-vault beneath a root-owned directory, so that stop fails loudly: a quiet pause
+    would show health a job that no longer runs.
+    """
+    directory = Path(pause_dir) if pause_dir else DEFAULT_PAUSE_DIR
+    if not job_paused("apply", directory):
+        return None
+    try:
+        os.lstat(directory / "apply")
+    except FileNotFoundError:
+        pass  # lifted after the first look; this run still stands down
+    except OSError:
+        print("error: pause state unreadable", file=sys.stderr)
+        return 2
+    progress["paused"] = True
+    print("apply paused")
+    return 0
+
+
+def run_apply(args: argparse.Namespace, progress: dict[str, bool]) -> int:
+    """One apply run; *progress* records work done, a busy lock or a pause."""
+    try:
+        if inbound_is_disabled(args):
+            # The kill switch is the whole job while it is off: a complete run that
+            # needs no lock, not a skip.
+            progress["worked"] = True
+            print("inbound disabled")
+            return 0
+    except (BridgeError, PolicyError, OSError):
+        # Enabled or invalid policies continue into the fully pinned path.
+        pass
+    try:
+        with bridge_lock(Path(args.lock_file)):
+            # The owner's marker may have landed after the startup check.
+            stopped = stand_down(args.pause_dir, progress)
+            if stopped is not None:
+                return stopped
+            progress["worked"] = True
+            execute(args)
+        return 0
+    except BridgeError as exc:
+        if exc.category == "bridge-busy" and not progress["worked"]:
+            # Publish holds the shared lock for a while every five minutes; the next
+            # run a minute later does the work. A skip is not a failure to alert on.
+            progress["busy"] = True
+            print("another bridge operation is running; skipped this run")
+            return 0
+        print(f"error: {exc.message}", file=sys.stderr)
+        return 2
+    except Exception:
+        print(
+            "error: unexpected bridge failure; no note or pull-request content was logged",
+            file=sys.stderr,
+        )
+        return 2
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    progress = {"worked": False, "busy": False, "paused": False}
+    # The owner's pause marker wins before the lock, the network or any other check.
+    returncode = stand_down(args.pause_dir, progress)
+    if returncode is None:
+        returncode = run_apply(args, progress)
+    if progress["busy"]:
+        outcome = "skipped-busy"
+    elif progress["paused"]:
+        outcome = "paused"
+    else:
+        outcome = "ran" if returncode == 0 else "failed"
+    if not args.dry_run:
+        write_status(Path(args.status_dir), outcome, real_run=progress["worked"])
+    return returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

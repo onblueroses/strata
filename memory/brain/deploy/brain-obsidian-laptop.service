@@ -1,0 +1,14 @@
+[Unit]
+Description=Headless Obsidian Sync client for the shared vault
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/brain-obsidian-sync
+Restart=always
+RestartSec=15
+MemoryMax=2G
+
+[Install]
+WantedBy=default.target

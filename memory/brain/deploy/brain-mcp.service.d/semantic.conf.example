@@ -1,0 +1,4 @@
+[Service]
+# Semantic search remains outside the exposed tool list until its daemon and
+# timeout are validated together.
+Environment=OBSIDIAN_SEMANTIC_MODE=local

@@ -1,0 +1,15 @@
+{
+  "bind": "<vps-tailnet-ip>",
+  "port": 4751,
+  "hosts": ["<vps-tailnet-ip>:4751"],
+  "approvers": ["<phone-tailnet-ip>"],
+  "records": "/var/lib/approve-gate/records",
+  "state": "/var/lib/approve-gate/state",
+  "worker_identities_file": "/etc/dispatcher/worker-identities.json",
+  "ntfy_topic_file": "/etc/approve-gate/ntfy-topic",
+  "click_url": "http://<vps-tailnet-ip>:4751/",
+  "general_url": "http://<vps-tailnet-ip>:4751/general",
+  "general_identity": {"user_id": "<tailnet-user-id>", "node_id": "<tailnet-node-id>"},
+  "task_scopes": false,
+  "team_key": "ABC"
+}

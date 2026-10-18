@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Liveness check for the bridge jobs, run as root every fifteen minutes.
+# A job whose last run failed is restarted. A job failed at three checks in a row, or a
+# timer that is stopped, makes this run exit 1 so the unit's OnFailure pages the owner
+# (brain-alarm folds repeats into one post per six hours). A pause marker
+# (/etc/assistant-bridge/paused/<job>) silences its job. The check never enables a unit
+# and never touches git, files, the policy or GitHub.
+set -u
+state="${BRIDGE_CHECK_STATE:-/var/lib/assistant-bridge/check}"
+pause_dir="${BRIDGE_PAUSE_DIR:-/etc/assistant-bridge/paused}"
+jobs="${BRIDGE_CHECK_JOBS:-publish apply respond}"
+mkdir -p "$state"
+page=""
+for job in $jobs; do
+  unit="assistant-bridge-$job"
+  if [ -e "$pause_dir/$job" ]; then
+    echo "$job paused"; rm -f "$state/$job"; continue
+  fi
+  if ! systemctl is-active --quiet "$unit.timer"; then
+    echo "$job timer stopped"; page="$page $job:timer-stopped"; continue
+  fi
+  svc="$(systemctl is-failed "$unit.service")"
+  if [ "$svc" = activating ] || [ "$svc" = deactivating ]; then
+    # A run in progress: a job that stalls every run alternates between this and
+    # failed, so the counter must survive it.
+    echo "$job running"; continue
+  fi
+  if [ "$svc" = failed ]; then
+    n=$(( $(cat "$state/$job" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$state/$job"
+    systemctl reset-failed "$unit.service" && systemctl start --no-block "$unit.service"
+    echo "$job failed ($n in a row), restarted"
+    [ "$n" -ge 3 ] && page="$page $job:failing"
+  else
+    echo "$job ok"; rm -f "$state/$job"
+  fi
+done
+if [ -n "$page" ]; then echo "PAGE:$page"; exit 1; fi

@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# delegate-cache - manage the ~/.cache/delegate response cache.
+#
+# Usage:
+#   delegate-cache stats                  # size, file count, age range
+#   delegate-cache clean [--older N]      # evict files older than N days (default 30)
+#   delegate-cache clear                  # wipe ALL cache files (asks for confirmation)
+#   delegate-cache list [--limit N]       # list N most recent (default 20) with metadata
+
+set -uo pipefail
+CACHE_DIR="${DELEGATE_CACHE_DIR:-$HOME/.cache/delegate}"
+
+cmd="${1:-stats}"; shift || true
+
+case "$cmd" in
+  stats)
+    if [[ ! -d "$CACHE_DIR" ]] || [[ -z "$(ls -A "$CACHE_DIR" 2>/dev/null)" ]]; then
+      echo "Cache empty (dir: $CACHE_DIR)"
+      exit 0
+    fi
+    files=$(find "$CACHE_DIR" -maxdepth 1 -name "*.txt" -type f | wc -l)
+    bytes=$(du -sb "$CACHE_DIR" 2>/dev/null | awk '{print $1}')
+    oldest=$(find "$CACHE_DIR" -maxdepth 1 -name "*.txt" -type f -printf '%T@ %p\n' | sort -n | head -1 | awk '{print $1}')
+    newest=$(find "$CACHE_DIR" -maxdepth 1 -name "*.txt" -type f -printf '%T@ %p\n' | sort -n | tail -1 | awk '{print $1}')
+    if [[ -n "$oldest" ]]; then
+      oldest_age=$(( ($(date +%s) - ${oldest%.*}) / 86400 ))
+      newest_age=$(( ($(date +%s) - ${newest%.*}) / 86400 ))
+      printf 'Cache dir: %s\nFiles: %d\nSize:  %s\nOldest: %d days ago\nNewest: %d days ago\n' \
+        "$CACHE_DIR" "$files" "$(numfmt --to=iec "$bytes" 2>/dev/null || echo "${bytes}B")" \
+        "$oldest_age" "$newest_age"
+    else
+      printf 'Cache dir: %s\nFiles: 0\n' "$CACHE_DIR"
+    fi
+    ;;
+
+  clean)
+    older=30
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --older)
+          [[ $# -ge 2 ]] || { echo "delegate-cache: --older wants a non-negative integer" >&2; exit 1; }
+          older="$2"; shift 2 ;;
+        *) echo "unknown flag: $1" >&2; exit 1 ;;
+      esac
+    done
+    [[ "$older" =~ ^[0-9]+$ ]] || { echo "delegate-cache: --older wants a non-negative integer" >&2; exit 1; }
+    [[ -d "$CACHE_DIR" ]] || { echo "Cache dir doesn't exist."; exit 0; }
+    before=$(find "$CACHE_DIR" -maxdepth 1 -name "*.txt" -type f | wc -l)
+    deleted=$(find "$CACHE_DIR" -maxdepth 1 -name "*.txt" -type f -mtime "+${older}" -print -delete | wc -l)
+    after=$((before - deleted))
+    echo "Evicted $deleted entries older than $older days. ${after} remain."
+    ;;
+
+  clear)
+    [[ -d "$CACHE_DIR" ]] || { echo "Cache dir doesn't exist."; exit 0; }
+    count=$(find "$CACHE_DIR" -maxdepth 1 -name "*.txt" -type f | wc -l)
+    if [[ "$count" -eq 0 ]]; then
+      echo "Cache already empty."
+      exit 0
+    fi
+    read -rp "Delete all $count cache entries in $CACHE_DIR? [y/N] " confirm
+    if [[ "$confirm" == "y" || "$confirm" == "Y" ]]; then
+      find "$CACHE_DIR" -maxdepth 1 -name "*.txt" -type f -delete
+      echo "Cleared $count entries."
+    else
+      echo "Aborted."
+    fi
+    ;;
+
+  list)
+    limit=20
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --limit) limit="$2"; shift 2 ;;
+        *) echo "unknown flag: $1" >&2; exit 1 ;;
+      esac
+    done
+    [[ -d "$CACHE_DIR" ]] || { echo "Cache dir doesn't exist."; exit 0; }
+    find "$CACHE_DIR" -maxdepth 1 -name "*.txt" -type f -printf '%T@\t%s\t%f\n' \
+      | sort -rn | head -n "$limit" \
+      | awk -F'\t' '{
+          ts=int($1); s=$2; f=$3;
+          age = systime() - ts;
+          days = int(age / 86400);
+          hours = int((age % 86400) / 3600);
+          printf "%4dd %2dh ago  %8d B  %s\n", days, hours, s, f;
+        }'
+    ;;
+
+  *)
+    echo "Usage: delegate-cache {stats|clean [--older N]|clear|list [--limit N]}" >&2
+    exit 1
+    ;;
+esac

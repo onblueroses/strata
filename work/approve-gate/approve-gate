@@ -1,0 +1,853 @@
+#!/usr/bin/python3 -I
+"""approve-gate: the page on which the operator approves or denies what a worker asked for.
+
+A worker that stops at an ask-first action ends its outcome comment with one line
+`APPROVAL NEEDED: <the exact action>`. This server finds those lines in Linear, shows them, and on a
+tap writes a record `<records>/<comment id>.json`. The dispatcher acts only on such a record, and
+only when its text equals the request the dispatcher stored when the worker asked.
+
+Why this proves the operator where a Linear comment cannot: the server answers only tailnet addresses listed
+in `approvers` (his phone), on the tailnet interface. the assistant, mail and the web cannot reach it, and
+the service user is the only writer of the records directory. Nothing here takes a shell string.
+
+Config /etc/approve-gate/config.json: bind, port, hosts (accepted Host headers), approvers (client
+addresses), records, state, ntfy_topic_file, click_url. Linear goes through `brain-linear`.
+"""
+import datetime as dt
+import hashlib
+import ipaddress
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+import uuid
+import urllib.request
+import urllib.error
+from urllib.parse import urlsplit
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import task_approval
+
+CONFIG = Path(os.environ.get("APPROVE_GATE_CONFIG", "/etc/approve-gate/config.json"))
+ASK_RE = re.compile(r"^APPROVAL NEEDED:[ \t]*(\S.*?)[ \t]*$", re.M)        # same as the dispatcher's
+# The signature closes a line; a worker may put the ask line after it, so do not require the comment's end.
+# Signatures identify a claimed worker. Linear's authenticated comment author must also
+# match that signature's configured user ID before an ask reaches the phone.
+WORKER_RE = re.compile(r"\(([a-z][\w-]*(?:[ :/@][\w./@-]+)*), \d{4}-\d{2}-\d{2}\)[ \t]*$", re.M)
+UUID_RE = re.compile(r"^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$")
+WINDOW_SEC = 14 * 24 * 3600
+OPEN_STATES = {"Backlog", "Todo"}
+C: dict = {}
+LOCK = threading.Lock()
+DECISION_LOCK = threading.Lock()
+OUTBOX_LOCK = threading.Lock()
+POLL_LOCK = threading.Lock()
+AUDIT_LOCK = threading.Lock()
+_cache = {"at": 0.0, "pending": []}
+SOURCE = {"last_success": None, "last_error": None}
+NON_WORKERS = {"steering", "dispatcher", "approve-gate"}
+DASHBOARD = Path(__file__).resolve().parent / "dashboard"
+
+
+def log(msg):
+    print(f"[approve-gate] {msg}", flush=True)
+
+
+def iso(ts=None):
+    return dt.datetime.fromtimestamp(ts or time.time(), dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def sha(text):
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def digest(text):
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def atomic_json(path, value, mode=0o600):
+    """Durable state update; all callers serialize updates of the same file."""
+    path = Path(path)
+    tmp = path.with_suffix(".tmp")
+    with tmp.open("w") as f:
+        os.chmod(tmp, mode)
+        json.dump(value, f, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
+    tmp.replace(path)
+    fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def audit(event, **fields):
+    with AUDIT_LOCK:
+        with (Path(C["state"]) / "audit.jsonl").open("a") as f:
+            os.chmod(f.name, 0o600)
+            f.write(json.dumps({"at": iso(), "event": event, **fields}) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+
+
+def worker_signature(body):
+    match = WORKER_RE.search(body.strip())
+    if match and match.group(1).split(" ", 1)[0] not in NON_WORKERS:
+        return match.group(1)
+    return None
+
+
+def worker_identities():
+    """Load the shared root-owned worker author policy on each fresh scan."""
+    path = Path(C.get("worker_identities_file", "/etc/dispatcher/worker-identities.json"))
+    policy = json.loads(path.read_text())
+    if (not isinstance(policy, dict) or set(policy) != {"version", "signatures"}
+            or type(policy["version"]) is not int or policy["version"] != 1
+            or not isinstance(policy["signatures"], dict)
+            or not policy["signatures"]):
+        raise ValueError("invalid worker identities policy")
+    for signature, users in policy["signatures"].items():
+        if (not isinstance(signature, str) or not re.fullmatch(r"[a-z][a-z0-9_/-]*", signature)
+                or signature in NON_WORKERS or not isinstance(users, list) or not users
+                or any(not isinstance(uid, str) or not UUID_RE.fullmatch(uid) for uid in users)
+                or len(set(users)) != len(users)):
+            raise ValueError("invalid worker identities policy")
+    return policy["signatures"]
+
+
+def verified_worker(comment, identities):
+    """A visible signature is only a label; Linear user.id proves its author."""
+    label = worker_signature(comment.get("body") or "")
+    if not label:
+        return None
+    claimed = label.split(" ", 1)[0]
+    user = comment.get("user")
+    if not isinstance(user, dict) or user.get("id") not in identities.get(claimed, ()):
+        return None
+    name = user.get("name")
+    display = (name.strip()[:100] if isinstance(name, str) and name.strip() else "Linear user")
+    return {"signature": label, "actor": f"{display} ({user['id'][:8]})"}
+
+
+def tailnet_address(address):
+    try:
+        ip = ipaddress.ip_address(address)
+        return (ip in ipaddress.ip_network((1681915904, 10)) if ip.version == 4
+                else ip in ipaddress.ip_network("fd7a:115c:a1e0::/48"))
+    except ValueError:
+        return False
+
+
+def phone_identity(client):
+    """Use the connection's source, never identity or forwarding headers."""
+    pin = C.get("general_identity", {})
+    if (client not in C["approvers"] or not tailnet_address(client)
+            or not pin.get("user_id") or not pin.get("node_id")):
+        raise PermissionError("phone identity is not configured")
+    proc = subprocess.run(["tailscale", "whois", "--json", client], capture_output=True,
+                          text=True, timeout=5, check=True)
+    info = json.loads(proc.stdout)
+    node, user = info["Node"], info["UserProfile"]
+    if (str(node.get("StableID")) != str(pin["node_id"])
+            or str(user.get("ID")) != str(pin["user_id"])
+            or str(node.get("User")) != str(user.get("ID")) or node.get("Tags")):
+        raise PermissionError("phone identity does not match")
+    return {"user_id": str(user["ID"]), "node_id": node["StableID"],
+            "device": pin.get("display_name", "Configured phone")}
+
+
+def valid_origin(origin):
+    try:
+        u = urlsplit(origin)
+        return (u.netloc.lower() in C["hosts"] and u.scheme in ("http", "https")
+                and u.path in ("", "/") and not u.query and not u.fragment and not u.username)
+    except ValueError:
+        return False
+
+
+def gql(query, variables=None):
+    args = ["brain-linear", "gql", query] + ([json.dumps(variables)] if variables else [])
+    proc = subprocess.run(args, capture_output=True, text=True, timeout=60)
+    if proc.returncode != 0:
+        raise RuntimeError(f"brain-linear gql rc={proc.returncode}: {proc.stderr.strip()[:300]}")
+    data = json.loads(proc.stdout)
+    if "errors" in data:
+        raise RuntimeError(f"gql errors: {json.dumps(data['errors'])[:300]}")
+    return data["data"]
+
+
+def discuss(ticket, body):
+    subprocess.run(["brain-linear", "issues", "discuss", ticket, "--body", body],
+                   capture_output=True, text=True, timeout=60, check=True)
+
+
+def record_path(comment_id):
+    return Path(C["records"]) / f"{comment_id}.json"
+
+
+def find_pending(ticket_keys=None):
+    """Open asks: the newest worker comment on an open issue ticket, carrying an APPROVAL NEEDED line, undecided."""
+    identities = worker_identities()
+    keys, cursor = set(), None
+    while True:
+        data = gql("""query($since:DateTimeOrDuration!, $cursor:String){ comments(first:100, after:$cursor, filter:{
+                   body:{contains:"APPROVAL NEEDED:"}, createdAt:{gt:$since} }){
+                 nodes{ id issue{ identifier } } pageInfo{hasNextPage endCursor} } }""",
+                   {"since": iso(time.time() - WINDOW_SEC), "cursor": cursor})["comments"]
+        keys.update(n["issue"]["identifier"] for n in data["nodes"] if n.get("issue"))
+        if not data["pageInfo"]["hasNextPage"]:
+            break
+        next_cursor = data["pageInfo"]["endCursor"]
+        if not next_cursor or next_cursor == cursor:
+            raise RuntimeError("invalid Linear cursor")
+        cursor = next_cursor
+    if ticket_keys is not None:
+        # Keep the discovery window and every existing request rule. Events only
+        # narrow the scan; their bodies never become requests or decisions.
+        keys.intersection_update(ticket_keys)
+    out = []
+    for key in sorted(keys):
+        if not task_approval.TICKET.fullmatch(key):
+            continue
+        comments, cursor = [], None
+        while True:
+            issue = gql("""query($id:String!, $cursor:String){ issue(id:$id){ identifier title url state{name} team{key}
+                             comments(first:250, after:$cursor){ nodes{ id createdAt body user{id name} }
+                             pageInfo{hasNextPage endCursor} } } }""", {"id": key, "cursor": cursor})["issue"]
+            comments.extend(issue["comments"]["nodes"])
+            if not issue["comments"]["pageInfo"]["hasNextPage"]:
+                break
+            next_cursor = issue["comments"]["pageInfo"]["endCursor"]
+            if not next_cursor or next_cursor == cursor:
+                raise RuntimeError("invalid Linear cursor")
+            cursor = next_cursor
+        if issue["team"]["key"] != C.get("team_key", "ABC") or issue["state"]["name"] not in OPEN_STATES:
+            continue
+        # Linear's order is not creation order: sort, then take the worker's last word on the ticket.
+        ours = [(c, actor) for c in sorted(comments, key=lambda c: (c["createdAt"], c["id"]))
+                if (actor := verified_worker(c, identities))]
+        if not ours:
+            continue
+        last, actor = ours[-1]
+        ask = ASK_RE.search(last["body"])
+        if (not ask or len(ASK_RE.findall(last["body"])) != 1 or not UUID_RE.match(last["id"])
+                or record_path(last["id"]).exists()):
+            continue
+        rollback = re.search(r"^(?:\*\*)?Rollback(?: plan)?:(?:\*\*)?[ \t]*(.+)$", last["body"], re.I | re.M)
+        out.append({"comment_id": last["id"], "ticket": key, "title": issue["title"], "url": issue["url"],
+                    "action": ask.group(1), "action_sha": sha(ask.group(1)), "asked": last["createdAt"],
+                    "action_digest": digest(ask.group(1)), "rollback": rollback.group(1) if rollback else None,
+                    "worker": actor["signature"], "verified_actor": actor["actor"]})
+    return out
+
+
+def pending(fresh=False):
+    with LOCK:
+        if fresh or time.time() - _cache["at"] > 15:
+            try:
+                _cache.update(at=time.time(), pending=find_pending())
+                SOURCE.update(last_success=iso(), last_error=None)
+            except Exception:
+                SOURCE["last_error"] = "Linear request scan failed"
+                raise
+        return list(_cache["pending"])
+
+
+def decided(limit=10):
+    files = sorted(Path(C["records"]).glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)[:limit]
+    return [json.loads(f.read_text()) for f in files]
+
+
+def decide(comment_id, action_sha, decision, client):
+    with DECISION_LOCK:
+        return decide_locked(comment_id, action_sha, decision, client)
+
+
+def decide_locked(comment_id, action_sha, decision, client, identity=None, action_digest=None):
+    """Write the record for an ask exactly as shown. Returns (http status, message)."""
+    if decision not in ("approve", "deny") or not UUID_RE.match(str(comment_id)):
+        return 400, "bad request"
+    match = [p for p in pending(fresh=True) if p["comment_id"] == comment_id]
+    if not match:
+        return 409, "that request is no longer open"
+    ask = match[0]
+    if ask["action_sha"] != action_sha or (action_digest is not None and digest(ask["action"]) != action_digest):
+        return 409, "the request text changed since the page loaded; reload and read it again"
+    rec = {"comment_id": comment_id, "ticket": ask["ticket"], "action": ask["action"], "decision": decision,
+           "worker": ask["worker"], "at": iso(), "from": client,
+           "action_digest": digest(ask["action"]), "identity": identity,
+           "asked": ask["asked"], "rollback": ask.get("rollback"), "source": "general" if identity else "existing"}
+    # Record data is durable before it becomes visible to the dispatcher. A hard link
+    # publishes exclusively, so either page can win but neither can replace a decision.
+    staging = Path(C["state"]) / "decisions"
+    staging.mkdir(mode=0o700, exist_ok=True)
+    tmp = staging / f"{uuid.uuid4()}.json"
+    with tmp.open("x") as f:
+        os.chmod(tmp, 0o644)
+        json.dump(rec, f, indent=1)
+        f.flush()
+        os.fsync(f.fileno())
+    audit("decision_intent", comment_id=comment_id, action_digest=rec["action_digest"],
+          decision=decision, identity=identity, client=client)
+    try:
+        os.link(tmp, record_path(comment_id))
+    except FileExistsError:
+        return 409, "already decided"
+    fd = os.open(Path(C["records"]), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    _cache["at"] = 0.0
+    log(f"{decision} {ask['ticket']} comment={comment_id} from={client}")
+    verb = "approved" if decision == "approve" else "denied"
+    try:  # for readers of the ticket; the record, not this comment, is what the dispatcher trusts
+        discuss(ask["ticket"], f"the operator {verb} this on the approval page: {ask['action']} "
+                               f"(approve-gate, {dt.date.today().isoformat()})")
+    except Exception as e:  # noqa: BLE001
+        log(f"decision recorded, ticket comment failed: {e}")
+    return 200, verb
+
+
+def push(title):
+    """Publish content-free alert; acceptance never proves handset receipt."""
+    tf = C.get("ntfy_topic_file")
+    if not tf:
+        return {"state": "failed", "error": "ntfy topic is not configured"}
+    try:
+        topic = Path(tf).read_text().strip()
+        if not re.fullmatch(r"[\w-]+", topic, re.ASCII):
+            return {"state": "failed", "error": "ntfy topic configuration is invalid"}
+        req = urllib.request.Request("https://ntfy.sh/" + topic, data=title.encode(), method="POST")
+        req.add_header("Title", "Worker approval")
+        req.add_header("Priority", "high")
+        click = getattr(PUSH_CONTEXT, "click", None) or C.get("click_url")
+        if click:
+            req.add_header("Click", click)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            message = json.loads(response.read(65536))
+        if message.get("event") != "message" or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", str(message.get("id", ""))):
+            return {"state": "failed", "error": "ntfy acceptance response was invalid"}
+        return {"state": "accepted", "accepted_at": iso(), "message_id": message["id"]}
+    except urllib.error.HTTPError as e:
+        return {"state": "failed", "error": f"ntfy HTTP {e.code}"}
+    except Exception:
+        # Exceptions may include secret topic URLs: never persist or log their text.
+        return {"state": "failed", "error": "ntfy publication failed"}
+
+
+PUSH_CONTEXT = threading.local()
+
+
+def read_outbox():
+    path = Path(C["state"]) / "outbox.json"
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def outbox_key(ask):
+    return ask["comment_id"] + ":" + digest(ask["action"])
+
+
+def entry_url(ask):
+    return C["general_url"] + "#" + ask["comment_id"] if C.get("general_url") else C.get("click_url")
+
+
+def poll_once(ticket_keys=None):
+    with POLL_LOCK:
+        return poll_locked(ticket_keys)
+
+
+def poll_locked(ticket_keys=None):
+    seen_file = Path(C["state"]) / "notified.json"
+    seen = set(json.loads(seen_file.read_text())) if seen_file.exists() else set()
+    asks = pending(fresh=True) if ticket_keys is None else find_pending(ticket_keys)
+    if C.get("task_scopes"):
+        asks += [{**p, "comment_id": "task-" + p["ticket"], "action": task_approval.canonical(p["scope"])}
+                 for p in task_requests() if ticket_keys is None or p["ticket"] in ticket_keys]
+    with OUTBOX_LOCK:
+        box = read_outbox()
+        for ask in asks:
+            key = outbox_key(ask)
+            if key not in box:
+                box[key] = {"comment_id": ask["comment_id"], "action_digest": digest(ask["action"]),
+                            "first_seen": iso(), "attempts": 0, "next_attempt": 0,
+                            "state": "legacy_unknown" if (ask["comment_id"] in seen and not any(
+                                r["comment_id"] == ask["comment_id"] for r in box.values())) else "pending",
+                            "handset_delivery": "UNKNOWN"}
+        atomic_json(Path(C["state"]) / "outbox.json", box)
+    attempts = 0
+    for ask in asks:
+        key = outbox_key(ask)
+        with OUTBOX_LOCK:
+            box = read_outbox()
+            item = box[key]
+            if item["state"] in ("accepted", "legacy_unknown") or item["next_attempt"] > time.time():
+                continue
+            item.update(state="sending", attempts=item["attempts"] + 1, last_attempt=iso())
+            atomic_json(Path(C["state"]) / "outbox.json", box)
+        PUSH_CONTEXT.click = entry_url(ask)
+        try:
+            result = push("One request is waiting for your approval")
+        finally:
+            PUSH_CONTEXT.click = None
+        with OUTBOX_LOCK:
+            box = read_outbox()
+            item = box[key]
+            item.update(result)
+            if result["state"] == "accepted":
+                item.pop("error", None)
+                seen.add(ask["comment_id"])
+                atomic_json(seen_file, sorted(seen))
+            else:
+                item["next_attempt"] = time.time() + min(300, 5 * 2 ** min(item["attempts"] - 1, 6))
+            atomic_json(Path(C["state"]) / "outbox.json", box)
+        audit("notification_" + result["state"], comment_id=ask["comment_id"],
+              action_digest=digest(ask["action"]), attempt=item["attempts"])
+        attempts += 1
+    return attempts
+
+
+def general_view():
+    try:
+        result = general_view_current()
+        result['source']['available'] = True
+        return result
+    except Exception:
+        if not C.get('task_scopes'):
+            raise
+        # Phone revocation reads only the frozen local grant and must survive Linear outage.
+        return {"pending": [], "tasks": task_view(refresh=False), "decided": [],
+                "source": {"available": False, "last_error": "Linear unavailable; new decisions disabled"}}
+
+
+def general_view_current():
+    asks = pending()
+    with OUTBOX_LOCK:
+        box = read_outbox()
+    rows = []
+    for ask in asks:
+        notification = box.get(outbox_key(ask), {"state": "pending", "attempts": 0, "handset_delivery": "UNKNOWN"})
+        rows.append({**ask, "notification": notification})
+    tasks = task_view() if C.get("task_scopes") else {"pending": [], "grants": []}
+    return {"pending": rows, "tasks": tasks, "decided": decided(30), "source": dict(SOURCE),
+            "window_days": WINDOW_SEC // 86400, "scope": "Latest worker request per open issue ticket"}
+
+
+def general_decide(comment_id, action_digest, decision, client):
+    identity = phone_identity(client)
+    if not isinstance(action_digest, str) or not re.fullmatch(r"[a-f0-9]{64}", action_digest):
+        return 400, "invalid action digest"
+    with DECISION_LOCK:
+        return decide_locked(comment_id, action_digest[:16], decision, client, identity, action_digest)
+
+
+def task_issue(ticket):
+    return gql('query($id:String!){issue(id:$id){identifier title url description state{name}}}',
+               {"id": ticket})["issue"]
+
+
+def task_requests():
+    """Filing-time drafts, not worker approval lines. Fresh Linear data is mandatory."""
+    rows, cursor = [], None
+    while True:
+        data = gql('''query($cursor:String,$team:String!){issues(first:100,after:$cursor,filter:{
+          team:{key:{eq:$team}},description:{contains:"BEGIN TASK SCOPE"}}){
+          nodes{identifier title url description state{name}}pageInfo{hasNextPage endCursor}}}''',
+                   {"cursor": cursor, "team": C.get("team_key", "ABC")})["issues"]
+        for issue in data["nodes"]:
+            if issue["state"]["name"] not in OPEN_STATES:
+                continue
+            if task_approval.read(C["records"], issue["identifier"]):
+                continue
+            try:
+                scope = task_approval.draft(issue["description"])
+            except (ValueError, TypeError):
+                continue  # Invalid/ambiguous drafts never become authority.
+            if scope:
+                rows.append({"ticket": issue["identifier"], "title": issue["title"], "url": issue["url"],
+                             "scope": scope, "scope_digest": task_approval.digest(scope)})
+        page = data["pageInfo"]
+        if not page["hasNextPage"]:
+            return rows
+        if not page["endCursor"] or cursor == page["endCursor"]:
+            raise ValueError("invalid task cursor")
+        cursor = page["endCursor"]
+
+
+def task_refresh(ticket):
+    """Completion is terminal, even if a later reply reopens the ticket."""
+    rec = task_approval.read(C["records"], ticket)
+    if rec and rec["status"] == "approved":
+        issue = task_issue(ticket)
+        if issue["state"]["name"] in ("Done", "Canceled", "Cancelled"):
+            rec.update(status="completed", completed_at=iso())
+            atomic_json(task_approval.path(C["records"], ticket), rec, mode=0o644)
+    return rec
+
+
+def task_view(refresh=True):
+    with DECISION_LOCK:
+        grants = []
+        for p in sorted((Path(C["records"]) / "tasks").glob("*.json")):
+            rec = task_refresh(p.stem) if refresh else task_approval.read(C["records"], p.stem)
+            grants.append({k: rec[k] for k in ("ticket", "grant_id", "scope", "scope_digest", "status", "at")})
+        return {"pending": task_requests() if refresh else [], "grants": grants, "gated": task_approval.GATED}
+
+
+def task_decide(ticket, scope_digest, decision, client):
+    if not C.get("task_scopes"):
+        return 404, "task approvals are disabled"
+    identity = phone_identity(client)
+    if decision not in ("approve", "deny", "revoke") or not isinstance(scope_digest, str):
+        return 400, "invalid task decision"
+    with DECISION_LOCK:
+        rec = task_approval.read(C["records"], ticket) if decision == "revoke" else task_refresh(ticket)
+        if decision == "revoke":
+            if not rec or rec["scope_digest"] != scope_digest:
+                return 409, "task identity changed; reload"
+            if rec["status"] == "revoked":
+                return 200, "revoked"
+            if rec["status"] != "approved":
+                return 409, "task authority is already closed"
+            rec.update(status="revoked", revoked_at=iso(), revoked_by=identity)
+        else:
+            if rec:
+                if rec["scope_digest"] == scope_digest and rec["status"] == ("approved" if decision == "approve" else "denied"):
+                    return 200, rec["status"]
+                return 409, "already decided; use a new task for a new scope"
+            issue = task_issue(ticket)
+            scope = task_approval.draft(issue["description"])
+            if (issue["state"]["name"] not in OPEN_STATES or not scope
+                    or task_approval.digest(scope) != scope_digest):
+                return 409, "scope changed; reload and read it again"
+            rec = {"ticket": ticket, "grant_id": str(uuid.uuid4()), "source": "task-phone",
+                   "scope": scope, "scope_digest": scope_digest, "identity": identity, "at": iso(),
+                   "status": "approved" if decision == "approve" else "denied"}
+        p = task_approval.path(C["records"], ticket)
+        p.parent.mkdir(exist_ok=True)
+        # Same-process serialized, durable before visible. Record is never changed by delivery.
+        atomic_json(p, rec, mode=0o644)
+        audit("task_" + decision, ticket=ticket, grant_id=rec["grant_id"], scope_digest=scope_digest)
+    # Content-free: named resources stay on the authenticated page, not mirrored tickets.
+    return 200, rec["status"]
+
+
+def task_status(ticket):
+    with DECISION_LOCK:
+        rec = task_refresh(ticket)
+        return {"ticket": ticket, "active": bool(rec and rec["status"] == "approved"),
+                "scope_digest": rec["scope_digest"] if rec else None,
+                "step_ids": [s["id"] for s in rec["scope"]["steps"]] if rec else []}
+
+
+def task_close(ticket, scope_digest, client):
+    """Pinned workers can only END a grant, never create, widen or reactivate one."""
+    task_worker(client)
+    with DECISION_LOCK:
+        rec = task_approval.read(C["records"], ticket)
+        if not rec or rec["scope_digest"] != scope_digest:
+            return 409, "task identity differs"
+        if rec["status"] == "approved":
+            rec.update(status="completed", completed_at=iso(), completed_from=client)
+            atomic_json(task_approval.path(C["records"], ticket), rec, mode=0o644)
+            audit("task_completed", ticket=ticket, grant_id=rec["grant_id"], scope_digest=scope_digest)
+        return 200, "task authority closed"
+
+
+def task_worker(client):
+    """Read-only authority checks for explicitly pinned existing worker devices."""
+    if not C.get("task_scopes") or not tailnet_address(client):
+        raise PermissionError("task status is disabled")
+    pins = [p for p in C.get("task_workers", []) if p.get("address") == client]
+    if len(pins) != 1:
+        raise PermissionError("worker is not configured")
+    pin = pins[0]
+    info = json.loads(subprocess.run(["tailscale", "whois", "--json", client], capture_output=True,
+                                    text=True, timeout=5, check=True).stdout)
+    node, user = info["Node"], info["UserProfile"]
+    if (not pin.get("node_id") or not pin.get("user_id") or node.get("Tags")
+            or str(node.get("StableID")) != str(pin["node_id"])
+            or str(user.get("ID")) != str(pin["user_id"])
+            or str(node.get("User")) != str(user.get("ID"))):
+        raise PermissionError("worker identity mismatch")
+
+
+class EventFeed:
+    """Read the existing verified webhook log as a wake-up hint only."""
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.offset = None
+        self.identity = None
+
+    def tickets(self):
+        with self.path.open("rb") as f:
+            stat = os.fstat(f.fileno())
+            identity = (stat.st_dev, stat.st_ino)
+            if self.offset is None:
+                # The startup full scan covers history without replaying it.
+                self.identity, self.offset = identity, stat.st_size
+                return set()
+            if self.identity != identity or self.offset > stat.st_size:
+                self.offset = 0
+            self.identity = identity
+            f.seek(self.offset)
+            chunk = f.read(4 * 1024 * 1024)
+        end = chunk.rfind(b"\n")
+        if end < 0:
+            return set()  # An incomplete write is retried; reconciliation stays on.
+        self.offset += end + 1
+        keys = set()
+        for line in chunk[:end].split(b"\n"):
+            try:
+                event = json.loads(line)["event"]
+                data = event.get("data") or {}
+                if event.get("type") == "Comment" and event.get("action") in ("create", "update"):
+                    body = data.get("body") or ""
+                    key = (data.get("issue") or {}).get("identifier")
+                    relevant = bool(ASK_RE.search(body) and worker_signature(body))
+                elif event.get("type") == "Issue" and event.get("action") in ("create", "update"):
+                    key = data.get("identifier")
+                    # Workers post while In Progress, then return to Backlog.
+                    relevant = (data.get("state") or {}).get("name") in OPEN_STATES
+                else:
+                    continue
+                if relevant and isinstance(key, str) and re.fullmatch(r"[A-Z]{2,8}-\d{1,6}", key):
+                    keys.add(key)
+            except (ValueError, KeyError, TypeError, AttributeError):
+                continue  # A malformed hint cannot bypass Linear validation.
+        return keys
+
+
+class NotificationPoller:
+    def __init__(self):
+        self.feed = EventFeed(C.get("linear_events", "/var/lib/linear-hook/events.jsonl"))
+        self.next_full = 0.0
+        self.next_event = 0.0
+        self.queued = set()
+        self.feed_failed = False
+
+    def tick(self):
+        try:
+            self.queued.update(self.feed.tickets())
+            if self.feed_failed:
+                log("notification webhook feed recovered")
+            self.feed_failed = False
+        except OSError:
+            if not self.feed_failed:
+                log("notification webhook feed unavailable; reconciliation remains enabled")
+            self.feed_failed = True
+        now = time.monotonic()
+        full = now >= self.next_full
+        if not full and (not self.queued or now < self.next_event):
+            return
+        keys = None if full else set(self.queued)
+        started = time.monotonic()
+        try:
+            attempts = poll_once(keys)
+            self.queued.clear()
+            self.next_event = 0.0
+            log(f"notification scan trigger={'reconcile' if full else 'webhook'} "
+                f"tickets={'all' if full else len(keys)} attempts={attempts} "
+                f"elapsed_ms={int((time.monotonic() - started) * 1000)}")
+        except Exception:  # Errors can contain private URLs or source text.
+            log("notification scan failed; retry/reconciliation remains enabled")
+            self.next_event = time.monotonic() + 5
+        finally:
+            if full:
+                self.next_full = time.monotonic() + int(C.get("poll_sec", 60))
+
+
+def poll_loop():
+    poller = NotificationPoller()
+    while True:
+        poller.tick()
+        time.sleep(1)
+
+
+PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Worker approvals</title>
+<style>
+:root{color-scheme:dark}body{margin:0;padding:16px;background:#111;color:#eee;font:16px/1.45 system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 12px}h2{font-size:14px;color:#999;margin:24px 0 8px;text-transform:uppercase}
+.card{background:#1c1c1e;border-radius:12px;padding:14px;margin-bottom:12px}
+.meta{color:#999;font-size:13px}.action{margin:10px 0 14px;font-size:17px;overflow-wrap:anywhere}
+.row{display:flex;gap:10px}button{flex:1;padding:14px;border:0;border-radius:10px;font-size:17px;font-weight:600}
+.yes{background:#2e7d32;color:#fff}.no{background:#3a3a3c;color:#eee}.arm{background:#f9a825;color:#111}
+a{color:#8ab4f8}.old{font-size:14px;color:#bbb;margin:6px 0;overflow-wrap:anywhere}#msg{color:#f9a825;min-height:1.4em}
+</style></head><body><h1>Worker approvals</h1><div id="msg"></div><div id="list"></div><h2>Recent decisions</h2><div id="old"></div>
+<script>
+const $=id=>document.getElementById(id);let armed=null;
+function el(tag,cls,text){const e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+async function send(p,decision){
+  const r=await fetch('/api/decide',{method:'POST',headers:{'Content-Type':'application/json','X-approve-gate':'1'},
+    body:JSON.stringify({comment_id:p.comment_id,action_sha:p.action_sha,decision})});
+  const j=await r.json().catch(()=>({}));$('msg').textContent=r.ok?(p.ticket+' '+j.message):('Not recorded: '+(j.message||r.status));
+  armed=null;load()}
+function card(p){const c=el('div','card');const m=el('div','meta');const a=el('a',null,p.ticket);a.href=p.url;m.append(a,
+  ' · '+p.worker+' · '+p.verified_actor+' · '+new Date(p.asked).toLocaleString());c.append(el('div',null,p.title),m,el('div','action',p.action));
+  const row=el('div','row');for(const [d,label,cls] of [['approve','Approve','yes'],['deny','Deny','no']]){
+    const hot=armed===p.comment_id+d;const b=el('button',hot?'arm':cls,hot?'Tap again to '+d:label);
+    b.onclick=()=>{if(hot)send(p,d);else{armed=p.comment_id+d;render()}};row.append(b)}c.append(row);return c}
+let data={pending:[],decided:[]};
+function render(){$('list').replaceChildren(...(data.pending.length?data.pending.map(card):[el('div','meta','Nothing is waiting.')]));
+  $('old').replaceChildren(...data.decided.map(r=>el('div','old',r.at.slice(0,16).replace('T',' ')+'Z  '+r.decision+'  '+r.ticket+': '+r.action)))}
+async function load(){try{const r=await fetch('/api/pending');if(!r.ok)throw r.status;data=await r.json();render()}
+  catch(e){$('msg').textContent='Cannot load ('+e+')'}}
+load();setInterval(()=>{if(!armed)load()},20000);
+</script></body></html>"""
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "approve-gate"
+
+    def log_message(self, *a):
+        pass
+
+    def allowed(self):
+        host = (self.headers.get("Host") or "").lower()
+        ok = self.client_address[0] in C["approvers"] and host in C["hosts"]
+        if not ok:
+            log(f"refused {self.command} {self.path[:60]} from={self.client_address[0]} host={host[:60]}")
+            self.reply(403, {"message": "this page answers the operator's phone only"})
+        elif self.path.startswith(("/general", "/api/general")):
+            try:
+                self.identity = phone_identity(self.client_address[0])
+            except Exception:
+                self.reply(403, {"message": "configured phone identity could not be verified"})
+                return False
+        return ok
+
+    def reply(self, code, body, ctype="application/json"):
+        raw = body.encode() if isinstance(body, str) else json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype + "; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if self.path.startswith("/general"):
+            self.send_header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'")
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def do_GET(self):
+        if self.path.startswith("/api/task-status/"):
+            if (self.headers.get("Host") or "").lower() not in C["hosts"]:
+                return self.reply(403, {"message": "refused"})
+            try:
+                task_worker(self.client_address[0])
+            except Exception:
+                return self.reply(403, {"message": "worker identity could not be verified"})
+            try:
+                return self.reply(200, task_status(self.path.removeprefix("/api/task-status/")))
+            except Exception:
+                return self.reply(502, {"message": "task status unavailable; stop"})
+        if not self.allowed():
+            return
+        if self.path == "/":
+            return self.reply(200, PAGE, "text/html")
+        assets = {"/general": ("index.html", "text/html"), "/general/": ("index.html", "text/html"),
+                  "/general/app.js": ("app.js", "application/javascript"),
+                  "/general/style.css": ("style.css", "text/css")}
+        if self.path in assets:
+            name, ctype = assets[self.path]
+            return self.reply(200, (DASHBOARD / name).read_text(), ctype)
+        if self.path == "/api/general":
+            try:
+                return self.reply(200, general_view())
+            except Exception:
+                return self.reply(502, {"message": "Linear could not be checked; decisions are disabled"})
+        if self.path == "/api/pending":
+            try:
+                return self.reply(200, {"pending": pending(), "decided": decided()})
+            except Exception as e:  # noqa: BLE001
+                log(f"pending failed: {e}")
+                return self.reply(502, {"message": "Linear did not answer"})
+        self.reply(404, {"message": "not found"})
+
+    def do_POST(self):
+        if self.path == "/api/task-close":
+            try:
+                if ((self.headers.get("Host") or "").lower() not in C["hosts"]
+                        or self.headers.get("X-approve-gate") != "1"
+                        or self.headers.get("Content-Type") != "application/json"
+                        or self.headers.get("Transfer-Encoding")
+                        or (self.headers.get("Origin") and not valid_origin(self.headers["Origin"]))):
+                    return self.reply(403, {"message": "refused"})
+                task_worker(self.client_address[0])
+                length = int(self.headers.get("Content-Length") or 0)
+                if not 0 < length <= 4096:
+                    return self.reply(400, {"message": "invalid request size"})
+                body = json.loads(self.rfile.read(length))
+                code, msg = task_close(body.get("ticket"), body.get("scope_digest"), self.client_address[0])
+                return self.reply(code, {"message": msg})
+            except PermissionError:
+                return self.reply(403, {"message": "worker identity could not be verified"})
+            except Exception:
+                return self.reply(502, {"message": "task completion could not be recorded; stop"})
+        if not self.allowed():
+            return
+        origin = self.headers.get("Origin")
+        # A foreign page open on the phone can fire a form at this address; it cannot set this header
+        # or a JSON content type without a preflight, which is never answered.
+        general = self.path in ("/api/general/decide", "/api/general/task-decide")
+        if (self.path not in ("/api/decide", "/api/general/decide", "/api/general/task-decide") or self.headers.get("X-approve-gate") != "1"
+                or (self.headers.get("Content-Type") or "").split(";")[0] != "application/json"
+                or (origin and not valid_origin(origin)) or (general and not origin)):
+            log(f"refused cross-site or malformed POST from={self.client_address[0]} origin={origin}")
+            return self.reply(403, {"message": "refused"})
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if not 0 < length <= 4096 or self.headers.get("Transfer-Encoding"):
+                return self.reply(400, {"message": "invalid request size"})
+            body = json.loads(self.rfile.read(length))
+            if not isinstance(body, dict):
+                return self.reply(400, {"message": "invalid request body"})
+            if self.path == "/api/general/task-decide":
+                code, msg = task_decide(body.get("ticket"), body.get("scope_digest"), body.get("decision"), self.client_address[0])
+            elif general:
+                code, msg = general_decide(body.get("comment_id"), body.get("action_digest"), body.get("decision"), self.client_address[0])
+            else:
+                code, msg = decide(body.get("comment_id"), body.get("action_sha"), body.get("decision"), self.client_address[0])
+        except (ValueError, TypeError):
+            return self.reply(400, {"message": "invalid request body"})
+        except Exception:  # noqa: BLE001
+            log("decide failed; request validation or durable record write unavailable")
+            code, msg = 502, "could not check the request against Linear; nothing recorded"
+        self.reply(code, {"message": msg})
+
+
+def load_config():
+    C.clear()
+    C.update(json.loads(CONFIG.read_text()))
+    if not tailnet_address(C["bind"]):
+        sys.exit("approve-gate: refusing a non-tailnet bind")
+    if C.get("general_identity"):
+        u = urlsplit(C.get("general_url", ""))
+        if u.scheme not in ("http", "https") or u.netloc.lower() not in C["hosts"] or u.path != "/general" or u.query or u.fragment or u.username:
+            sys.exit("approve-gate: dashboard URL must use the existing allowed origin and /general")
+        if not all(C["general_identity"].get(k) for k in ("user_id", "node_id")):
+            sys.exit("approve-gate: dashboard phone identity is incomplete")
+    for d in (C["records"], C["state"]):
+        Path(d).mkdir(parents=True, exist_ok=True)
+    os.chmod(C["records"], 0o750)
+
+
+def main():
+    load_config()
+    if C["bind"] in ("0.0.0.0", "::", ""):
+        sys.exit("approve-gate: refusing to bind every interface")
+    threading.Thread(target=poll_loop, daemon=True).start()
+    log(f"serving on {C['bind']}:{C['port']} for {C['approvers']}")
+    ThreadingHTTPServer((C["bind"], int(C["port"])), Handler).serve_forever()
+
+
+if __name__ == "__main__":
+    main()

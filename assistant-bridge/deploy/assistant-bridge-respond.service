@@ -1,0 +1,15 @@
+# Render @...@ values from deploy/env.example before installing.
+[Unit]
+Description=the messaging assistant bridge responder: issue replies, Linear mirror
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+TimeoutStartSec=20m
+WorkingDirectory=@BRIDGE_RESPOND_HOME@
+EnvironmentFile=@BRIDGE_CONFIG_DIR@/bridge.env
+Environment=BRIDGE_TOKEN_FILE=@BRIDGE_RESPOND_TOKEN_FILE@
+Environment=BRIDGE_LINEAR_KEY_FILE=@BRIDGE_LINEAR_KEY_FILE@
+ExecStart=@BRIDGE_EXEC_DIR@/bridge-respond

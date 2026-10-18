@@ -1,0 +1,4 @@
+title = "assistant-bridge"
+
+[extend]
+useDefault = true

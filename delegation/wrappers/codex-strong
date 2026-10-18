@@ -1,0 +1,582 @@
+#!/usr/bin/env bash
+# codex-strong - codex exec wrapper for the frontier model tier.
+# Use for: load-bearing logic, security review, hardest debugging, architecture.
+# Same interface as codex-fast.
+
+set -uo pipefail
+umask 077
+
+DEFAULT_MODEL="gpt-6-sol"
+MODEL="${CODEX_MODEL:-$DEFAULT_MODEL}"
+WRAPPER_DIR=$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")
+V3_DISPATCH="$WRAPPER_DIR/../telemetry/v3_dispatch.py"
+
+# --- delegation telemetry (additive, fail-open): armed after validation and before cache/breaker. ---
+__telem_t0=0
+DISPATCH_ID=""
+EXECUTION_MODE="executed"
+EVENT_FILE=""
+STDERR_FILE=""
+LAST_MESSAGE_FILE=""
+CAPTURE_DIR=""
+
+__telem_cleanup() {
+  local path
+  for path in "$EVENT_FILE" "$STDERR_FILE" "$LAST_MESSAGE_FILE"; do
+    [[ -n "$path" ]] && rm -f -- "$path" 2>/dev/null || true
+  done
+}
+
+__telem_emit_delegation() {
+  local rc=$?
+  trap - EXIT
+  local now dur status p live
+  now=$(date +%s%3N 2>/dev/null || echo 0)
+  dur=$(( now - __telem_t0 )); [ "$dur" -lt 0 ] && dur=0
+  if [[ "$EXECUTION_MODE" == "cache_hit" ]]; then
+    status=cache_hit
+  elif [[ "$EXECUTION_MODE" == "breaker_rejected" ]]; then
+    status=breaker_open
+  else
+    # 130 is the exit of __interrupt_dispatch and of nothing else here, so it identifies a
+    # user Ctrl-C exactly. Interrupt-then-`--resume` is the documented steering move, so an
+    # interrupted dispatch carries its own status instead of inflating the error rate.
+    # failure_cause (interrupted) and raw_exit (the codex exit, 0 when the signal beat it)
+    # are emitted unchanged, so the forensic detail survives the reclassification.
+    case "$rc" in 0) status=success ;; 3) status=rate_limited ;; 5) status=empty ;; 130) status=interrupted ;; *) status=error ;; esac
+  fi
+  local fc rx; fc="${FAILURE_CAUSE:-}"; rx="${EXIT:-}"
+  [[ "$rx" =~ ^[0-9]+$ ]] || rx=null
+  live=$(timeout 5 python3 "$V3_DISPATCH" wrapper-live-fields --family codex \
+    --execution-mode "$EXECUTION_MODE" --dispatch-id "$DISPATCH_ID" \
+    --event-file "$EVENT_FILE" --last-message-file "$LAST_MESSAGE_FILE" \
+    --sessions-root "${CODEX_SESSIONS_ROOT:-$HOME/.codex/sessions}" 2>/dev/null) || live='{}'
+  p=$(jq -cn --arg w codex-strong --arg s "$status" --argjson e "$rc" --argjson d "$dur" \
+        --arg m "${MODEL:-}" --arg r "${REASONING:-}" --arg fc "$fc" --argjson rx "$rx" --argjson live "$live" \
+        '{wrapper:$w,status:$s,exit:$e,duration_ms:$d,model:$m,reasoning:$r,failure_cause:(if $fc=="" then null else $fc end),raw_exit:$rx} + $live' 2>/dev/null) || p='{}'
+  emitter="${DELEGATE_TELEMETRY_EMITTER:-$HOME/.local/bin/telemetry-emit}"
+  [[ -f "$emitter" ]] && timeout 5 bash "$emitter" delegation "${CLAUDE_CODE_SESSION_ID:-${CODEX_COMPANION_SESSION_ID:-unknown}}" "$p" >/dev/null 2>&1 || true
+  __telem_cleanup
+  return 0
+}
+
+__generate_dispatch_id() {
+  local candidate
+  candidate=$(tr -d '\n' < /proc/sys/kernel/random/uuid 2>/dev/null || true)
+  if [[ ! "$candidate" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+    candidate=$(python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || true)
+  fi
+  if [[ "$candidate" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+    DISPATCH_ID="$candidate"
+  fi
+}
+
+__capture_safe_file() {
+  local facts
+  [[ -n "${1:-}" && -f "$1" && ! -L "$1" ]] || return 1
+  facts=$(stat -c '%u %a' -- "$1" 2>/dev/null) || return 1
+  [[ "$facts" == "$(id -u) 600" ]]
+}
+
+__prepare_capture() {
+  local facts path
+  CAPTURE_DIR="$CACHE_DIR/.telemetry-v3"
+  mkdir -p -- "$CAPTURE_DIR" 2>/dev/null || return 1
+  [[ -d "$CAPTURE_DIR" && ! -L "$CAPTURE_DIR" ]] || return 1
+  chmod 700 -- "$CAPTURE_DIR" 2>/dev/null || return 1
+  facts=$(stat -c '%u %a' -- "$CAPTURE_DIR" 2>/dev/null) || return 1
+  [[ "$facts" == "$(id -u) 700" ]] || return 1
+  EVENT_FILE=$(mktemp "$CAPTURE_DIR/codex-strong.events.XXXXXXXX" 2>/dev/null) || return 1
+  STDERR_FILE=$(mktemp "$CAPTURE_DIR/codex-strong.stderr.XXXXXXXX" 2>/dev/null) || return 1
+  LAST_MESSAGE_FILE=$(mktemp "$CAPTURE_DIR/codex-strong.last.XXXXXXXX" 2>/dev/null) || return 1
+  for path in "$EVENT_FILE" "$STDERR_FILE" "$LAST_MESSAGE_FILE"; do
+    chmod 600 -- "$path" 2>/dev/null || return 1
+    __capture_safe_file "$path" || return 1
+  done
+}
+
+__capture_grep() {
+  local expression=$1 path
+  for path in "$EVENT_FILE" "$STDERR_FILE"; do
+    __capture_safe_file "$path" || continue
+    grep -qE "$expression" "$path" 2>/dev/null && return 0
+  done
+  return 1
+}
+
+__capture_grep_i() {
+  local expression=$1 path
+  for path in "$EVENT_FILE" "$STDERR_FILE"; do
+    __capture_safe_file "$path" || continue
+    grep -qiE "$expression" "$path" 2>/dev/null && return 0
+  done
+  return 1
+}
+
+__capture_dump() {
+  local path
+  for path in "$STDERR_FILE" "$EVENT_FILE"; do
+    __capture_safe_file "$path" && cat -- "$path" >&2
+  done
+}
+
+# --- circuit breaker (fail-open): per-wrapper and per-resolved-model state under the delegate cache dir.
+# Trips on exit-2-class noise (API errors in output, exec failures, timeouts): BREAKER_TRIP
+# failures inside BREAKER_WINDOW seconds -> open for BREAKER_HOLD seconds. Quota walls
+# classify as exit 3 and are handled by caller reroute, not this breaker. State is shared
+# across sessions because bursts are account-level (2026-06-30: 202 errors in an 11min
+# window, one wall). Open = fail fast with exit 4 and an explicit until-time; the caller
+# reroutes tiers itself (no silent substitution). Bypass: DELEGATE_BREAKER_BYPASS=1 skips
+# the gate; bookkeeping continues, and a bypassed success closes the breaker. Every state
+# op fails open toward dispatching.
+BREAKER_DIR="${DELEGATE_CACHE_DIR:-$HOME/.cache/delegate}"
+BREAKER_OPEN_FILE=""
+BREAKER_FAIL_FILE=""
+BREAKER_WINDOW=120 BREAKER_TRIP=3 BREAKER_HOLD=600
+FAILURE_CAUSE=""
+
+breaker_check() {
+  [[ "${DELEGATE_BREAKER_BYPASS:-0}" == "1" ]] && return 0
+  local until_ts now
+  until_ts=$(cat "$BREAKER_OPEN_FILE" 2>/dev/null); [[ "$until_ts" =~ ^[0-9]+$ ]] || return 0
+  now=$(date +%s); [[ "$now" =~ ^[0-9]+$ ]] || return 0
+  if (( now < until_ts )); then
+    FAILURE_CAUSE=breaker_open
+    EXECUTION_MODE=breaker_rejected
+    echo "codex-strong: circuit breaker open until $(date -d "@$until_ts" +%H:%M:%S 2>/dev/null || echo "+$((until_ts - now))s") after ${BREAKER_TRIP} hard errors within ${BREAKER_WINDOW}s; reroute (codex-fast / ds-pro) or set DELEGATE_BREAKER_BYPASS=1" >&2
+    exit 4
+  fi
+  rm -f "$BREAKER_OPEN_FILE" 2>/dev/null || true
+}
+
+breaker_record_failure() {
+  local now cnt
+  now=$(date +%s); [[ "$now" =~ ^[0-9]+$ ]] || return 0
+  mkdir -p "$BREAKER_DIR" 2>/dev/null || return 0
+  echo "$now" >> "$BREAKER_FAIL_FILE" 2>/dev/null || return 0
+  cnt=$(awk -v cut=$((now - BREAKER_WINDOW)) '$1 ~ /^[0-9]+$/ && $1+0 >= cut' "$BREAKER_FAIL_FILE" 2>/dev/null | wc -l)
+  [[ "$cnt" =~ ^[0-9]+$ ]] || return 0
+  if (( cnt >= BREAKER_TRIP )); then
+    echo $((now + BREAKER_HOLD)) > "$BREAKER_OPEN_FILE" 2>/dev/null || true
+    : > "$BREAKER_FAIL_FILE" 2>/dev/null || true
+    echo "codex-strong: circuit breaker tripped (${cnt} hard errors in ${BREAKER_WINDOW}s); open $((BREAKER_HOLD / 60))min" >&2
+  fi
+}
+
+breaker_record_success() {
+  rm -f "$BREAKER_FAIL_FILE" "$BREAKER_OPEN_FILE" 2>/dev/null || true
+}
+
+REASONING="xhigh"
+# 5400s (90 min), not 1800s: post-2026-07-12 gpt-5.6-sol successes run p90 31 min, p95 60.6 min,
+# p97 93 min, so a 90-minute cap covers 96.4% of observed successes. The 1800s cap was killing
+# ~22 dispatches per 2.5 weeks at exactly 30.0 min, i.e. cutting live runs at the cap rather than
+# at an answer. Cost of the raise is bounded by the same cap on a genuinely hung run.
+TIMEOUT=5400
+RAW=0
+PROMPT=""
+PROMPT_FILE=""
+CACHE_MODE="off"
+CACHE_DIR="${DELEGATE_CACHE_DIR:-$HOME/.cache/delegate}"
+CWD=""
+RESUME=""           # continue a stored codex session: rollout id, or 'last'
+MODE="agentic"      # agentic (full read/write/exec, default) | oneshot (read-only)
+SANDBOX=""          # explicit override: read-only | workspace-write | danger-full-access
+WEBSEARCH="true"    # on|off
+BROWSER=0           # 1 = keep browser/computer-use connectors (authorized tasks only)
+# Codex "fast mode" bills at 2.5x the standard credit rate on a ChatGPT subscription, so it stays
+# unset unless asked for. It is a no-op on the 5.6 family today (fast mode covers 5.5/5.4 only),
+# which is what made hardcoding it invisible: it would start billing 2.5x the day 5.6 gains
+# support, without a line changing here.
+SERVICE_TIER=""     # unset (standard) | default | flex | fast
+MEMORY=0
+MEMORY_ENTITY=""
+PRINT_PROMPT=0
+# Marks the launched Codex as a delegate: the SessionStart hook then withholds OptMem nap
+# demands, which delegates must not pay (a ticket).
+export OPTMEM_ROLE=delegate
+OPTMEM_MEMO="${OPTMEM_MEMO:-$HOME/.local/bin/memo}"
+
+__optmem_warn() {
+  echo "codex-strong: memory warning: $1; dispatching without memory context" >&2
+}
+
+__build_optmem_context() {
+  local entity=$1 wake wake_rc recall recall_rc recall_status recall_notice="" entity_live entity_live_rc
+
+  [[ -f "$OPTMEM_MEMO" ]] || { __optmem_warn "memo is missing at $OPTMEM_MEMO"; return 1; }
+  command -v python3 >/dev/null 2>&1 || { __optmem_warn "python3 is unavailable"; return 1; }
+  command -v timeout >/dev/null 2>&1 || { __optmem_warn "timeout is unavailable"; return 1; }
+
+  wake=$(timeout 15 python3 "$OPTMEM_MEMO" wake 2>&1)
+  # memo wake appends a nap handover ending in a literal `Run: ... memo nap` command whenever a
+  # block is pending compression. Injecting it would hand a read-only sub-model a write imperative
+  # that contradicts the single-writer rule stated above it. Cut the handover before injection.
+  wake=$(printf '%s\n' "$wake" | sed -e '/^Compress memories #[0-9][0-9]*-[0-9][0-9]* /,$d' -e '/^Run: .* nap /d')
+  wake_rc=$?
+  if [[ "$wake_rc" -eq 124 ]]; then
+    __optmem_warn "memo wake exceeded the required 15-second timeout"
+    return 1
+  elif [[ "$wake_rc" -ne 0 ]]; then
+    __optmem_warn "memo wake failed with exit $wake_rc: ${wake%%$'\n'*}"
+    return 1
+  elif [[ -z "$wake" ]]; then
+    __optmem_warn "memo wake returned no context"
+    return 1
+  fi
+
+  if [[ -n "$entity" ]]; then
+    recall=$(timeout 15 python3 "$OPTMEM_MEMO" recall \
+      "^#[0-9]+ [0-9]{4}-[0-9]{2}-[0-9]{2} S @e/$entity @g @k/[a-z0-9-]+(?:/[a-z0-9-]+)* " 2>&1)
+    recall_rc=$?
+    if [[ "$recall_rc" -eq 124 ]]; then
+      __optmem_warn "memo recall exceeded the required 15-second timeout"
+      return 1
+    elif [[ "$recall_rc" -ne 0 ]]; then
+      __optmem_warn "memo recall failed with exit $recall_rc: ${recall%%$'\n'*}"
+      return 1
+    elif [[ -z "$recall" ]]; then
+      __optmem_warn "memo recall returned no output"
+      return 1
+    fi
+
+    recall_status=${recall##*$'\n'}
+    if [[ "$recall_status" =~ ^Newest[[:space:]][0-9]+[[:space:]]of[[:space:]][0-9]+[[:space:]]matches(\.[[:space:]]Narrow[[:space:]]the[[:space:]]regex\.)?$ ]]; then
+      recall_notice="This entity recall is truncated: $recall_status The injected entity view is partial."
+    fi
+    entity_live=$(printf '%s\n' "$recall" | awk '
+      /^#[0-9]+ / {
+        id = $1
+        sub(/^#/, "", id)
+        identity = $4 SUBSEP $5 SUBSEP $6
+        if (!(identity in best) || id + 0 > best[identity]) {
+          best[identity] = id + 0
+          line[identity] = $0
+        }
+      }
+      END {
+        for (identity in line) print line[identity]
+      }
+    ' | LC_ALL=C sort -k1.2,1n)
+    entity_live_rc=$?
+    if [[ "$entity_live_rc" -ne 0 ]]; then
+      __optmem_warn "memo recall filtering failed with exit $entity_live_rc"
+      return 1
+    fi
+    [[ -n "$entity_live" ]] || entity_live="$recall"
+  fi
+
+  printf '%s\n' '<optmem-context>'
+  printf '%s\n\n' "OptMem is the operator's operational memory and the single memory system. It stores compact facts, current state, events, and document pointers in one append-only log."
+  printf '%s\n\n' 'Use this context only for reading and reasoning. The orchestrating Claude session is the sole OptMem writer. Calls to `memo note` and `memo nap` are outside your authority. When you learn durable memory worth preserving, end your final message with a `PROPOSED-NOTES:` line followed by one candidate note per line. These lines are proposals for the orchestrator to judge; writing them to OptMem yourself is out of bounds. Omit the section when you have no candidate notes.'
+  printf '%s\n\n' 'Candidate note grammar: `TYPE ENTITY SCOPE KEY PAYLOAD`, with one ASCII space between fields and at most 280 UTF-8 bytes for the complete line. `TYPE` is exactly `F` durable fact, `S` current state, `E` event, or `P` document pointer. `ENTITY` is `@e/<slug>` with a lowercase slug. `SCOPE` is `@g` or `@s/<8 lowercase alphanumerics>`. `KEY` is lowercase kebab or path form as `@k/<key>`. For `S`, the live value has the greatest numeric `#N` for its exact entity, scope, and key identity.'
+  printf '%s\n' '<optmem-wake>'
+  printf '%s\n' "$wake"
+  printf '%s\n' '</optmem-wake>'
+  if [[ -n "$entity" ]]; then
+    printf '\n<optmem-entity-state entity="%s">\n' "$entity"
+    [[ -n "$recall_notice" ]] && printf '%s\n' "$recall_notice"
+    printf '%s\n' "$entity_live"
+    printf '%s\n' "Recall status: $recall_status"
+    printf '%s\n' '</optmem-entity-state>'
+  fi
+  printf '%s\n' '</optmem-context>'
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --file) PROMPT_FILE="$2"; shift 2 ;;
+    --model)
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "codex-strong: --model requires a slug" >&2; exit 1; }
+      MODEL="$2"; shift 2 ;;
+    --reasoning) REASONING="$2"; shift 2 ;;
+    --service-tier) SERVICE_TIER="$2"; shift 2 ;;
+    --raw) RAW=1; shift ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --cache) CACHE_MODE="$2"; shift 2 ;;
+    --cwd) CWD="$2"; shift 2 ;;
+    --resume)
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "codex-strong: --resume requires a session id or 'last'" >&2; exit 1; }
+      RESUME="$2"; shift 2 ;;
+    --sandbox) SANDBOX="$2"; shift 2 ;;
+    --web-search) WEBSEARCH="$2"; shift 2 ;;
+    --browser) BROWSER=1; shift ;;
+    --agentic) MODE="agentic"; shift ;;
+    --oneshot) MODE="oneshot"; shift ;;
+    --memory) MEMORY=1; shift ;;
+    --memory-entity)
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "codex-strong: --memory-entity requires a slug" >&2; exit 1; }
+      MEMORY=1; MEMORY_ENTITY="$2"; shift 2 ;;
+    --print-prompt) PRINT_PROMPT=1; shift ;;
+    -h|--help) echo "codex-strong: codex exec wrapper (default: $DEFAULT_MODEL; --raw emits the exact Codex JSONL event stream; flags: --file --model SLUG --reasoning --service-tier --raw --timeout --cache --cwd DIR --resume ID|last --sandbox MODE --web-search on|off --browser --agentic|--oneshot --memory --memory-entity SLUG --print-prompt; env: CODEX_MODEL; every run prints its progress-file path and session id to stderr)" >&2; exit 1 ;;
+    --) shift; PROMPT="$*"; break ;;
+    -*) echo "unknown flag: $1" >&2; exit 1 ;;
+    *) PROMPT="$*"; break ;;
+  esac
+done
+
+# Model availability and quota walls differ by model. Hash the fully resolved slug so a
+# bad --model value can trip only its own breaker and cannot shape a cache path.
+BREAKER_MODEL_KEY=$(printf '%s' "$MODEL" | sha256sum | cut -d' ' -f1)
+BREAKER_OPEN_FILE="$BREAKER_DIR/breaker-codex-strong-$BREAKER_MODEL_KEY.open-until"
+BREAKER_FAIL_FILE="$BREAKER_DIR/breaker-codex-strong-$BREAKER_MODEL_KEY.failures"
+
+if [[ -n "$PROMPT_FILE" ]]; then
+  [[ -f "$PROMPT_FILE" ]] || { echo "codex-strong: file not found: $PROMPT_FILE" >&2; exit 1; }
+  PROMPT="$(cat "$PROMPT_FILE")"
+elif [[ -z "$PROMPT" ]] && [[ ! -t 0 ]]; then
+  PROMPT="$(cat)"
+fi
+
+[[ -z "$PROMPT" ]] && { echo "codex-strong: no prompt" >&2; exit 1; }
+
+# Cache is meaningless once codex can mutate a working tree — repo state isn't in the key.
+if [[ -n "$CWD" && "$CACHE_MODE" != "off" ]]; then
+  echo "codex-strong: cache disabled for --cwd runs (repo state not in cache key)" >&2
+  CACHE_MODE="off"
+fi
+# Same for resume: the stored conversation isn't in the cache key.
+if [[ -n "$RESUME" && "$CACHE_MODE" != "off" ]]; then
+  echo "codex-strong: cache disabled for --resume runs (conversation state not in cache key)" >&2
+  CACHE_MODE="off"
+fi
+
+# Validate the remaining dispatch arguments before the one-attempt telemetry boundary.
+case "$SANDBOX" in
+  ""|read-only|workspace-write|danger-full-access) ;;
+  *) echo "codex-strong: --sandbox expects read-only|workspace-write|danger-full-access" >&2; exit 1 ;;
+esac
+case "$WEBSEARCH" in
+  on|true|1|off|false|0) ;;
+  *) echo "codex-strong: --web-search expects on|off" >&2; exit 1 ;;
+esac
+case "$SERVICE_TIER" in
+  ""|default|flex|fast) ;;
+  *) echo "codex-strong: --service-tier expects default|flex|fast" >&2; exit 1 ;;
+esac
+if [[ -n "$MEMORY_ENTITY" && ! "$MEMORY_ENTITY" =~ ^[a-z0-9-]+$ ]]; then
+  echo "codex-strong: --memory-entity expects a slug matching ^[a-z0-9-]+$" >&2
+  exit 1
+fi
+# `exec resume` has no -C flag and continues in the session's original cwd.
+if [[ -n "$RESUME" && -n "$CWD" ]]; then
+  echo "codex-strong: --resume continues in the session's original cwd; drop --cwd" >&2
+  exit 1
+fi
+
+if [[ "$MEMORY" -eq 1 ]]; then
+  if OPTMEM_CONTEXT=$(__build_optmem_context "$MEMORY_ENTITY"); then
+    PROMPT="${OPTMEM_CONTEXT}"$'\n\n'"$PROMPT"
+  fi
+fi
+if [[ "$PRINT_PROMPT" -eq 1 ]]; then
+  printf '%s' "$PROMPT"
+  exit 0
+fi
+
+__generate_dispatch_id
+__telem_t0=$(date +%s%3N 2>/dev/null || echo 0)
+trap __telem_emit_delegation EXIT
+
+CACHE_KEY=""
+if [[ "$CACHE_MODE" != "off" ]]; then
+  mkdir -p "$CACHE_DIR"
+  CACHE_KEY=$(printf '%s|%s|%s' "$MODEL" "$REASONING" "$PROMPT" | sha256sum | cut -d' ' -f1)
+  CACHE_FILE="$CACHE_DIR/${CACHE_KEY}.txt"
+  if [[ "$CACHE_MODE" == "read" || "$CACHE_MODE" == "rw" ]] && [[ -f "$CACHE_FILE" ]]; then
+    EXECUTION_MODE=cache_hit
+    echo "codex-strong: cache hit $CACHE_KEY" >&2
+    cat "$CACHE_FILE"
+    exit 0
+  fi
+fi
+
+PROMPT_BYTES=$(printf '%s' "$PROMPT" | wc -c)
+
+# Build codex exec args from resolved mode. Default (agentic) preserves prior full-access behavior.
+# For resume, the subcommand tokens go first so every flag lands on the resume parser.
+if [[ -n "$RESUME" ]]; then
+  CODEX_ARGS=( exec resume )
+  # The explicit `-` prompt positional makes resume read the new turn from stdin.
+  if [[ "$RESUME" == "last" ]]; then CODEX_ARGS+=( --last - ); else CODEX_ARGS+=( "$RESUME" - ); fi
+  CODEX_ARGS+=( --skip-git-repo-check )
+else
+  CODEX_ARGS=( exec --skip-git-repo-check )
+fi
+[[ -n "$CWD" ]] && CODEX_ARGS+=( -C "$CWD" )
+
+# `exec resume` accepts -c overrides but not -s; map the sandbox to the config knob there.
+if [[ -n "$SANDBOX" ]]; then
+  case "$SANDBOX" in
+    danger-full-access) CODEX_ARGS+=( --dangerously-bypass-approvals-and-sandbox ) ;;
+    read-only|workspace-write)
+      if [[ -n "$RESUME" ]]; then CODEX_ARGS+=( -c "sandbox_mode=\"$SANDBOX\"" ); else CODEX_ARGS+=( -s "$SANDBOX" ); fi ;;
+  esac
+elif [[ "$MODE" == "oneshot" ]]; then
+  if [[ -n "$RESUME" ]]; then CODEX_ARGS+=( -c 'sandbox_mode="read-only"' ); else CODEX_ARGS+=( -s read-only ); fi
+else
+  CODEX_ARGS+=( --dangerously-bypass-approvals-and-sandbox )
+fi
+
+case "$WEBSEARCH" in
+  on|true|1)   CODEX_ARGS+=( -c tools.web_search=true ) ;;
+  off|false|0) CODEX_ARGS+=( -c tools.web_search=false ) ;;
+esac
+
+# Delegates inherit every MCP server and plugin in ~/.codex/config.toml, including the ones that
+# drive the operator's live browser (a ticket: a verify job took over Chromium). Off unless --browser.
+if [[ "$BROWSER" != 1 ]]; then
+  # Plugin MCPs (cua_repl comes from unified-computer-use) ignore per-plugin -c keys; only the
+  # plugins feature switch removes them (codex 0.156.1, `codex --disable plugins mcp list`).
+  CODEX_ARGS+=( -c mcp_servers.node_repl.enabled=false -c mcp_servers.playwright.enabled=false )
+  for feat in plugins computer_use browser_use browser_use_external in_app_browser; do
+    CODEX_ARGS+=( -c "features.$feat=false" )
+  done
+fi
+
+CODEX_ARGS+=( -c "model_reasoning_effort=$REASONING" --model "$MODEL" )
+if [[ -n "$SERVICE_TIER" ]]; then
+  case "$SERVICE_TIER" in
+    default|flex|fast) CODEX_ARGS+=( -c "service_tier=$SERVICE_TIER" ) ;;
+  esac
+fi
+
+breaker_check
+# jq reads the codex event stream, which is how this wrapper tells a completed turn from a
+# quota wall. Without it the classifier falls back to raw text matching and misreads its own
+# transcript, so fail here rather than after a long dispatch.
+if ! command -v jq >/dev/null 2>&1; then
+  FAILURE_CAUSE=jq_missing
+  echo "codex-strong: jq not found; it reads the codex event stream" >&2
+  exit 2
+fi
+if ! __prepare_capture; then
+  FAILURE_CAUSE=capture_setup_error
+  echo "codex-strong: private capture setup failed" >&2
+  exit 2
+fi
+CODEX_ARGS+=( --json --output-last-message "$LAST_MESSAGE_FILE" )
+
+# Durable progress mirror: tee the JSONL event stream so a supervising session can tail
+# mid-flight state (phase, tool calls, agent messages) while the run is live. Pruned at 7 days.
+PROGRESS_FILE=""
+PROGRESS_DIR="$CACHE_DIR/progress"
+if mkdir -p -- "$PROGRESS_DIR" 2>/dev/null && chmod 700 -- "$PROGRESS_DIR" 2>/dev/null; then
+  find "$PROGRESS_DIR" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null || true
+  PROGRESS_FILE="$PROGRESS_DIR/$(date +%Y%m%dT%H%M%S)-codex-strong-${DISPATCH_ID:-$$}.jsonl"
+  if ( umask 077; : > "$PROGRESS_FILE" ) 2>/dev/null; then
+    echo "codex-strong: progress $PROGRESS_FILE" >&2
+  else
+    PROGRESS_FILE=""
+  fi
+fi
+
+# Interrupt-safe dispatch: the pipeline runs as a background job so INT/TERM reach the
+# trap immediately (bash defers traps while a foreground pipeline runs). The trap kills
+# the codex subtree (timeout forwards TERM to its child), then prints the session id from
+# the durable progress mirror so a steering follow-up can resume the conversation.
+PIPE_PID=""
+__interrupt_dispatch() {
+  trap - INT TERM
+  FAILURE_CAUSE=interrupted
+  if [[ -n "$PIPE_PID" ]]; then
+    pkill -TERM -P "$PIPE_PID" 2>/dev/null
+    kill -TERM "$PIPE_PID" 2>/dev/null
+    wait "$PIPE_PID" 2>/dev/null
+  fi
+  local sid=""
+  [[ -n "$PROGRESS_FILE" && -f "$PROGRESS_FILE" ]] && sid=$(jq -r 'select(.type=="thread.started") | .thread_id // empty' "$PROGRESS_FILE" 2>/dev/null | head -n1)
+  [[ -n "$sid" ]] && echo "codex-strong: interrupted; session $sid (steer: codex-strong --resume $sid \"correction\")" >&2
+  exit 130
+}
+trap __interrupt_dispatch INT TERM
+EXIT=0
+if [[ -n "$PROGRESS_FILE" ]]; then
+  { printf '%s' "$PROMPT" | timeout "$TIMEOUT" codex "${CODEX_ARGS[@]}" 2>"$STDERR_FILE" | tee -- "$PROGRESS_FILE" >"$EVENT_FILE"; } &
+else
+  { printf '%s' "$PROMPT" | timeout "$TIMEOUT" codex "${CODEX_ARGS[@]}" >"$EVENT_FILE" 2>"$STDERR_FILE"; } &
+fi
+PIPE_PID=$!
+wait "$PIPE_PID" || EXIT=$?
+trap - INT TERM
+EXIT="${EXIT:-0}"
+
+# Surface the codex session id: a follow-up turn on the same conversation is
+# `codex-strong --resume <id> "correction"`. Interrupting a live run loses only the
+# in-flight turn; completed turns persist in the rollout and resume from there.
+if __capture_safe_file "$EVENT_FILE"; then
+  CODEX_SESSION=$(jq -r 'select(.type=="thread.started") | .thread_id // empty' "$EVENT_FILE" 2>/dev/null | head -n1)
+  [[ -n "$CODEX_SESSION" ]] && echo "codex-strong: session $CODEX_SESSION (follow-up: codex-strong --resume $CODEX_SESSION \"...\")" >&2
+fi
+
+# A completed turn is authoritative success. codex emits turn.completed only after the model
+# finishes the turn, so quota or error wording sitting alongside it came from the transcript
+# (a run that read these wrappers, or quoted an error message) and not from a real wall. jq
+# reads the event objects, so the same wording inside a message string can never match .type.
+TURN_COMPLETED=0
+if [[ "$EXIT" -eq 0 ]] && __capture_safe_file "$EVENT_FILE"; then
+  if TURN_PROBE=$(jq -r -R 'fromjson? // empty | select(.type=="turn.completed") | .type' "$EVENT_FILE" 2>/dev/null); then
+    [[ -n "$TURN_PROBE" ]] && TURN_COMPLETED=1
+  elif __capture_safe_file "$LAST_MESSAGE_FILE" && LC_ALL=C grep -q '[^[:space:]]' "$LAST_MESSAGE_FILE"; then
+    # The stream is unreadable. codex writes the last-message file only for a turn that
+    # produced a final answer, so read that as the completion signal instead of letting an
+    # unreadable stream pass for "no turn completed" and revive the text-matching bug.
+    TURN_COMPLETED=1
+    echo "codex-strong: event stream unreadable; using the last-message file as the completion signal" >&2
+  fi
+fi
+
+# Real codex 429 includes "request id:" — generic "429" matches doc content (false positives)
+if [[ "$TURN_COMPLETED" -eq 0 ]] && [[ "$EXIT" -ne 0 ]] && __capture_grep "exceeded retry limit, last status: 429.*request id:"; then
+  FAILURE_CAUSE=rate_limit_429
+  echo "codex-strong: rate limited (429); fallback to codex-fast or ds-pro" >&2
+  exit 3
+fi
+# Subscription wall, both wordings: model-specific ("... for GPT-...") and generic
+# ("ERROR: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage ...").
+# The generic form is gated on a failed exit so quoted phrases in successful output can't match.
+if [[ "$TURN_COMPLETED" -eq 0 ]] && \
+   { __capture_grep "hit your usage limit for GPT-" || \
+     { [[ "$EXIT" -ne 0 ]] && __capture_grep_i "hit your usage limit"; }; }; then
+  FAILURE_CAUSE=usage_limit
+  echo "codex-strong: ChatGPT subscription quota exhausted; fallback to ds-pro" >&2
+  __capture_dump
+  exit 3
+fi
+
+if [[ "$TURN_COMPLETED" -eq 0 ]] && \
+   __capture_grep '^ERROR: \{.*"status":[45][0-9]{2}|^ERROR: .*invalid_request_error|^ERROR: .*model_not_found|^\{.*"type":"error".*("status":[45][0-9]{2}|invalid_request_error|model_not_found)'; then
+  FAILURE_CAUSE=api_error_output
+  breaker_record_failure
+  echo "codex-strong: API error in output" >&2
+  __capture_dump
+  exit 2
+fi
+
+if [[ "$EXIT" -ne 0 ]]; then
+  FAILURE_CAUSE=exec_error; [[ "$EXIT" -eq 124 ]] && FAILURE_CAUSE=timeout
+  breaker_record_failure
+  echo "codex-strong: codex exec exit=$EXIT" >&2
+  __capture_dump
+  exit 2
+fi
+
+breaker_record_success
+
+if [[ "$RAW" -eq 1 ]]; then
+  __capture_safe_file "$EVENT_FILE" && cat -- "$EVENT_FILE"
+  exit 0
+fi
+
+if ! __capture_safe_file "$LAST_MESSAGE_FILE" || ! LC_ALL=C grep -q '[^[:space:]]' "$LAST_MESSAGE_FILE"; then
+  FAILURE_CAUSE=empty_content
+  echo "codex-strong: empty content from codex (prompt was ${PROMPT_BYTES}B)." >&2
+  __capture_dump
+  exit 5
+fi
+
+if [[ "$CACHE_MODE" == "write" || "$CACHE_MODE" == "rw" ]]; then
+  cat -- "$LAST_MESSAGE_FILE" > "$CACHE_DIR/${CACHE_KEY}.txt"
+fi
+
+cat -- "$LAST_MESSAGE_FILE"

@@ -1,0 +1,239 @@
+#!/usr/bin/env bash
+# ds-pro - DeepSeek v4 Pro, fully agentic via pydantic-ai.
+# Same interface as ds-flash. Slower, deeper. Use when codex tiers are throttled
+# or for thorough non-code reasoning tasks where DS Pro's verbosity is wanted.
+
+set -uo pipefail
+umask 077
+WRAPPER_DIR=$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")
+V3_DISPATCH="$WRAPPER_DIR/../telemetry/v3_dispatch.py"
+
+# --- delegation telemetry (additive, fail-open): armed after validation and before cache. ---
+__telem_t0=0
+DISPATCH_ID=""
+EXECUTION_MODE="executed"
+OUTPUT_CAPTURE_STATE="missing"
+DS_USAGE_FILE=""
+
+__telem_emit_delegation() {
+  local rc=$?
+  trap - EXIT
+  local now dur status p live
+  now=$(date +%s%3N 2>/dev/null || echo 0)
+  dur=$(( now - __telem_t0 )); [ "$dur" -lt 0 ] && dur=0
+  if [[ "$EXECUTION_MODE" == "cache_hit" ]]; then
+    status=cache_hit
+  else
+    case "$rc" in 0) status=success ;; 3) status=rate_limited ;; *) status=error ;; esac
+  fi
+  local toks='{}'
+  if [ -n "${DS_USAGE_FILE:-}" ] && [ -s "${DS_USAGE_FILE:-}" ]; then
+    local raw; raw=$(cat "$DS_USAGE_FILE" 2>/dev/null)
+    printf '%s' "$raw" | jq -e . >/dev/null 2>&1 && toks="$raw"
+  fi
+  live=$(timeout 5 python3 "$V3_DISPATCH" wrapper-live-fields --family ds \
+    --execution-mode "$EXECUTION_MODE" --dispatch-id "$DISPATCH_ID" \
+    --usage-file "$DS_USAGE_FILE" --output-capture-state "$OUTPUT_CAPTURE_STATE" 2>/dev/null) || live='{}'
+  p=$(jq -cn --arg w ds-pro --arg s "$status" --argjson e "$rc" --argjson d "$dur" \
+        --arg m "${MODEL:-}" --argjson tk "$toks" --argjson live "$live" \
+        '{wrapper:$w,status:$s,exit:$e,duration_ms:$d,model:$m,tokens:$tk} + $live' 2>/dev/null) || p='{}'
+  emitter="${DELEGATE_TELEMETRY_EMITTER:-$HOME/.local/bin/telemetry-emit}"
+  [[ -f "$emitter" ]] && timeout 5 bash "$emitter" delegation "${CLAUDE_CODE_SESSION_ID:-${CODEX_COMPANION_SESSION_ID:-unknown}}" "$p" >/dev/null 2>&1 || true
+  [[ -n "$DS_USAGE_FILE" ]] && rm -f -- "$DS_USAGE_FILE" 2>/dev/null || true
+  return 0
+}
+
+__generate_dispatch_id() {
+  local candidate
+  candidate=$(tr -d '\n' < /proc/sys/kernel/random/uuid 2>/dev/null || true)
+  if [[ ! "$candidate" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+    candidate=$(python3 -c 'import uuid; print(uuid.uuid4())' 2>/dev/null || true)
+  fi
+  if [[ "$candidate" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]; then
+    DISPATCH_ID="$candidate"
+  fi
+}
+
+VENV="${DELEGATE_PYTHON:-$HOME/.local/share/delegate-venv/bin/python}"
+AGENT="${DELEGATE_DS_AGENT:-$(dirname -- "$(readlink -f -- "$0")")/ds_agent.py}"
+MODEL="deepseek-v4-pro"
+TIMEOUT=1800
+SYSTEM=""
+PROMPT=""
+PROMPT_FILE=""
+CACHE_MODE="off"
+CACHE_DIR="${DELEGATE_CACHE_DIR:-$HOME/.cache/delegate}"
+MEMORY=0
+MEMORY_ENTITY=""
+PRINT_PROMPT=0
+OPTMEM_MEMO="${OPTMEM_MEMO:-$HOME/.local/bin/memo}"
+
+__optmem_warn() {
+  echo "ds-pro: memory warning: $1; dispatching without memory context" >&2
+}
+
+__build_optmem_context() {
+  local entity=$1 wake wake_rc recall recall_rc recall_status recall_notice="" entity_live entity_live_rc
+
+  [[ -f "$OPTMEM_MEMO" ]] || { __optmem_warn "memo is missing at $OPTMEM_MEMO"; return 1; }
+  command -v python3 >/dev/null 2>&1 || { __optmem_warn "python3 is unavailable"; return 1; }
+  command -v timeout >/dev/null 2>&1 || { __optmem_warn "timeout is unavailable"; return 1; }
+
+  wake=$(timeout 15 python3 "$OPTMEM_MEMO" wake 2>&1)
+  # memo wake appends a nap handover ending in a literal `Run: ... memo nap` command whenever a
+  # block is pending compression. Injecting it would hand a read-only sub-model a write imperative
+  # that contradicts the single-writer rule stated above it. Cut the handover before injection.
+  wake=$(printf '%s\n' "$wake" | sed -e '/^Compress memories #[0-9][0-9]*-[0-9][0-9]* /,$d' -e '/^Run: .* nap /d')
+  wake_rc=$?
+  if [[ "$wake_rc" -eq 124 ]]; then
+    __optmem_warn "memo wake exceeded the required 15-second timeout"
+    return 1
+  elif [[ "$wake_rc" -ne 0 ]]; then
+    __optmem_warn "memo wake failed with exit $wake_rc: ${wake%%$'\n'*}"
+    return 1
+  elif [[ -z "$wake" ]]; then
+    __optmem_warn "memo wake returned no context"
+    return 1
+  fi
+
+  if [[ -n "$entity" ]]; then
+    recall=$(timeout 15 python3 "$OPTMEM_MEMO" recall \
+      "^#[0-9]+ [0-9]{4}-[0-9]{2}-[0-9]{2} S @e/$entity @g @k/[a-z0-9-]+(?:/[a-z0-9-]+)* " 2>&1)
+    recall_rc=$?
+    if [[ "$recall_rc" -eq 124 ]]; then
+      __optmem_warn "memo recall exceeded the required 15-second timeout"
+      return 1
+    elif [[ "$recall_rc" -ne 0 ]]; then
+      __optmem_warn "memo recall failed with exit $recall_rc: ${recall%%$'\n'*}"
+      return 1
+    elif [[ -z "$recall" ]]; then
+      __optmem_warn "memo recall returned no output"
+      return 1
+    fi
+
+    recall_status=${recall##*$'\n'}
+    if [[ "$recall_status" =~ ^Newest[[:space:]][0-9]+[[:space:]]of[[:space:]][0-9]+[[:space:]]matches(\.[[:space:]]Narrow[[:space:]]the[[:space:]]regex\.)?$ ]]; then
+      recall_notice="This entity recall is truncated: $recall_status The injected entity view is partial."
+    fi
+    entity_live=$(printf '%s\n' "$recall" | awk '
+      /^#[0-9]+ / {
+        id = $1
+        sub(/^#/, "", id)
+        identity = $4 SUBSEP $5 SUBSEP $6
+        if (!(identity in best) || id + 0 > best[identity]) {
+          best[identity] = id + 0
+          line[identity] = $0
+        }
+      }
+      END {
+        for (identity in line) print line[identity]
+      }
+    ' | LC_ALL=C sort -k1.2,1n)
+    entity_live_rc=$?
+    if [[ "$entity_live_rc" -ne 0 ]]; then
+      __optmem_warn "memo recall filtering failed with exit $entity_live_rc"
+      return 1
+    fi
+    [[ -n "$entity_live" ]] || entity_live="$recall"
+  fi
+
+  printf '%s\n' '<optmem-context>'
+  printf '%s\n\n' "OptMem is the operator's operational memory and the single memory system. It stores compact facts, current state, events, and document pointers in one append-only log."
+  printf '%s\n\n' 'Use this context only for reading and reasoning. The orchestrating Claude session is the sole OptMem writer. Calls to `memo note` and `memo nap` are outside your authority. When you learn durable memory worth preserving, end your final message with a `PROPOSED-NOTES:` line followed by one candidate note per line. These lines are proposals for the orchestrator to judge; writing them to OptMem yourself is out of bounds. Omit the section when you have no candidate notes.'
+  printf '%s\n\n' 'Candidate note grammar: `TYPE ENTITY SCOPE KEY PAYLOAD`, with one ASCII space between fields and at most 280 UTF-8 bytes for the complete line. `TYPE` is exactly `F` durable fact, `S` current state, `E` event, or `P` document pointer. `ENTITY` is `@e/<slug>` with a lowercase slug. `SCOPE` is `@g` or `@s/<8 lowercase alphanumerics>`. `KEY` is lowercase kebab or path form as `@k/<key>`. For `S`, the live value has the greatest numeric `#N` for its exact entity, scope, and key identity.'
+  printf '%s\n' '<optmem-wake>'
+  printf '%s\n' "$wake"
+  printf '%s\n' '</optmem-wake>'
+  if [[ -n "$entity" ]]; then
+    printf '\n<optmem-entity-state entity="%s">\n' "$entity"
+    [[ -n "$recall_notice" ]] && printf '%s\n' "$recall_notice"
+    printf '%s\n' "$entity_live"
+    printf '%s\n' "Recall status: $recall_status"
+    printf '%s\n' '</optmem-entity-state>'
+  fi
+  printf '%s\n' '</optmem-context>'
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --file) PROMPT_FILE="$2"; shift 2 ;;
+    --system) SYSTEM="$2"; shift 2 ;;
+    --cache) CACHE_MODE="$2"; shift 2 ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --memory) MEMORY=1; shift ;;
+    --memory-entity)
+      [[ $# -ge 2 && -n "${2:-}" ]] || { echo "ds-pro: --memory-entity requires a slug" >&2; exit 1; }
+      MEMORY=1; MEMORY_ENTITY="$2"; shift 2 ;;
+    --print-prompt) PRINT_PROMPT=1; shift ;;
+    -h|--help) echo "ds-pro: DeepSeek agent wrapper; flags: --file PATH --system TEXT --cache MODE --timeout SECS --memory --memory-entity SLUG --print-prompt" >&2; exit 1 ;;
+    --) shift; PROMPT="$*"; break ;;
+    -*) echo "unknown flag: $1" >&2; exit 1 ;;
+    *) PROMPT="$*"; break ;;
+  esac
+done
+
+if [[ -n "$PROMPT_FILE" ]]; then
+  [[ -f "$PROMPT_FILE" ]] || { echo "ds-pro: file not found: $PROMPT_FILE" >&2; exit 1; }
+  PROMPT="$(cat "$PROMPT_FILE")"
+elif [[ -z "$PROMPT" ]] && [[ ! -t 0 ]]; then
+  PROMPT="$(cat)"
+fi
+[[ -z "$PROMPT" ]] && { echo "ds-pro: no prompt" >&2; exit 1; }
+if [[ -n "$MEMORY_ENTITY" && ! "$MEMORY_ENTITY" =~ ^[a-z0-9-]+$ ]]; then
+  echo "ds-pro: --memory-entity expects a slug matching ^[a-z0-9-]+$" >&2
+  exit 1
+fi
+
+if [[ "$MEMORY" -eq 1 ]]; then
+  if OPTMEM_CONTEXT=$(__build_optmem_context "$MEMORY_ENTITY"); then
+    PROMPT="${OPTMEM_CONTEXT}"$'\n\n'"$PROMPT"
+  fi
+fi
+if [[ "$PRINT_PROMPT" -eq 1 ]]; then
+  printf '%s' "$PROMPT"
+  exit 0
+fi
+
+__generate_dispatch_id
+__telem_t0=$(date +%s%3N 2>/dev/null || echo 0)
+trap __telem_emit_delegation EXIT
+
+CACHE_KEY=""
+if [[ "$CACHE_MODE" != "off" ]]; then
+  mkdir -p "$CACHE_DIR"
+  CACHE_KEY=$(printf '%s|%s|%s' "$MODEL" "$SYSTEM" "$PROMPT" | sha256sum | cut -d' ' -f1)
+  CACHE_FILE="$CACHE_DIR/${CACHE_KEY}.txt"
+  if [[ "$CACHE_MODE" == "read" || "$CACHE_MODE" == "rw" ]] && [[ -f "$CACHE_FILE" ]]; then
+    EXECUTION_MODE=cache_hit
+    echo "ds-pro: cache hit $CACHE_KEY" >&2
+    cat "$CACHE_FILE"
+    exit 0
+  fi
+fi
+
+if [[ -z "${DEEPSEEK_API_KEY:-}" ]] && [[ -f "${DELEGATE_ENV_FILE:-$HOME/.config/delegate/.env}" ]]; then
+  set -a; source "${DELEGATE_ENV_FILE:-$HOME/.config/delegate/.env}"; set +a
+fi
+
+ARGS=(--model "$MODEL")
+[[ -n "$SYSTEM" ]] && ARGS+=(--system "$SYSTEM")
+
+DS_USAGE_FILE="$(mktemp 2>/dev/null || true)"; export DS_USAGE_FILE  # ds_agent.py writes usage here
+OUTPUT=$(printf '%s' "$PROMPT" | timeout "$TIMEOUT" "$VENV" "$AGENT" "${ARGS[@]}")
+RC=$?
+
+if [[ "$RC" -ne 0 ]]; then
+  exit "$RC"
+fi
+
+if printf '%s' "$OUTPUT" | LC_ALL=C grep -q '[^[:space:]]'; then
+  OUTPUT_CAPTURE_STATE=observed
+else
+  OUTPUT_CAPTURE_STATE=empty
+fi
+
+if [[ "$CACHE_MODE" == "write" || "$CACHE_MODE" == "rw" ]]; then
+  printf '%s\n' "$OUTPUT" > "$CACHE_DIR/${CACHE_KEY}.txt"
+fi
+
+printf '%s\n' "$OUTPUT"

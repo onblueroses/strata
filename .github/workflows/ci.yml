@@ -1,0 +1,35 @@
+name: setup validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: portable setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate setup
+        run: python3 scripts/check_setup.py
+      - name: Exercise adapter boundaries without providers
+        run: python3 scripts/test_adapters.py
+      - name: Exercise native Claude hooks offline
+        run: for test in claude/hooks/test-*.sh; do bash "$test"; done
+      - name: Exercise privacy gate fixtures offline
+        run: |
+          command -v rg >/dev/null || sudo apt-get install -y ripgrep
+          python3 claude/gates/tests/test-privacy-event.py
+          python3 claude/gates/tests/test-privacy-scan-prefilter.py
+          bash claude/gates/tests/test-privacy-gates.sh
+      - name: Exercise Codex installer and privacy relay offline
+        run: bash codex/tests/test_install.sh
+      - name: Exercise DeepSeek primary offline
+        run: python3 -m unittest discover -s deepseek/tests -q
+      - name: Exercise delegation classifier offline
+        run: bash delegation/wrappers/test-classifier.sh

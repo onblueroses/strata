@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Reap orphaned codex-plugin-cc app-server brokers older than MAX_AGE seconds (default 3 days).
+# The plugin (v1.0.2) leaks brokers: an unref'd detached child plus an unlocked
+# check-then-spawn (observed 2026-07-23: 6 orphans, ~2.5 GB RSS, oldest 9.9 days,
+# 3 for one repo). Until upstream fixes it, this timer reaps brokers old enough that
+# no live session still owns them; a fresh broker respawns on demand, so reaping is
+# always safe. the operator set the threshold: 3 days (2026-07-23).
+#
+# Ownership guards (2026-07-27 cross-session reaping audit): age plus program name is
+# not evidence that a broker is unowned. A broker is skipped when a live `claude`
+# process sits in its ancestor chain (it was never orphaned), or when its subtree
+# contains a process younger than MAX_AGE (something recent is running under it, so a
+# live session is driving it). Residual limit: a broker that a live session owns
+# through a socket only, with no ancestor link and no recent child, is still reaped;
+# that case relies on the respawn-on-demand property above.
+set -uo pipefail
+
+MAX_AGE="${1:-259200}"
+LOG="$HOME/.cache/delegate/broker-reap.log"
+mkdir -p "$(dirname "$LOG")"
+
+TABLE="$(mktemp)"
+trap 'rm -f "$TABLE"' EXIT
+ps -eo pid=,ppid=,sid=,etimes=,args= > "$TABLE"
+source "$HOME/.claude/hooks/lib-orphan-scope.sh"
+
+reaped=0
+skipped=0
+while read -r pid etimes args; do
+  [[ "$etimes" =~ ^[0-9]+$ ]] || continue
+  (( etimes > MAX_AGE )) || continue
+  if has_live_ancestor "$pid" claude "$TABLE"; then
+    printf '%s skipped pid=%s age=%ss reason=live-claude-ancestor\n' "$(date -Is)" "$pid" "$etimes" >> "$LOG"
+    skipped=$((skipped+1)); continue
+  fi
+  if has_recent_descendant "$pid" "$MAX_AGE" "$TABLE"; then
+    printf '%s skipped pid=%s age=%ss reason=recent-descendant\n' "$(date -Is)" "$pid" "$etimes" >> "$LOG"
+    skipped=$((skipped+1)); continue
+  fi
+  # Kill the broker's subtree depth-first: grandchildren (vendor codex binary),
+  # then children (node codex app-server), then the broker itself.
+  for kid in $(pgrep -P "$pid" 2>/dev/null); do
+    pkill -TERM -P "$kid" 2>/dev/null || true
+    kill -TERM "$kid" 2>/dev/null || true
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+  printf '%s reaped pid=%s age=%ss cmd=%s\n' "$(date -Is)" "$pid" "$etimes" "$args" >> "$LOG"
+  reaped=$((reaped+1))
+done < <(grep -F "app-server-broker.mjs serve" "$TABLE" | grep -v grep | awk '{ pid=$1; etimes=$4; $1=$2=$3=$4=""; sub(/^ +/,""); print pid, etimes, $0 }')
+
+printf '%s run complete reaped=%s skipped=%s\n' "$(date -Is)" "$reaped" "$skipped" >> "$LOG"

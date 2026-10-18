@@ -1,0 +1,12 @@
+# /var/lib/dispatcher/.ssh/config
+Host vps-worker
+  HostName 127.0.0.1
+  User worker
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+Host laptop
+  HostName <laptop tailnet address>
+  User <laptop user>
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+  ConnectTimeout 15

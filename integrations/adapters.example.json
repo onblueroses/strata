@@ -1,0 +1,18 @@
+{
+  "memory-wake": [],
+  "memory-core": [],
+  "workspace-sync": [],
+  "session-cleanup": [],
+  "continuity": [],
+  "clock": [],
+  "compute-guard": [],
+  "backup-guard": [],
+  "notify": [],
+  "async-rewake": [],
+  "config-write": [],
+  "ownership": [],
+  "isolated-runtime": [],
+  "privacy-public": [],
+  "privacy-push": [],
+  "edit-receipts": []
+}

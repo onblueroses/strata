@@ -1,0 +1,657 @@
+diff --git a/src/daemon/vault_context.rs b/src/daemon/vault_context.rs
+index 0c94142..f8ae4e5 100644
+--- a/src/daemon/vault_context.rs
++++ b/src/daemon/vault_context.rs
+@@ -3,13 +3,13 @@
+ use std::path::{Path, PathBuf};
+ use std::sync::{Arc, Mutex, RwLock};
+ 
+-use notify_debouncer_mini::Debouncer;
+ 
+ use crate::error::{VaultError, VaultResult};
+ use crate::models::NoteMetadata;
+ use crate::vault::exclude::ExcludeSet;
+ use crate::vault::index::VaultIndex;
+ use crate::vault::tantivy_index::TantivyIndex;
++use crate::vault::watch_filter::ChangeDebouncer;
+ 
+ #[cfg(has_embeddings)]
+ use crate::vault::embedding_runtime::{EmbeddingRuntime, EmbeddingRuntimeStatus};
+@@ -31,7 +31,7 @@ pub struct VaultContext {
+     tantivy: Arc<TantivyIndex>,
+     #[cfg(has_embeddings)]
+     embedding_runtime: EmbeddingRuntime,
+-    watcher: Mutex<Option<Debouncer<notify::RecommendedWatcher>>>,
++    watcher: Mutex<Option<ChangeDebouncer>>,
+ }
+ 
+ impl VaultContext {
+diff --git a/src/daemon/watcher.rs b/src/daemon/watcher.rs
+index 66136cb..9924018 100644
+--- a/src/daemon/watcher.rs
++++ b/src/daemon/watcher.rs
+@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
+ use std::time::Duration;
+ 
+ use notify::RecursiveMode;
+-use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer};
++use notify_debouncer_mini::{Config as DebounceConfig, DebounceEventResult, new_debouncer_opt};
+ use tokio::runtime::Handle;
+ 
+ use crate::error::{VaultError, VaultResult};
+@@ -13,6 +13,7 @@ use crate::vault::exclude::ExcludeSet;
+ use crate::vault::index::VaultIndex;
+ use crate::vault::path as vault_path;
+ use crate::vault::tantivy_index::TantivyIndex;
++use crate::vault::watch_filter::{ChangeDebouncer, ChangeWatcher};
+ 
+ #[cfg(has_embeddings)]
+ use crate::vault::embedding_runtime::{EmbeddingRuntime, EmbeddingRuntimeWeak};
+@@ -27,12 +28,13 @@ pub fn start_watcher(
+     tantivy: Option<Arc<TantivyIndex>>,
+     embedding_runtime: EmbeddingRuntime,
+     exclude: Arc<ExcludeSet>,
+-) -> VaultResult<Debouncer<notify::RecommendedWatcher>> {
++) -> VaultResult<ChangeDebouncer> {
+     let embedding_runtime = embedding_runtime.downgrade();
+     let (tx, mut rx) = tokio::sync::mpsc::channel::<DebounceEventResult>(EVENT_CHANNEL_CAPACITY);
+     let rt = Handle::current();
+ 
+-    let mut debouncer = new_debouncer(DEBOUNCE_TIMEOUT, move |result: DebounceEventResult| {
++    let debounce_config = DebounceConfig::default().with_timeout(DEBOUNCE_TIMEOUT);
++    let mut debouncer = new_debouncer_opt::<_, ChangeWatcher>(debounce_config, move |result: DebounceEventResult| {
+         let tx = tx.clone();
+         rt.spawn(async move {
+             if let Err(err) = tx.send(result).await {
+@@ -93,11 +95,12 @@ pub fn start_watcher(
+     index: Arc<RwLock<VaultIndex>>,
+     tantivy: Option<Arc<TantivyIndex>>,
+     exclude: Arc<ExcludeSet>,
+-) -> VaultResult<Debouncer<notify::RecommendedWatcher>> {
++) -> VaultResult<ChangeDebouncer> {
+     let (tx, mut rx) = tokio::sync::mpsc::channel::<DebounceEventResult>(EVENT_CHANNEL_CAPACITY);
+     let rt = Handle::current();
+ 
+-    let mut debouncer = new_debouncer(DEBOUNCE_TIMEOUT, move |result: DebounceEventResult| {
++    let debounce_config = DebounceConfig::default().with_timeout(DEBOUNCE_TIMEOUT);
++    let mut debouncer = new_debouncer_opt::<_, ChangeWatcher>(debounce_config, move |result: DebounceEventResult| {
+         let tx = tx.clone();
+         rt.spawn(async move {
+             if let Err(err) = tx.send(result).await {
+diff --git a/src/http_auth.rs b/src/http_auth.rs
+new file mode 100644
+index 0000000..c3eeb0c
+--- /dev/null
++++ b/src/http_auth.rs
+@@ -0,0 +1,171 @@
++//! Bearer-token gate for the HTTP transport.
++//!
++//! Upstream serves `/mcp` to anyone who can reach the port. On a shared host that
++//! includes every local user, so with `OBSIDIAN_HTTP_TOKENS_FILE` set every HTTP
++//! request must carry `Authorization: Bearer <token>` for one of the tokens in that
++//! file (one per line, `#` comments and blank lines ignored). A set but unreadable or
++//! empty file is a startup error, never an open server. Tokens are never logged.
++
++use std::path::Path;
++use std::sync::Arc;
++
++use axum::http::{HeaderMap, StatusCode, header};
++use axum::response::{IntoResponse, Response};
++use zeroize::Zeroizing;
++
++pub const TOKENS_FILE_ENV: &str = "OBSIDIAN_HTTP_TOKENS_FILE";
++
++/// Tokens shorter than this are refused at load: a guessable token is no gate.
++const MIN_TOKEN_LEN: usize = 24;
++
++#[derive(Clone)]
++pub struct HttpAuth {
++    tokens: Arc<Vec<Zeroizing<Vec<u8>>>>,
++}
++
++impl HttpAuth {
++    pub fn from_tokens_text(text: &str) -> Result<Self, String> {
++        let mut tokens = Vec::new();
++        for (i, line) in text.lines().enumerate() {
++            let t = line.trim();
++            if t.is_empty() || t.starts_with('#') {
++                continue;
++            }
++            if t.len() < MIN_TOKEN_LEN || !t.bytes().all(|b| b.is_ascii_graphic()) {
++                return Err(format!(
++                    "token on line {} is shorter than {MIN_TOKEN_LEN} characters or not printable ASCII",
++                    i + 1
++                ));
++            }
++            tokens.push(Zeroizing::new(t.as_bytes().to_vec()));
++        }
++        if tokens.is_empty() {
++            return Err("no tokens".into());
++        }
++        Ok(Self {
++            tokens: Arc::new(tokens),
++        })
++    }
++
++    pub fn from_file(path: &Path) -> Result<Self, String> {
++        let text = Zeroizing::new(
++            std::fs::read_to_string(path)
++                .map_err(|e| format!("{TOKENS_FILE_ENV} {}: {e}", path.display()))?,
++        );
++        Self::from_tokens_text(&text)
++            .map_err(|e| format!("{TOKENS_FILE_ENV} {}: {e}", path.display()))
++    }
++
++    /// `None` when the variable is unset (open server, upstream behaviour);
++    /// `Some(Err)` when it is set but unusable, which callers must treat as fatal.
++    pub fn from_env() -> Option<Result<Self, String>> {
++        let raw = std::env::var_os(TOKENS_FILE_ENV)?;
++        if raw.is_empty() {
++            return Some(Err(format!("{TOKENS_FILE_ENV} is set but empty")));
++        }
++        Some(Self::from_file(Path::new(&raw)))
++    }
++
++    pub fn token_count(&self) -> usize {
++        self.tokens.len()
++    }
++
++    pub fn authorized(&self, headers: &HeaderMap) -> bool {
++        let Some(presented) = headers
++            .get(header::AUTHORIZATION)
++            .and_then(|v| v.as_bytes().strip_prefix(b"Bearer "))
++        else {
++            return false;
++        };
++        // Check every token so the time taken does not say which one was close.
++        self.tokens
++            .iter()
++            .fold(false, |hit, t| ct_eq(t, presented) | hit)
++    }
++}
++
++fn ct_eq(a: &[u8], b: &[u8]) -> bool {
++    if a.len() != b.len() {
++        return false;
++    }
++    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
++}
++
++pub async fn require_bearer(
++    axum::extract::State(auth): axum::extract::State<HttpAuth>,
++    request: axum::extract::Request,
++    next: axum::middleware::Next,
++) -> Response {
++    if auth.authorized(request.headers()) {
++        return next.run(request).await;
++    }
++    tracing::warn!(path = %request.uri().path(), "rejected HTTP request without a valid bearer token");
++    (
++        StatusCode::UNAUTHORIZED,
++        [(header::WWW_AUTHENTICATE, "Bearer")],
++        "unauthorized\n",
++    )
++        .into_response()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use axum::{Router, middleware, routing::get};
++
++    const T1: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
++    const T2: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
++
++    fn hdr(v: &str) -> HeaderMap {
++        let mut h = HeaderMap::new();
++        h.insert(header::AUTHORIZATION, v.parse().unwrap());
++        h
++    }
++
++    #[test]
++    fn parses_tokens_and_skips_comments() {
++        let a = HttpAuth::from_tokens_text(&format!("# nginx\n{T1}\n\n  {T2}  \n")).unwrap();
++        assert_eq!(a.token_count(), 2);
++    }
++
++    #[test]
++    fn refuses_empty_short_and_missing() {
++        assert!(HttpAuth::from_tokens_text("# only a comment\n\n").is_err());
++        assert!(HttpAuth::from_tokens_text("short\n").is_err());
++        assert!(HttpAuth::from_file(Path::new("/nonexistent/tokens")).is_err());
++    }
++
++    #[test]
++    fn checks_the_bearer() {
++        let a = HttpAuth::from_tokens_text(&format!("{T1}\n{T2}\n")).unwrap();
++        assert!(a.authorized(&hdr(&format!("Bearer {T1}"))));
++        assert!(a.authorized(&hdr(&format!("Bearer {T2}"))));
++        assert!(!a.authorized(&HeaderMap::new()));
++        assert!(!a.authorized(&hdr(T1)));
++        assert!(!a.authorized(&hdr(&format!("Basic {T1}"))));
++        assert!(!a.authorized(&hdr(&format!("Bearer {T1}x"))));
++        assert!(!a.authorized(&hdr(&format!("Bearer {}", &T1[1..]))));
++        assert!(!a.authorized(&hdr("Bearer ")));
++    }
++
++    #[tokio::test]
++    async fn middleware_returns_401_without_token_and_passes_with_it() {
++        let auth = HttpAuth::from_tokens_text(T1).unwrap();
++        let app = Router::new()
++            .route("/mcp", get(|| async { "ok" }))
++            .layer(middleware::from_fn_with_state(auth, require_bearer));
++        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let addr = listener.local_addr().unwrap();
++        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
++
++        let client = reqwest::Client::new();
++        let url = format!("http://{addr}/mcp");
++        let none = client.get(&url).send().await.unwrap();
++        assert_eq!(none.status().as_u16(), 401);
++        let wrong = client.get(&url).bearer_auth(T2).send().await.unwrap();
++        assert_eq!(wrong.status().as_u16(), 401);
++        let good = client.get(&url).bearer_auth(T1).send().await.unwrap();
++        assert_eq!(good.status().as_u16(), 200);
++        assert_eq!(good.text().await.unwrap(), "ok");
++    }
++}
+diff --git a/src/lib.rs b/src/lib.rs
+index 9ab8406..2477465 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -2,6 +2,7 @@ pub mod client;
+ pub mod config;
+ pub mod daemon;
+ pub mod error;
++pub mod http_auth;
+ pub mod models;
+ pub mod tools;
+ pub mod upgrade;
+diff --git a/src/main.rs b/src/main.rs
+index 9c38fac..dbefab0 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -13,6 +13,7 @@ use obsidian_mcp::config::{
+ use obsidian_mcp::daemon::bootstrap::{BootstrapConfig, ensure_daemon};
+ use obsidian_mcp::daemon::server::IpcEndpoint;
+ use obsidian_mcp::error::VaultError;
++use obsidian_mcp::http_auth::{HttpAuth, TOKENS_FILE_ENV, require_bearer};
+ use obsidian_mcp::tools::{ObsidianMcp, SemanticRuntime};
+ use obsidian_mcp::upgrade::BuildIdentity;
+ use obsidian_mcp::upgrade::orchestrator::{self, UpgradeOptions, UpgradeRunOutcome};
+@@ -94,6 +95,9 @@ async fn serve_http(
+         session::local::LocalSessionManager, tower::StreamableHttpService,
+     };
+ 
++    // Fail closed before anything listens: a set but unusable token file is fatal.
++    let http_auth = HttpAuth::from_env().transpose()?;
++
+     let mut mcp_config = StreamableHttpServerConfig::default();
+     mcp_config.stateful_mode = true;
+     mcp_config.json_response = true;
+@@ -119,9 +123,23 @@ async fn serve_http(
+             mcp_config,
+         );
+ 
+-    let mcp_router = Router::new()
++    let mut mcp_router = Router::new()
+         .nest_service("/mcp", mcp_service)
+         .layer(middleware::from_fn(tool_filter_middleware));
++    // Outermost layer, so an unauthenticated request never reaches the tool filter
++    // or the session manager. /health stays open: it reports version and note count.
++    match http_auth {
++        Some(auth) => {
++            tracing::info!(
++                tokens = auth.token_count(),
++                "HTTP bearer auth enforced on /mcp"
++            );
++            mcp_router = mcp_router.layer(middleware::from_fn_with_state(auth, require_bearer));
++        }
++        None => tracing::warn!(
++            "{TOKENS_FILE_ENV} unset: /mcp accepts unauthenticated requests from anyone who can reach the port"
++        ),
++    }
+ 
+     let app = Router::new()
+         .route("/health", get(move || health_handler(health_vault.clone())))
+@@ -414,7 +432,9 @@ fn print_help() {
+              OBSIDIAN_TOOLS          Tool filter: profile (full/core/read/minimal),\n    \
+                                      comma-separated allow-list, or !-prefixed deny-list\n    \
+              OBSIDIAN_MCP_DATA       External data dir for embeddings  [default: {{vault}}/.obsidian-mcp]\n    \
+-             OBSIDIAN_EXCLUDE_PATHS  Comma-separated exclusion globs   [default: none]",
++             OBSIDIAN_EXCLUDE_PATHS  Comma-separated exclusion globs   [default: none]\n    \
++             OBSIDIAN_HTTP_TOKENS_FILE  File of bearer tokens, one per line; when set,\n    \
++                                     /mcp answers 401 without one [default: unset, open]",
+         name = env!("CARGO_PKG_NAME"),
+         version = env!("CARGO_PKG_VERSION"),
+         description = env!("CARGO_PKG_DESCRIPTION"),
+diff --git a/src/tools/mod.rs b/src/tools/mod.rs
+index 9046dc6..05dba5b 100644
+--- a/src/tools/mod.rs
++++ b/src/tools/mod.rs
+@@ -348,7 +348,7 @@ impl ObsidianMcp {
+     }
+ }
+ 
+-#[tool_handler]
++#[tool_handler(router = self.tool_router)]
+ impl ServerHandler for ObsidianMcp {
+     fn get_info(&self) -> ServerInfo {
+         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+@@ -356,10 +356,25 @@ impl ServerHandler for ObsidianMcp {
+                 env!("CARGO_PKG_NAME"),
+                 env!("CARGO_PKG_VERSION"),
+             ))
+-            .with_instructions(
+-                "Obsidian vault MCP server. Provides tools to read, write, search, \
+-                 and navigate your Obsidian notes via direct filesystem access.",
+-            )
++            .with_instructions(server_instructions())
++    }
++}
++
++/// Connect-time instructions: the generic sentence, plus whatever the operator
++/// puts in `OBSIDIAN_INSTRUCTIONS_FILE` (a path) or `OBSIDIAN_INSTRUCTIONS`
++/// (inline). Vault-specific layout rules reach every client this way.
++fn server_instructions() -> String {
++    const BASE: &str = "Obsidian vault MCP server. Provides tools to read, write, search, \
++                        and navigate your Obsidian notes via direct filesystem access.";
++    let extra = std::env::var("OBSIDIAN_INSTRUCTIONS_FILE")
++        .ok()
++        .and_then(|path| std::fs::read_to_string(path).ok())
++        .or_else(|| std::env::var("OBSIDIAN_INSTRUCTIONS").ok())
++        .map(|s| s.trim().to_string())
++        .filter(|s| !s.is_empty());
++    match extra {
++        Some(extra) => format!("{BASE}\n\n{extra}"),
++        None => BASE.to_string(),
+     }
+ }
+ 
+diff --git a/src/vault/mod.rs b/src/vault/mod.rs
+index 31a97ec..2a3a74f 100644
+--- a/src/vault/mod.rs
++++ b/src/vault/mod.rs
+@@ -13,6 +13,7 @@ pub mod path;
+ pub mod periodic;
+ pub mod search_utils;
+ pub mod tantivy_index;
++pub mod watch_filter;
+ pub mod watcher;
+ pub mod wikilink;
+ 
+@@ -25,7 +26,6 @@ use std::path::{Path, PathBuf};
+ use std::sync::{Arc, Mutex, RwLock};
+ 
+ use chrono::{Local, NaiveDate};
+-use notify_debouncer_mini::Debouncer;
+ 
+ use crate::config::Config;
+ use crate::error::{VaultError, VaultResult};
+@@ -62,7 +62,7 @@ struct VaultInner {
+     /// Kept alive to sustain filesystem watching; never accessed after construction.
+     /// Wrapped in `Mutex` to guarantee `Sync` (`Debouncer` contains a `mpsc::Sender`
+     /// which is `Send` but not `Sync`).
+-    _watcher: Mutex<Option<Debouncer<notify::RecommendedWatcher>>>,
++    _watcher: Mutex<Option<watch_filter::ChangeDebouncer>>,
+ }
+ 
+ /// High-level facade over the vault filesystem, index, and watcher.
+diff --git a/src/vault/path.rs b/src/vault/path.rs
+index 267542c..1c22200 100644
+--- a/src/vault/path.rs
++++ b/src/vault/path.rs
+@@ -170,6 +170,15 @@ fn find_component(
+     requested: &OsStr,
+     original_path: &Path,
+ ) -> VaultResult<Option<OsString>> {
++    // An exact name is one stat; the scan below reads the whole directory and
++    // normalizes every entry, which made index builds quadratic in flat folders
++    // (13k notes in one folder: 230 s of startup). Linux only: a case-insensitive
++    // filesystem would accept another spelling here and lose the on-disk one.
++    #[cfg(target_os = "linux")]
++    if std::fs::symlink_metadata(directory.join(requested)).is_ok() {
++        return Ok(Some(requested.to_os_string()));
++    }
++
+     let entries = match std::fs::read_dir(directory) {
+         Ok(entries) => entries,
+         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+diff --git a/src/vault/watch_filter.rs b/src/vault/watch_filter.rs
+new file mode 100644
+index 0000000..e05b6ba
+--- /dev/null
++++ b/src/vault/watch_filter.rs
+@@ -0,0 +1,148 @@
++//! A `notify` watcher that forwards change events only.
++//!
++//! `notify`'s inotify backend subscribes to `IN_OPEN` alongside the change
++//! masks, so on Linux every read of a vault file reaches the watcher as an
++//! [`EventKind::Access`] event. `notify-debouncer-mini` erases event kinds, and
++//! the indexer answers a debounced event by reading the file, which raises the
++//! next open event: once a note has been read (by a tool call or by the
++//! indexer itself) it is reindexed every debounce window until the process
++//! exits, and every reindex commits the Tantivy index. Dropping access events
++//! before they reach the debouncer breaks the cycle. Index state depends only
++//! on create, modify, remove and rename events, which pass through unchanged;
++//! the close-after-write event is kept because it marks a completed write.
++
++use std::path::Path;
++
++use notify::event::{AccessKind, AccessMode};
++use notify::{
++    Config, Event, EventHandler, EventKind, RecommendedWatcher, RecursiveMode, Result, Watcher,
++    WatcherKind,
++};
++use notify_debouncer_mini::Debouncer;
++
++/// Debouncer over a [`ChangeWatcher`]: the handle every vault watcher keeps alive.
++pub type ChangeDebouncer = Debouncer<ChangeWatcher>;
++
++/// [`RecommendedWatcher`] that drops read-side [`EventKind::Access`] events.
++pub struct ChangeWatcher(RecommendedWatcher);
++
++/// Whether an event can change what the index should contain.
++pub fn is_change_event(kind: &EventKind) -> bool {
++    !matches!(
++        kind,
++        EventKind::Access(AccessKind::Any)
++            | EventKind::Access(AccessKind::Read)
++            | EventKind::Access(AccessKind::Open(_))
++            | EventKind::Access(AccessKind::Close(AccessMode::Any))
++            | EventKind::Access(AccessKind::Close(AccessMode::Read))
++            | EventKind::Access(AccessKind::Close(AccessMode::Execute))
++            | EventKind::Access(AccessKind::Close(AccessMode::Other))
++            | EventKind::Access(AccessKind::Other)
++    )
++}
++
++impl Watcher for ChangeWatcher {
++    fn new<F: EventHandler>(mut event_handler: F, config: Config) -> Result<Self> {
++        let inner = RecommendedWatcher::new(
++            move |event: Result<Event>| {
++                if let Ok(event) = &event
++                    && !is_change_event(&event.kind)
++                {
++                    return;
++                }
++                event_handler.handle_event(event);
++            },
++            config,
++        )?;
++        Ok(Self(inner))
++    }
++
++    fn watch(&mut self, path: &Path, recursive_mode: RecursiveMode) -> Result<()> {
++        self.0.watch(path, recursive_mode)
++    }
++
++    fn unwatch(&mut self, path: &Path) -> Result<()> {
++        self.0.unwatch(path)
++    }
++
++    fn configure(&mut self, option: Config) -> Result<bool> {
++        self.0.configure(option)
++    }
++
++    fn kind() -> WatcherKind {
++        RecommendedWatcher::kind()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind};
++
++    #[test]
++    fn read_side_access_events_are_not_change_events() {
++        for kind in [
++            EventKind::Access(AccessKind::Any),
++            EventKind::Access(AccessKind::Read),
++            EventKind::Access(AccessKind::Open(AccessMode::Any)),
++            EventKind::Access(AccessKind::Open(AccessMode::Read)),
++            EventKind::Access(AccessKind::Close(AccessMode::Read)),
++            EventKind::Access(AccessKind::Close(AccessMode::Any)),
++        ] {
++            assert!(!is_change_event(&kind), "{kind:?} must be dropped");
++        }
++    }
++
++    #[test]
++    fn change_events_pass() {
++        for kind in [
++            EventKind::Any,
++            EventKind::Create(CreateKind::File),
++            EventKind::Modify(ModifyKind::Data(DataChange::Any)),
++            EventKind::Modify(ModifyKind::Any),
++            EventKind::Remove(RemoveKind::File),
++            EventKind::Access(AccessKind::Close(AccessMode::Write)),
++            EventKind::Other,
++        ] {
++            assert!(is_change_event(&kind), "{kind:?} must pass");
++        }
++    }
++
++    /// Linux only: inotify is the backend that reports opens.
++    #[cfg(target_os = "linux")]
++    #[test]
++    fn reading_a_file_raises_no_event() {
++        use std::sync::mpsc;
++        use std::time::Duration;
++
++        let dir = tempfile::tempdir().unwrap();
++        let (tx, rx) = mpsc::channel::<Result<Event>>();
++        let mut watcher = ChangeWatcher::new(
++            move |event: Result<Event>| {
++                let _ = tx.send(event);
++            },
++            Config::default(),
++        )
++        .unwrap();
++        watcher
++            .watch(dir.path(), RecursiveMode::Recursive)
++            .unwrap();
++
++        let note = dir.path().join("note.md");
++        std::fs::write(&note, "# note\n").unwrap();
++        let first = rx
++            .recv_timeout(Duration::from_secs(5))
++            .expect("a write must produce an event")
++            .unwrap();
++        assert!(is_change_event(&first.kind), "{first:?}");
++        while rx.recv_timeout(Duration::from_millis(300)).is_ok() {}
++
++        for _ in 0..5 {
++            std::fs::read_to_string(&note).unwrap();
++        }
++        match rx.recv_timeout(Duration::from_millis(700)) {
++            Ok(event) => panic!("a read must not produce an event, got {event:?}"),
++            Err(_) => {}
++        }
++    }
++}
+diff --git a/src/vault/watcher.rs b/src/vault/watcher.rs
+index 74c26da..94db65d 100644
+--- a/src/vault/watcher.rs
++++ b/src/vault/watcher.rs
+@@ -3,22 +3,26 @@
+ //! Uses `notify-debouncer-mini` for 500ms debouncing and bridges events into a
+ //! spawned tokio task that updates the [`VaultIndex`].
+ //!
+-//! `notify-debouncer-mini` 0.5 erases event kinds (create/modify/delete/rename all
++//! `notify-debouncer-mini` erases event kinds (create/modify/delete/rename all
+ //! become `DebouncedEventKind::Any`). We disambiguate by checking the filesystem at
+ //! event time: path exists → reindex, path gone → remove.
++//!
++//! Read-side access events never reach the debouncer: see [`super::watch_filter`]
++//! for why forwarding them makes the reindex self-triggering.
+ 
+ use std::path::{Path, PathBuf};
+ use std::sync::{Arc, RwLock};
+ use std::time::Duration;
+ 
+ use notify::RecursiveMode;
+-use notify_debouncer_mini::{DebounceEventResult, Debouncer, new_debouncer};
++use notify_debouncer_mini::{Config as DebounceConfig, DebounceEventResult, new_debouncer_opt};
+ use tokio::runtime::Handle;
+ 
+ use super::exclude::ExcludeSet;
+ use super::index::VaultIndex;
+ use super::path as vault_path;
+ use super::tantivy_index::TantivyIndex;
++use super::watch_filter::{ChangeDebouncer, ChangeWatcher};
+ use crate::error::{VaultError, VaultResult};
+ 
+ const DEBOUNCE_TIMEOUT: Duration = Duration::from_millis(500);
+@@ -26,7 +30,7 @@ const EVENT_CHANNEL_CAPACITY: usize = 256;
+ 
+ /// Start watching `vault_root` for filesystem changes.
+ ///
+-/// Returns the [`Debouncer`] handle — the caller **must** keep it alive
++/// Returns the [`ChangeDebouncer`] handle — the caller **must** keep it alive
+ /// (e.g. store it in the `Vault` struct) or watching stops.
+ ///
+ /// Internally spawns a tokio task that receives debounced events, filters
+@@ -38,14 +42,15 @@ pub fn start_watcher(
+     tantivy: Option<Arc<TantivyIndex>>,
+     embedding_runtime: Option<super::embedding_runtime::EmbeddingRuntime>,
+     exclude: Arc<ExcludeSet>,
+-) -> VaultResult<Debouncer<notify::RecommendedWatcher>> {
++) -> VaultResult<ChangeDebouncer> {
+     let embedding_runtime = embedding_runtime
+         .as_ref()
+         .map(super::embedding_runtime::EmbeddingRuntime::downgrade);
+     let (tx, mut rx) = tokio::sync::mpsc::channel::<DebounceEventResult>(EVENT_CHANNEL_CAPACITY);
+     let rt = Handle::current();
+ 
+-    let mut debouncer = new_debouncer(DEBOUNCE_TIMEOUT, move |result: DebounceEventResult| {
++    let debounce_config = DebounceConfig::default().with_timeout(DEBOUNCE_TIMEOUT);
++    let mut debouncer = new_debouncer_opt::<_, ChangeWatcher>(debounce_config, move |result: DebounceEventResult| {
+         let tx = tx.clone();
+         rt.spawn(async move {
+             if let Err(e) = tx.send(result).await {
+@@ -104,11 +109,12 @@ pub fn start_watcher(
+     index: Arc<RwLock<VaultIndex>>,
+     tantivy: Option<Arc<TantivyIndex>>,
+     exclude: Arc<ExcludeSet>,
+-) -> VaultResult<Debouncer<notify::RecommendedWatcher>> {
++) -> VaultResult<ChangeDebouncer> {
+     let (tx, mut rx) = tokio::sync::mpsc::channel::<DebounceEventResult>(EVENT_CHANNEL_CAPACITY);
+     let rt = Handle::current();
+ 
+-    let mut debouncer = new_debouncer(DEBOUNCE_TIMEOUT, move |result: DebounceEventResult| {
++    let debounce_config = DebounceConfig::default().with_timeout(DEBOUNCE_TIMEOUT);
++    let mut debouncer = new_debouncer_opt::<_, ChangeWatcher>(debounce_config, move |result: DebounceEventResult| {
+         let tx = tx.clone();
+         rt.spawn(async move {
+             if let Err(e) = tx.send(result).await {
+@@ -554,7 +560,7 @@ mod tests {
+     fn call_start_watcher(
+         vault_root: PathBuf,
+         index: Arc<RwLock<VaultIndex>>,
+-    ) -> VaultResult<Debouncer<notify::RecommendedWatcher>> {
++    ) -> VaultResult<ChangeDebouncer> {
+         let exclude = Arc::new(ExcludeSet::build(vec![]).unwrap());
+         #[cfg(has_embeddings)]
+         {

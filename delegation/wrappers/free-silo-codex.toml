@@ -1,0 +1,15 @@
+# CODEX_HOME for codex-union inside free-silo; installed by free-silo on every run.
+# No hooks (the OptMem wake), no AGENTS.md, no skills: nothing private rides along.
+# Created 2026-09-27 after 36 runs on 09-16/17 were found carrying the wake and CLAUDE.md.
+approval_policy = "never"
+sandbox_mode = "danger-full-access"
+
+[features]
+memories = false
+hooks = false
+
+[model_providers.openrouter]
+name = "OpenRouter (local LiteLLM responses bridge)"
+base_url = "http://127.0.0.1:4101/v1"
+env_key = "OPENROUTER_API_KEY"
+wire_api = "responses"

@@ -1,0 +1,11 @@
+[Unit]
+Description=Evaluate pipeline health and own its outcome alarms
+Wants=network-online.target
+After=network-online.target
+OnFailure=brain-alarm@%n.service
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/alarms/env
+ExecStart=/usr/local/lib/alarms/brain-watchdog --state-dir /var/lib/alarms/state --vault ${LORE_ROOT}

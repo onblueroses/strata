@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""codex-search-bridge - Codex-hosted web search for free-silo, without the Codex login inside.
+
+Serves the SearXNG JSON API (GET /search?q=...&format=json) on 127.0.0.1. Each query runs the
+host's omp with the Codex login and only the web_search tool, then returns the answer and the
+sources. The silo reaches this with a bearer token that works nowhere but this machine; the
+Codex login stays in the host omp profile (a ticket, 2026-09-27).
+
+A query is untrusted text from a free model. The host omp gets no tool but web_search and no
+context files, so the worst a hostile query can do is cause another web search.
+"""
+import json, os, secrets, subprocess, sys, threading, time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+BIND = ("127.0.0.1", int(os.environ.get("CODEX_SEARCH_BRIDGE_PORT", "4102")))
+TOKEN_FILE = os.path.expanduser(os.environ.get("CODEX_SEARCH_BRIDGE_TOKEN_FILE", "~/.config/codex-search-bridge/token"))
+CONTEXT_OFF = os.path.join(os.path.dirname(os.path.realpath(__file__)), "free-silo-omp.yml")
+MODEL = os.environ.get("CODEX_SEARCH_BRIDGE_MODEL", "openai-codex/gpt-5.6-luna")
+SLOTS = threading.BoundedSemaphore(int(os.environ.get("CODEX_SEARCH_BRIDGE_SLOTS", "4")))
+MAX_QUERY = 500
+TIMEOUT = 150
+
+
+def token():
+    if not os.path.exists(TOKEN_FILE):
+        os.makedirs(os.path.dirname(TOKEN_FILE), mode=0o700, exist_ok=True)
+        fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(secrets.token_urlsafe(32))
+    return open(TOKEN_FILE).read().strip()
+
+
+def codex_search(query: str, recency: str | None) -> dict:
+    hint = f" Prefer results from the last {recency}." if recency else ""
+    prompt = (f"Call web_search exactly once with this query, then reply DONE.{hint}\n"
+              f"Query: {json.dumps(query)}")
+    cmd = ["omp", "-p", "--mode", "json", "--no-session", "--no-title", "--no-rules", "--no-skills",
+           "--config", CONTEXT_OFF, "--model", MODEL, "--tools", "web_search", "--max-time", "120", prompt]
+    done = subprocess.run(cmd, cwd="/tmp", stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                          timeout=TIMEOUT)
+    for line in done.stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if ev.get("type") == "tool_execution_end":
+            resp = ((ev.get("result") or {}).get("details") or {}).get("response") or {}
+            if resp:
+                return resp
+    raise RuntimeError(f"no web_search result (omp exit {done.returncode}): {done.stderr.strip()[-300:]}")
+
+
+class Handler(BaseHTTPRequestHandler):
+    def reply(self, code, body):
+        data = json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):
+        url = urlparse(self.path)
+        if url.path == "/health":
+            return self.reply(200, {"ok": True})
+        if not secrets.compare_digest(self.headers.get("Authorization", ""), f"Bearer {TOKEN}"):
+            return self.reply(401, {"error": "unauthorized"})
+        if url.path != "/search":
+            return self.reply(404, {"error": "not found"})
+        qs = parse_qs(url.query)
+        query = (qs.get("q") or [""])[0].strip()
+        if not query or len(query) > MAX_QUERY:
+            return self.reply(400, {"error": "q missing or too long"})
+        started = time.monotonic()
+        with SLOTS:
+            try:
+                resp = codex_search(query, (qs.get("time_range") or [None])[0])
+            except Exception as exc:  # the silo sees a failed engine, not a crash
+                print(f"search failed after {time.monotonic() - started:.1f}s: {exc}", file=sys.stderr, flush=True)
+                return self.reply(502, {"error": "codex search failed"})
+        results = [{"title": s.get("title") or s.get("url"), "url": s["url"],
+                    "content": s.get("snippet") or ""}
+                   for s in resp.get("sources") or [] if s.get("url")]
+        answers = [{"answer": resp["answer"]}] if resp.get("answer") else []
+        print(f"search ok in {time.monotonic() - started:.1f}s, {len(results)} sources", file=sys.stderr, flush=True)
+        self.reply(200, {"query": query, "results": results, "answers": answers,
+                         "suggestions": resp.get("relatedQuestions") or []})
+
+    def log_message(self, *args):  # queries are not logged
+        pass
+
+
+if __name__ == "__main__":
+    TOKEN = token()
+    ThreadingHTTPServer(BIND, Handler).serve_forever()

@@ -1,0 +1,7 @@
+[Unit]
+Description=Notify the operator when a monitored unit fails
+
+[Service]
+Type=oneshot
+# The alarm command deduplicates repeated failures per unit.
+ExecStart=/usr/local/lib/alarms/brain-alarm %i

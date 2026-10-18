@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# free-silo - run a command for a free, prompt-logging model endpoint inside a bubblewrap silo.
+#
+# The process sees: /usr and /etc read-only, the omp/codex installs read-only, a fake $HOME
+# (~/.local/share/free-silo/home: the silo's own omp profile and codex-union CODEX_HOME, no
+# other credentials), one jail directory as cwd, and the network. Nothing else of $HOME exists,
+# so neither the harness nor the model can read the vault, keys or memory, whatever it is told.
+# Env is cleared except for the free-route keys.
+#
+#   free-silo [--in PATH]... [--out DIR] [--offline] -- CMD [ARGS...]
+#       run CMD in a fresh jail (its cwd). --in copies a reviewed, public input into the jail
+#       first; --out copies what the run wrote back to DIR afterwards. DIR itself is never
+#       visible to the model.
+#   free-silo --verify                                   run the leak checks and record the
+#                                                        verified harness versions
+#
+# Runs refuse when the installed omp or codex version differs from the last --verify: a harness
+# update can start attaching context again (a ticket), so it has to pass the checks first.
+set -uo pipefail
+
+SILO="${FREE_SILO_ROOT:-$HOME/.local/share/free-silo}"
+SILO_HOME="$SILO/home"
+VERIFIED="$SILO/VERIFIED"
+ME="$(readlink -f "$0")"
+
+die() { echo "free-silo: $*" >&2; exit 2; }
+command -v bwrap >/dev/null || die "bwrap missing"
+[[ -d "$SILO_HOME" ]] || die "missing $SILO_HOME"
+
+OMP_BIN="$(readlink -f "$(command -v omp)")" || die "omp not found"
+CODEX_BIN="$(readlink -f "$(command -v codex)")" || die "codex not found"
+OMP_DIR="$(dirname "$OMP_BIN")"
+CODEX_DIR="$(dirname "$(dirname "$CODEX_BIN")")"
+
+# Versioned configs, installed on every run so the silo cannot drift from the repo.
+install_config() {
+  local src; src="$(dirname "$ME")"
+  mkdir -p "$SILO_HOME/.omp/agent" "$SILO_HOME/.config/codex-union" "$SILO/jails"
+  install -m 600 "$src/free-silo-omp.yml" "$SILO_HOME/.omp/agent/config.yml" &&
+  install -m 600 "$src/free-silo-codex.toml" "$SILO_HOME/.config/codex-union/config.toml" ||
+    die "cannot install silo config from $src"
+}
+install_config
+
+versions() { printf 'omp %s\ncodex %s\n' "$("$OMP_BIN" --version 2>/dev/null | head -1)" "$("$CODEX_BIN" --version 2>/dev/null | head -1)"; }
+
+keys() {
+  local f="${DELEGATE_ENV_FILE:-$HOME/.config/delegate/.env}" k v
+  for k in OPENROUTER_API_KEY TAVILY_API_KEY; do
+    v="${!k:-}"
+    [[ -z "$v" && -r "$f" ]] && v="$(grep -E "^$k=" "$f" | head -1 | cut -d= -f2-)"
+    [[ -n "$v" ]] && printf '%s\0%s\0' "$k" "$v"
+  done
+  v="$(cat "${CODEX_SEARCH_BRIDGE_TOKEN_FILE:-$HOME/.config/codex-search-bridge/token}" 2>/dev/null)"
+  [[ -n "$v" ]] && printf '%s\0%s\0' SEARXNG_TOKEN "$v"
+}
+
+run() {  # run JAIL NET CMD...
+  local jail="$1" net="$2"; shift 2
+  local args=(
+    --unshare-all --die-with-parent --new-session
+    --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/bin /sbin
+    --symlink usr/lib /lib --symlink usr/lib /lib64
+    --ro-bind /etc /etc --proc /proc --dev /dev --tmpfs /tmp --tmpfs /run
+    --bind "$SILO_HOME" "$HOME"
+    --ro-bind "$OMP_DIR" "$OMP_DIR" --ro-bind "$CODEX_DIR" "$CODEX_DIR"
+    --bind "$jail" "$jail" --chdir "$jail"
+    --clearenv --setenv HOME "$HOME" --setenv USER "$USER" --setenv LANG "${LANG:-C.UTF-8}"
+    --setenv PATH "$OMP_DIR:$(dirname "$CODEX_BIN"):/usr/bin" --setenv TERM "${TERM:-dumb}"
+    --setenv TMPDIR /tmp --setenv CODEX_HOME "$HOME/.config/codex-union"
+  )
+  [[ "$net" == 1 ]] && args+=( --share-net --ro-bind /run/systemd/resolve /run/systemd/resolve )
+  local k v
+  while IFS= read -r -d '' k && IFS= read -r -d '' v; do args+=( --setenv "$k" "$v" ); done < <(keys)
+  bwrap "${args[@]}" "$@"
+}
+
+verify() {
+  local private_notes="${FREE_SILO_PRIVATE_NOTES_ROOT:-}"
+  [[ "$private_notes" = /* && -d "$private_notes" ]] ||
+    die "FREE_SILO_PRIVATE_NOTES_ROOT must name an existing absolute private notes tree before verification"
+  local t; t="$(mktemp -d "$SILO/verify.XXXXXX")" || die "mktemp"
+  local ok=1 fail=() dump="$t/prompt.json"
+  echo "Canary: the word is ZEBRA-CANARY-7731." > "$t/AGENTS.md"
+  cp "$t/AGENTS.md" "$t/CLAUDE.md"
+  cat > "$t/dump.ts" <<'EOF'
+import { writeFileSync } from "node:fs";
+export default function (pi: any) {
+  pi.on("before_agent_start", async (event: any) => {
+    writeFileSync(process.env.OMP_DUMP!, JSON.stringify(event.systemPrompt));
+    process.exit(0);
+  });
+}
+EOF
+  # 1. Isolation: $HOME outside the silo is invisible (positive control: the jail is visible).
+  run "$t" 0 /usr/bin/test -r "$t/AGENTS.md" || fail+=("jail not readable")
+  for p in "$HOME/.ssh" "$HOME/.optmem" "$private_notes" "$HOME/Work" "$HOME/.claude" "$HOME/.codex/auth.json" "$HOME/.config/delegate/.env"; do
+    run "$t" 0 /usr/bin/test -e "$p" && fail+=("visible in silo: $p")
+  done
+  # The silo has its own omp database at the same path; it must never hold a Codex login.
+  if [[ -f "$SILO_HOME/.omp/agent/agent.db" ]] && command -v sqlite3 >/dev/null; then
+    [[ "$(sqlite3 "$SILO_HOME/.omp/agent/agent.db" "select count(*) from auth_credentials where provider <> 'openrouter'" 2>/dev/null || echo err)" == 0 ]] ||
+      fail+=("silo omp database holds a non-OpenRouter credential (or could not be read)")
+  fi
+  run "$t" 0 /usr/bin/sh -c 'env | grep -qiE "^(ANTHROPIC|OPENAI|GITHUB|GH_|HF_|RUNPOD|DEEPGRAM|LINEAR)"' && fail+=("private env var leaks in")
+  # 2. omp: no context files reach the system prompt, offline (never touches the network).
+  run "$t" 0 /usr/bin/env OMP_DUMP="$dump" "$OMP_BIN" -p --no-session --no-title --no-rules --no-skills \
+      --model openrouter/thinkingmachines/inkling-small:free -e "$t/dump.ts" "hi" </dev/null >/dev/null 2>&1
+  if [[ ! -s "$dump" ]]; then fail+=("omp prompt dump missing (instrument failed)")
+  elif grep -q ZEBRA-CANARY "$dump"; then fail+=("omp attached a context file")
+  fi
+  # Positive control: with the providers re-enabled the same dump must show the canary.
+  printf 'disabledProviders: []\n' > "$t/enable.yml"
+  run "$t" 0 /usr/bin/env OMP_DUMP="$t/prompt-control.json" "$OMP_BIN" -p --no-session --no-title \
+      --config "$t/enable.yml" --model openrouter/thinkingmachines/inkling-small:free -e "$t/dump.ts" "hi" </dev/null >/dev/null 2>&1
+  grep -qs ZEBRA-CANARY "$t/prompt-control.json" || fail+=("omp positive control did not fire (check cannot see context files)")
+  # 3. codex: capture the request on a local listener in an offline namespace.
+  local cap="$t/codex-request.txt"
+  cat > "$t/cap.py" <<'EOF'
+import http.server, sys
+out = sys.argv[1]
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(s): s.send_response(200); s.end_headers(); s.wfile.write(b"ok")
+    def do_POST(s):
+        b = s.rfile.read(int(s.headers.get("content-length", 0)))
+        open(out, "ab").write(b + b"\n")
+        s.send_response(400); s.end_headers(); s.wfile.write(b'{"error":{"message":"capture"}}')
+    def log_message(*a): pass
+http.server.HTTPServer(("127.0.0.1", 4101), H).serve_forever()
+EOF
+  run "$t" 0 /usr/bin/sh -c "python3 cap.py '$cap' & sleep 1; OPENROUTER_API_KEY=dummy timeout 40 codex exec --skip-git-repo-check -s read-only -c project_doc_max_bytes=0 -c model_provider=openrouter -c model_reasoning_effort=none --model silo-canary 'hi' </dev/null >/dev/null 2>&1; kill %1" 2>/dev/null
+  if [[ ! -s "$cap" ]]; then fail+=("codex request capture missing (instrument failed)")
+  elif grep -qE "ZEBRA-CANARY|You are awake|the operator rules on direction" "$cap"; then fail+=("codex attached private context")
+  fi
+  # Positive control: without project_doc_max_bytes=0 codex must send the canary AGENTS.md.
+  run "$t" 0 /usr/bin/sh -c "python3 cap.py '$t/codex-control.txt' & sleep 1; OPENROUTER_API_KEY=dummy timeout 40 codex exec --skip-git-repo-check -s read-only -c model_provider=openrouter -c model_reasoning_effort=none --model silo-canary 'hi' </dev/null >/dev/null 2>&1; kill %1" 2>/dev/null
+  grep -qs ZEBRA-CANARY "$t/codex-control.txt" || fail+=("codex positive control did not fire")
+  if (( ${#fail[@]} )); then
+    printf 'free-silo verify FAILED:\n' >&2; printf '  - %s\n' "${fail[@]}" >&2
+    echo "evidence kept in $t" >&2; exit 1
+  fi
+  { versions; echo "verified $(date -Is)"; } > "$VERIFIED"
+  rm -rf -- "$t"
+  echo "free-silo verify passed:"; cat "$VERIFIED"
+}
+
+if [[ "${1:-}" == --verify ]]; then verify; exit; fi
+
+JAIL="" NET=1 OUT="" INS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --jail) JAIL="$2"; shift 2 ;;
+    --in) INS+=("$2"); shift 2 ;;
+    --out) OUT="$2"; shift 2 ;;
+    --offline) NET=0; shift ;;
+    --) shift; break ;;
+    *) die "usage: free-silo [--in PATH]... [--out DIR] [--offline] -- CMD... | --verify" ;;
+  esac
+done
+[[ $# -gt 0 ]] || die "no command"
+[[ -f "$VERIFIED" ]] || die "never verified; run: free-silo --verify"
+diff -q <(versions) <(head -2 "$VERIFIED") >/dev/null || \
+  die "harness changed since last verify ($(versions | tr '\n' ' ')); run: free-silo --verify"
+if [[ -z "$JAIL" ]]; then JAIL="$(mktemp -d "$SILO/jails/run.XXXXXX")" || die "mktemp"; fi
+mkdir -p "$JAIL"
+for p in "${INS[@]}"; do cp -r -- "$p" "$JAIL"/ || die "cannot copy input $p"; done
+run "$JAIL" "$NET" "$@"
+rc=$?
+if [[ -n "$OUT" ]]; then
+  mkdir -p "$OUT" && rsync -a --exclude='.free-silo-*' "$JAIL"/ "$OUT"/ || { echo "free-silo: copy-back to $OUT failed; outputs stay in $JAIL" >&2; exit 2; }
+fi
+exit $rc

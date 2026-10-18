@@ -1,0 +1,15 @@
+[Unit]
+Description=Headless Obsidian Sync client for the shared vault
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=@BRAIN_USER@
+Group=@BRAIN_USER@
+Environment=HOME=@BRAIN_HOME@
+ExecStart=@BRAIN_BIN_DIR@/brain-obsidian-sync
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

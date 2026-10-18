@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# codex-union - codex exec wrapper for an explicitly chosen free OpenRouter model.
+#
+# Route: codex -> local LiteLLM /v1/responses bridge (litellm-openrouter.service,
+# 127.0.0.1:4101) -> OpenRouter chat-completions. Codex 0.154 hard-rejects
+# wire_api="chat", so the bridge is mandatory, not a convenience.
+#
+# The previous default model retired upstream. Select a current model with
+# --model or CODEX_UNION_MODEL before dispatch. Free endpoints log prompts;
+# the silo keeps private files and credentials out of their context.
+#
+# No telemetry, breaker, or cache: those wrappers model ChatGPT subscription
+# quota semantics, which do not apply to a free OpenRouter endpoint.
+#
+# Usage:
+#   codex-union "prompt"
+#   codex-union --file prompt.md
+#   echo "prompt" | codex-union
+#
+# Flags:
+#   --file PATH      Read prompt from file
+#   --cwd DIR        Run with DIR as the working directory
+#   --oneshot        Sandbox read-only (default: full access, matching codex-fast)
+#   --sandbox MODE   read-only | workspace-write | danger-full-access
+#   --web-search on|off   (default off; the model is unbranded, keep its reach narrow)
+#   --resume ID|last Continue a stored codex session
+#   --timeout SECS   Wall-clock timeout (default 1800)
+#   --raw            Emit the Codex JSONL event stream
+#   --model SLUG     Override the model_name served by the bridge
+#
+# Exit codes: 0 ok, 1 usage, 2 codex error, 5 empty output.
+# Adding another OpenRouter model: add it to ~/.config/delegate/litellm-openrouter.yaml
+# and restart litellm-openrouter.service, then pass --model <model_name>.
+
+set -uo pipefail
+umask 077
+
+MODEL="${CODEX_UNION_MODEL:-}"
+BRIDGE_URL="http://127.0.0.1:4101"
+TIMEOUT=1800
+RAW=0
+PROMPT=""
+PROMPT_FILE=""
+CWD=""
+RESUME=""
+SANDBOX=""
+MODE="agentic"
+WEBSEARCH="off"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --file) PROMPT_FILE="${2:-}"; shift 2 ;;
+    --model) MODEL="${2:-}"; shift 2 ;;
+    --cwd) CWD="${2:-}"; shift 2 ;;
+    --timeout) TIMEOUT="${2:-}"; shift 2 ;;
+    --resume) RESUME="${2:-}"; shift 2 ;;
+    --sandbox) SANDBOX="${2:-}"; shift 2 ;;
+    --web-search) WEBSEARCH="${2:-}"; shift 2 ;;
+    --oneshot) MODE="oneshot"; shift ;;
+    --agentic) MODE="agentic"; shift ;;
+    --raw) RAW=1; shift ;;
+    -h|--help) sed -n '2,/^set -uo/p' "$0" | sed -e '$d' -e 's/^# \?//' >&2; exit 1 ;;
+    --) shift; PROMPT="$*"; break ;;
+    -*) echo "codex-union: unknown flag: $1" >&2; exit 1 ;;
+    *) PROMPT="$*"; break ;;
+  esac
+done
+
+case "$SANDBOX" in
+  ""|read-only|workspace-write|danger-full-access) ;;
+  *) echo "codex-union: --sandbox expects read-only|workspace-write|danger-full-access" >&2; exit 1 ;;
+esac
+[[ -n "$MODEL" ]] || { echo "codex-union: select a current model with --model or CODEX_UNION_MODEL" >&2; exit 1; }
+case "$WEBSEARCH" in
+  on|true|1|off|false|0) ;;
+  *) echo "codex-union: --web-search expects on|off" >&2; exit 1 ;;
+esac
+if [[ -n "$RESUME" && -n "$CWD" ]]; then
+  echo "codex-union: --resume continues in the session's original cwd; drop --cwd" >&2; exit 1
+fi
+
+if [[ -n "$PROMPT_FILE" ]]; then
+  [[ -f "$PROMPT_FILE" ]] || { echo "codex-union: file not found: $PROMPT_FILE" >&2; exit 1; }
+  PROMPT="$(cat "$PROMPT_FILE")"
+elif [[ -z "$PROMPT" ]] && [[ ! -t 0 ]]; then
+  PROMPT="$(cat)"
+fi
+[[ -z "$PROMPT" ]] && { echo "codex-union: no prompt" >&2; exit 1; }
+
+# Key: the bridge reads OPENROUTER_API_KEY from its own EnvironmentFile; codex still
+# needs env_key present to build a request, so load the same file here.
+if [[ -z "${OPENROUTER_API_KEY:-}" ]] && [[ -f "${DELEGATE_ENV_FILE:-$HOME/.config/delegate/.env}" ]]; then
+  set -a; source "${DELEGATE_ENV_FILE:-$HOME/.config/delegate/.env}"; set +a
+fi
+[[ -z "${OPENROUTER_API_KEY:-}" ]] && { echo "codex-union: OPENROUTER_API_KEY not set (~/.config/delegate/.env)" >&2; exit 1; }
+
+# Start the local bridge only when this wrapper needs it; no inference in this check.
+"$(dirname -- "$(readlink -f -- "$0")")/ensure-provider-bridge" openrouter || exit 2
+
+if [[ -n "$RESUME" ]]; then
+  ARGS=( exec resume )
+  if [[ "$RESUME" == "last" ]]; then ARGS+=( --last - ); else ARGS+=( "$RESUME" - ); fi
+  ARGS+=( --skip-git-repo-check )
+else
+  ARGS=( exec --skip-git-repo-check )
+fi
+
+if [[ -n "$SANDBOX" ]]; then
+  case "$SANDBOX" in
+    danger-full-access) ARGS+=( --dangerously-bypass-approvals-and-sandbox ) ;;
+    *) if [[ -n "$RESUME" ]]; then ARGS+=( -c "sandbox_mode=\"$SANDBOX\"" ); else ARGS+=( -s "$SANDBOX" ); fi ;;
+  esac
+elif [[ "$MODE" == "oneshot" ]]; then
+  if [[ -n "$RESUME" ]]; then ARGS+=( -c 'sandbox_mode="read-only"' ); else ARGS+=( -s read-only ); fi
+else
+  ARGS+=( --dangerously-bypass-approvals-and-sandbox )
+fi
+
+case "$WEBSEARCH" in
+  on|true|1)   ARGS+=( -c tools.web_search=true ) ;;
+  off|false|0) ARGS+=( -c tools.web_search=false ) ;;
+esac
+
+# Free bridge calls carry no reasoning field by default. Limits belong to the
+# chosen model's bridge configuration, not to a retired model's metadata.
+ARGS+=(
+  -c model_provider="openrouter"
+  -c model_reasoning_effort="none"
+  --model "$MODEL"
+)
+
+# Free endpoint logs prompts: codex runs inside free-silo (a ticket). The model sees an empty
+# jail and the silo's own CODEX_HOME (no hooks, AGENTS.md, skills or credentials); project docs
+# are dropped too. --cwd DIR receives the files the run wrote, afterwards.
+ARGS+=( -c project_doc_max_bytes=0 )
+JAIL="$(mktemp -d "${FREE_SILO_ROOT:-$HOME/.local/share/free-silo}/jails/union.XXXXXX")" || exit 2
+SILO=( --jail "$JAIL" )
+[[ -n "$CWD" ]] && SILO+=( --out "$CWD" )
+LAST_MESSAGE_FILE="$JAIL/.free-silo-last-message"
+EVENT_FILE="$(mktemp)" || exit 2
+trap 'rm -f -- "$EVENT_FILE"' EXIT
+
+ARGS+=( --json --output-last-message "$LAST_MESSAGE_FILE" )
+
+EXIT=0
+printf '%s' "$PROMPT" | timeout "$TIMEOUT" free-silo "${SILO[@]}" -- codex "${ARGS[@]}" >"$EVENT_FILE" 2>&1 || EXIT=$?
+
+if command -v jq >/dev/null 2>&1; then
+  SID=$(jq -r -R 'fromjson? // empty | select(.type=="thread.started") | .thread_id // empty' "$EVENT_FILE" 2>/dev/null | head -n1)
+  [[ -n "$SID" ]] && echo "codex-union: session $SID (follow-up: codex-union --resume $SID \"...\")" >&2
+fi
+
+if [[ "$EXIT" -ne 0 ]]; then
+  [[ "$EXIT" -eq 124 ]] && echo "codex-union: timeout after ${TIMEOUT}s" >&2 || echo "codex-union: codex exec exit=$EXIT" >&2
+  cat -- "$EVENT_FILE" >&2
+  exit 2
+fi
+
+if [[ "$RAW" -eq 1 ]]; then
+  cat -- "$EVENT_FILE"
+  exit 0
+fi
+
+if ! LC_ALL=C grep -q '[^[:space:]]' "$LAST_MESSAGE_FILE"; then
+  echo "codex-union: empty content from codex" >&2
+  cat -- "$EVENT_FILE" >&2
+  exit 5
+fi
+
+cat -- "$LAST_MESSAGE_FILE"

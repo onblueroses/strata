@@ -1,0 +1,8 @@
+[Unit]
+Description=Move files under retired vault roots into captures
+
+[Service]
+Type=oneshot
+User=@BRAIN_USER@
+EnvironmentFile=/etc/brain/sweep.env
+ExecStart=/usr/bin/python3 @BRAIN_BIN_DIR@/sweep-retired-paths.py

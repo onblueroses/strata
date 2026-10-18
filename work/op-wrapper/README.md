@@ -1,0 +1,5 @@
+# Operator wrapper
+
+`op-wrapper` is a root-owned convenience command for bounded diagnosis and restarts. It checks a root-owned allowlist at `/etc/worker/op-allow.json`, logs invoking user, ticket and outcome to syslog, and never takes a shell command. It can list and tail allowlisted pm2 apps, read files below named roots while refusing secret-looking paths, and restart an allowlisted systemd unit or pm2 app. A target has a restart rate limit. It cannot stop, start, enable, edit or deploy.
+
+Configure local units, users and read roots in [op-allow.example.json](op-allow.example.json). Install the command root-owned, grant the intended worker a sudoers rule for this one path using [sudoers.example](sudoers.example), and keep the allowlist root-owned and not group writable. `op-wrapper --ticket ABC-N restart-unit example-api.service` shows the call shape; use a real ticket identifier at runtime. The worker's general root authority follows the ticket and phone gate rules in [the work system](../README.md); this helper does not widen them.

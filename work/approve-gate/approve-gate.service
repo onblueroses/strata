@@ -1,0 +1,19 @@
+[Unit]
+Description=Approval page for worker requests on the tailnet
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+User=approve-gate
+EnvironmentFile=/etc/approve-gate/env
+ExecStart=/usr/local/lib/approve-gate/approve-gate
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/approve-gate
+
+[Install]
+WantedBy=multi-user.target

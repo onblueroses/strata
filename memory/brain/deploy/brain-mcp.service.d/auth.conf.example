@@ -1,0 +1,5 @@
+[Service]
+# The source file must be readable by systemd and contain a long random token.
+# A set but missing or invalid token file makes the patched server fail closed.
+LoadCredential=tokens:@BRAIN_TOKEN_FILE@
+Environment=OBSIDIAN_HTTP_TOKENS_FILE=%d/tokens
