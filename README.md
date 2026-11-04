@@ -1,103 +1,86 @@
 # Strata
 
-One person's working setup for running Claude Code, Codex, DeepSeek and Kimi as a team: the shared
-instructions, hooks, memory, ticket queue, delegation routes and skills, plus the reasons behind each rule.
-It is a real setup, copied out and anonymized, not a framework written for a demo.
+A working setup for running several AI coding agents as one team: Claude Code, Codex, DeepSeek and Kimi
+share one set of instructions and one memory. They hand work to each other, and they pick up tickets from a
+queue on their own.
 
-Snapshot of 2026-10-17. [runtime.md](runtime.md) explains how the copy was made.
+Everything here comes from a setup in daily use. Snapshot of 2026-10-17.
 
-## Ideas worth taking
+## What it does
 
-You don't need the whole thing. Most visitors will want one or two of these:
+- **One instruction file for every agent.** [AGENTS.md](AGENTS.md) tells all four runtimes how to work, and
+  each one adds a few lines of its own.
+- **Shared memory.** Agents write short one-line notes ([OptMem](memory/optmem/README.md)). At the start of each
+  session a hook shows the agent the notes that matter, so it picks up where the last one stopped.
+- **Delegation.** A main session can send work to a stronger or cheaper model, or to a free one, through small
+  command-line wrappers.
+- **A ticket queue that runs itself.** Tickets filed in Linear are picked up by a dispatcher. It starts an agent
+  on the laptop or the server, and that agent reports back on the ticket.
+- **A team notebook.** An Obsidian vault holds what the team knows. Agents read and write it through an MCP
+  server.
+- **Skills.** Reusable methods for research, outreach, triage, deploying and wrapping up a session.
 
-- **One contract, four runtimes.** Every agent reads the same [AGENTS.md](AGENTS.md). Each runtime adds only a
-  few lines of its own, so changing a rule means editing one file.
-- **Privacy gates that fail closed.** Hooks inspect outbound commands (`git push`, `gh` writes) and refuse
-  when a scan finds something, fails or times out. A scanner error never counts as a clean result. The verdict
-  policy is [proved in Bend](claude/hooks/privacy-decision/README.md) and compiled into a shell table.
-- **Memory as one-line notes.** [OptMem](memory/optmem/README.md) stores facts, state, events and pointers as
-  280-byte lines in an append-only log. A hook prints the relevant ones when a session starts. Long documents
-  live elsewhere, and the log points to them.
-- **One claimer for queued work.** Agents, the operator and a messaging assistant file Linear tickets. A single
-  [dispatcher](work/README.md) claims each one and starts a fresh worker over a forced-command SSH key. A
-  ticket counts as done when the worker posts a signed outcome comment, not when its process exits.
-- **Phone approvals only where they matter.** The operator's request is enough for deploys and root work.
-  Four things still need a tap on the phone: spending money, sending messages as the operator, disclosing
-  secrets, and destruction with no way back.
-  [Rulings](decisions/2026-10-13-four-tap-only-gates.md).
-- **Free models in a sandbox.** Free-tier harnesses run inside a [bubblewrap silo](decisions/2026-09-27-free-model-silo.md)
-  with a fake home directory and a filtered network, because they had been attaching private files to prompts.
-- **Rules that say when to drop them.** Each of the [decision records](decisions/README.md) gives the rule,
-  the failure that produced it, and the evidence that would justify reopening it.
+## The agents
+
+| Agent | Role | Lives in |
+|---|---|---|
+| **Claude Code** | Main session. Hooks load memory at start and restore context after compaction | [claude/](claude/README.md) |
+| ↳ orchestrator | Plans and hands heavy work to other models, then checks and combines the results | [claude/agents/](claude/agents/) |
+| ↳ code-reviewer, quick-research, web-mapper, knowledge-lookup | Small helpers for review, quick lookups, web research and memory search | [claude/agents/](claude/agents/) |
+| **Codex** | Equal main session, and the queue's usual worker | [codex/](codex/README.md) |
+| ↳ load-bearing worker, adversarial reviewer | Strong tier, for hard work and reviews that try to break things | [codex/agents/](codex/agents/) |
+| ↳ implementation worker | Middle tier, for bounded coding tasks | [codex/agents/](codex/agents/) |
+| ↳ mechanical worker | Cheap tier, for bulk and repetitive work | [codex/agents/](codex/agents/) |
+| ↳ docs / systems researcher, knowledge lookup | Read-only research and memory search | [codex/agents/](codex/agents/) |
+| **DeepSeek** | A third main session with its own profile, plus fast and pro tiers for delegated work | [deepseek/](deepseek/README.md) |
+| **Kimi** | Config and instructions for Kimi Code | [kimi/](kimi/README.md) |
+| **Free models** | Free web research and general tasks, run in a sandbox | [delegation/](delegation/README.md) |
+| **Dispatcher** | Picks up queued tickets and starts one worker per ticket | [work/dispatcher/](work/dispatcher/) |
+| **Steering agent** | Watches the ticket stream, files and labels tickets, never does the work | [work/](work/README.md) |
+| **Messaging assistant** | A personal assistant reached only by chat. It files tickets and suggests vault edits | [assistant-bridge/](assistant-bridge/README.md) |
 
 ## How it fits together
 
 ```text
-              AGENTS.md (one contract)
+              AGENTS.md (shared instructions)
                         │
      ┌──────────────┬───┴──────────┬──────────────┐
   Claude Code     Codex       DeepSeek         Kimi
-     │ hooks: memory wake, privacy gates, compaction restore
+     │   │                         ▲
+     │   └── delegate ─────────────┘ (and free models)
      ▼
-  OptMem notes ◀── written by primaries, proposed by delegates
-     │ points to
-     ▼
-  notes tree · team Obsidian vault · decision records
+  memory notes · team vault · decision records
 
-  operator / assistant / agents ──ticket──▶ Linear ──webhook──▶ dispatcher ──SSH──▶ worker (laptop | vps)
-                                                                     ▲                    │
-                                                    phone approval ──┘     signed outcome ┘
+  you / assistant / agents ──ticket──▶ Linear ──▶ dispatcher ──▶ worker (laptop or server) ──▶ reply on ticket
 ```
 
-## What's inside
+## What's in the repo
 
 | Folder | Contents |
 |---|---|
-| [AGENTS.md](AGENTS.md) | The shared contract: principles, approval boundaries, memory and ledger rules |
-| [claude/](claude/README.md) | Agent definitions, hooks, privacy gates and their tests, example settings |
-| [codex/](codex/README.md) | Roles, hooks and a link-only installer with an offline `--check` |
-| [deepseek/](deepseek/README.md), [kimi/](kimi/README.md) | Primary profile and installer; provider config |
-| [memory/](memory/README.md) | OptMem method and Bend selection layer; the team vault's rule book, sweep and MCP server |
-| [work/](work/README.md) | Webhook receiver, dispatcher, workers, phone approval gate, alarms |
-| [assistant-bridge/](assistant-bridge/README.md) | Gives a messaging-only assistant a reviewed slice of the vault and lets it file tickets and open PRs |
-| [delegation/](delegation/README.md) | Codex tiers, DeepSeek routes, the free-model silo, a portable `codex-run.py` |
-| [skills/](skills/README.md) | Research atlases, outreach, triage, deployment, session continuity, visuals |
-| [reference/](reference/README.md) | The documents the contract opens on cue |
-| [decisions/](decisions/README.md) | 29 rulings with reasons and reopening bars |
-| [integrations/](integrations/README.md) | Portable hook adapters for wiring the same contracts to your own scripts |
+| [AGENTS.md](AGENTS.md) | The shared instructions |
+| [claude/](claude/README.md), [codex/](codex/README.md), [deepseek/](deepseek/README.md), [kimi/](kimi/README.md) | Each runtime's agents, hooks, config and installer |
+| [memory/](memory/README.md) | OptMem notes and the team vault |
+| [work/](work/README.md) | Ticket queue: webhook receiver, dispatcher, workers, alerts |
+| [delegation/](delegation/README.md) | Wrappers for sending work to other models |
+| [skills/](skills/README.md) | Research, outreach, triage, deploy, session continuity, diagrams |
+| [reference/](reference/README.md) | Longer how-tos that the instructions point to |
+| [decisions/](decisions/README.md) | Why each rule exists, and when to change it |
+| [integrations/](integrations/README.md) | Adapters for wiring the hooks to your own scripts |
 
-## Using a piece of it
+## Using it
 
-1. Start with [AGENTS.md](AGENTS.md) and change the approval boundaries to fit you: who approves, what counts
-   as irreversible, which providers are off limits.
-2. Take one layer at a time. Each folder's README lists its dependencies, how its parts talk to each other,
-   and which values are placeholders (`.example` files show the shape).
-3. Merge settings into your own files rather than replacing them, and approve hook trust in each runtime
-   yourself.
+Read [AGENTS.md](AGENTS.md), then take whichever piece you want. Each folder's README says what it needs and
+which values to fill in (see the `.example` files). Cloning installs nothing. Linear, Obsidian and the model
+clients are separate services you set up yourself.
 
-Cloning the repo installs nothing and starts nothing. The runtimes, OptMem, Obsidian, Linear, ntfy and the
-assistant are external services; this tree holds the contracts and glue around them.
-
-## What to expect
-
-- Names are pseudonyms: "the operator", "the company", "the assistant", machines `laptop` and `vps`.
-  Ticket numbers appear as dates or `ABC-1`.
-- It is a snapshot. The live setup keeps changing, and model names and versions date quickly.
-- Some parts only make sense in context: the work system assumes a VPS and a tailnet, and the vault layer
-  assumes a team.
-
-## Validation
-
-Python 3.11+:
+Names are placeholders: "the operator" is the owner, and the machines are `laptop` and `vps`.
 
 ```sh
-python3 scripts/check_setup.py     # structure and links
-python3 scripts/test_adapters.py   # adapter boundaries, offline
+python3 scripts/check_setup.py     # checks structure and links
+python3 scripts/test_adapters.py   # offline tests
 ```
-
-Components with their own tests name the runner in their README. Everything runs offline with stubs; CI runs
-the same checks.
 
 ## License
 
-[MIT](LICENSE). Upstream projects are linked, not copied, and keep their own licenses.
+[MIT](LICENSE)
