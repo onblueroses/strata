@@ -1,83 +1,101 @@
 # Strata
 
-A working setup for running several AI coding agents as one team: Claude Code, Codex, DeepSeek and Kimi
-share one set of instructions and one memory. They hand work to each other, and they pick up tickets from a
-queue on their own.
+A setup where AI agents run as one connected system instead of separate chat windows. You can message an
+assistant from your phone; a ticket appears; a dispatcher wakes an agent on your laptop or server; the agent
+does the work, can hand parts to other models, and reports back on the ticket. Claude Code, Codex, DeepSeek
+and Kimi share one set of instructions and one memory, so any of them can pick up where another stopped.
 
 Everything here comes from a setup in daily use. Snapshot of 2026-10-17.
 
-## What it does
-
-- **One instruction file for every agent.** [AGENTS.md](AGENTS.md) tells all four runtimes how to work, and
-  each one adds a few lines of its own.
-- **Shared memory.** Agents write short one-line notes ([OptMem](memory/optmem/README.md)). At the start of each
-  session a hook shows the agent the notes that matter, so it picks up where the last one stopped.
-- **Delegation.** A main session can send work to a stronger or cheaper model, or to a free one, through small
-  command-line wrappers.
-- **A ticket queue that runs itself.** Tickets filed in Linear are picked up by a dispatcher. It starts an agent
-  on the laptop or the server, and that agent reports back on the ticket.
-- **A team notebook.** An Obsidian vault holds what the team knows. Agents read and write it through an MCP
-  server.
-- **Skills.** Reusable methods for research, outreach, triage, deploying and wrapping up a session.
-
-## The agents
-
-| Agent | Role | Lives in |
-|---|---|---|
-| **Claude Code** | Main session. Hooks load memory at start and restore context after compaction | [claude/](claude/README.md) |
-| ↳ orchestrator | Plans and hands heavy work to other models, then checks and combines the results | [claude/agents/](claude/agents/) |
-| ↳ code-reviewer, quick-research, web-mapper, knowledge-lookup | Small helpers for review, quick lookups, web research and memory search | [claude/agents/](claude/agents/) |
-| **Codex** | Equal main session, and the queue's usual worker | [codex/](codex/README.md) |
-| ↳ load-bearing worker, adversarial reviewer | Strong tier, for hard work and reviews that try to break things | [codex/agents/](codex/agents/) |
-| ↳ implementation worker | Middle tier, for bounded coding tasks | [codex/agents/](codex/agents/) |
-| ↳ mechanical worker | Cheap tier, for bulk and repetitive work | [codex/agents/](codex/agents/) |
-| ↳ docs / systems researcher, knowledge lookup | Read-only research and memory search | [codex/agents/](codex/agents/) |
-| **DeepSeek** | A third main session with its own profile, plus fast and pro tiers for delegated work | [deepseek/](deepseek/README.md) |
-| **Kimi** | Config and instructions for Kimi Code | [kimi/](kimi/README.md) |
-| **Free models** | Free web research and general tasks, run in a sandbox | [delegation/](delegation/README.md) |
-| **Dispatcher** | Picks up queued tickets and starts one worker per ticket | [work/dispatcher/](work/dispatcher/) |
-| **Steering agent** | Watches the ticket stream, files and labels tickets, never does the work | [work/](work/README.md) |
-| **Messaging assistant** | A personal assistant reached only by chat. It files tickets and suggests vault edits | [assistant-bridge/](assistant-bridge/README.md) |
-
-## How it fits together
+## How it connects
 
 ```text
-              AGENTS.md (shared instructions)
-                        │
-     ┌──────────────┬───┴──────────┬──────────────┐
-  Claude Code     Codex       DeepSeek         Kimi
-     │   │                         ▲
-     │   └── delegate ─────────────┘ (and free models)
-     ▼
-  memory notes · team vault · decision records
-
-  you / assistant / agents ──ticket──▶ Linear ──▶ dispatcher ──▶ worker (laptop or server) ──▶ reply on ticket
+   you (phone, chat)                       you (terminal)
+          │                                      │
+          ▼                                      ▼
+  messaging assistant ──files tickets──▶    Linear    ◀──files / replies── Claude · Codex · DeepSeek · Kimi
+  (reads the team vault,                      │                                   │
+   suggests edits)                            │ webhook, in seconds               │ delegate
+                                              ▼                                   ▼
+                                     steering agent                    stronger / cheaper / free models
+                                     (labels, routes, you can chat with it)
+                                              │
+                                              ▼
+                                         dispatcher ──SSH──▶ worker on the laptop  (Codex, or Claude with your browser)
+                                              │        └──▶ worker on the server (Codex)
+                                              │                      │
+                                              └──── signed result posted back on the ticket
+                                                                     │
+                                               shared memory · team vault ◀┘
 ```
 
-## What's in the repo
+## The pieces
+
+**Messaging assistant → laptop.** The assistant is a personal AI you talk to by chat. It has no API. Through
+the [bridge](assistant-bridge/README.md) it reads a published copy of the team vault, suggests vault edits as
+pull requests, and files Linear tickets on your behalf. One of those tickets can be "do X on my laptop": the
+dispatcher picks it up, and a Claude Code worker on the laptop does it, browser included. A message from your
+phone can end up driving your own machine.
+
+**Linear as the switchboard.** Every piece of work is a ticket ([work/](work/README.md)). A label says who takes
+it (`for:codex`, `for:claude`), and a pin says where it runs (`laptop`, `vps`). A webhook delivers each change
+within seconds. Agents, the assistant and you all talk in the same ticket comments, so the conversation and
+the result live in one place.
+
+**Steering agent.** It watches the ticket stream, files and labels tickets, and answers in comments or in its
+own chat. It never does the work itself.
+
+**Dispatcher and workers.** The [dispatcher](work/dispatcher/) is the single process that claims tickets. For
+each one it starts a fresh worker over SSH, on the server (Codex) or on the laptop (Codex, or Claude
+Code with the browser). Workers post progress and finish with a signed result. If a worker goes quiet, the ticket comes back;
+if you reply later, a follow-up starts on its own. Alerts reach your phone through ntfy
+([work/alarms/](work/alarms/)).
+
+**Delegation.** Any main session can pass work down ([delegation/](delegation/README.md)):
+
+| Route | Model | Use |
+|---|---|---|
+| `codex-strong` | Codex, strong tier | Hard work and reviews that try to break things |
+| `codex-fast` | Codex, cheap tier | Bulk and repetitive work |
+| `ds-pro`, `ds-flash`, `dsh-agent` | DeepSeek | Another provider's view; pro and fast tiers |
+| `omp-search`, `omp-inkling` | Free models | Web research and general tasks on public inputs |
+| Claude [orchestrator](claude/agents/orchestrator.md) | Claude | Plans, fans work out to the routes above, checks and combines the results |
+
+Codex has its own roles too ([codex/agents/](codex/agents/)): a load-bearing worker, an implementation worker, a
+mechanical worker, an adversarial reviewer and researchers.
+
+**Peers.** Live Claude and Codex sessions on the same machine can message each other directly
+([agent communication](reference/agent-communication.md)).
+
+**One instruction file.** [AGENTS.md](AGENTS.md) is read by all four runtimes; each adds a few lines of its
+own ([claude/](claude/README.md), [codex/](codex/README.md), [deepseek/](deepseek/README.md),
+[kimi/](kimi/README.md)).
+
+**Shared memory.** Agents write one-line notes ([OptMem](memory/optmem/README.md)). At each session start a hook
+shows the notes that matter, so a new session, or a different model, carries on from the last one. Team
+knowledge lives in an Obsidian [vault](memory/brain/README.md) that agents, the assistant and people all read
+and write.
+
+## Repo layout
 
 | Folder | Contents |
 |---|---|
-| [AGENTS.md](AGENTS.md) | The shared instructions |
-| [claude/](claude/README.md), [codex/](codex/README.md), [deepseek/](deepseek/README.md), [kimi/](kimi/README.md) | Each runtime's agents, hooks, config and installer |
-| [memory/](memory/README.md) | OptMem notes and the team vault |
-| [work/](work/README.md) | Ticket queue: webhook receiver, dispatcher, workers, alerts |
-| [delegation/](delegation/README.md) | Wrappers for sending work to other models |
-| [skills/](skills/README.md) | Research, outreach, triage, deploy, session continuity, diagrams |
-| [reference/](reference/README.md) | Longer how-tos that the instructions point to |
-| [decisions/](decisions/README.md) | Why each rule exists, and when to change it |
-| [integrations/](integrations/README.md) | Adapters for wiring the hooks to your own scripts |
+| [AGENTS.md](AGENTS.md) | Shared instructions |
+| [assistant-bridge/](assistant-bridge/README.md) | Messaging assistant ↔ vault and tickets |
+| [work/](work/README.md) | Linear client, webhook receiver, dispatcher, workers, alerts |
+| [delegation/](delegation/README.md) | Routes to other models |
+| [claude/](claude/README.md), [codex/](codex/README.md), [deepseek/](deepseek/README.md), [kimi/](kimi/README.md) | Each runtime's agents, hooks and config |
+| [memory/](memory/README.md) | Notes and the team vault |
+| [skills/](skills/README.md), [reference/](reference/README.md), [decisions/](decisions/README.md) | Methods, how-tos, and why each rule exists |
 
 ## Using it
 
-Read [AGENTS.md](AGENTS.md), then take whichever piece you want. Each folder's README says what it needs and
-which values to fill in (see the `.example` files). Cloning installs nothing. Linear, Obsidian and the model
-clients are separate services you set up yourself.
-
-Names are placeholders: "the operator" is the owner, and the machines are `laptop` and `vps`.
+Take whichever piece you want; each folder's README says what it needs, and the `.example` files show the values
+to fill in. Cloning installs nothing. Linear, Obsidian, the model clients and the assistant are separate
+services. Names are placeholders: "the operator" is the owner, and the machines are `laptop` and `vps`.
 
 ```sh
-python3 scripts/check_setup.py     # checks structure and links
+python3 scripts/check_setup.py     # structure and links
 python3 scripts/test_adapters.py   # offline tests
 ```
 
