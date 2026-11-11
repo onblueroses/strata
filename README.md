@@ -1,7 +1,7 @@
 # Strata
 
 A setup where AI agents run as one connected system, with **Linear at the center**. Every task, question,
-handoff and result is a Linear ticket. You message the personal assistant from your phone, and a ticket appears. Unii routes
+handoff and result is a Linear ticket. You message your personal assistant from your phone, and a ticket appears. Unii routes
 it. A dispatcher wakes an agent on your laptop or server, and the agent does the work, hands parts to other
 models if needed, and posts the result back on the ticket. Claude Code, Codex, DeepSeek and Kimi share one set
 of instructions and one memory, so any of them can pick up where another stopped.
@@ -14,7 +14,7 @@ Everything here comes from a setup in daily use. Snapshot of 2026-10-17.
    you (phone)                 you (terminal)              Claude · Codex · DeepSeek · Kimi
        │                             │                                  │
        ▼                             │                                  │
-  Assistant ──files tickets──┐       │                                  │
+  assistant ──files tickets──┐       │                                  │
                              ▼       ▼                                  ▼
                  ┌─────────────────────────────────────────────────────────────┐
                  │                         LINEAR                              │
@@ -35,12 +35,12 @@ Everything here comes from a setup in daily use. Snapshot of 2026-10-17.
 Nothing talks to anything else directly. Everything goes through a Linear ticket, which is why the system holds
 together:
 
-- **One inbox for everyone.** You, the personal assistant, Unii and every agent file work in the same place. Agents file
+- **One inbox for everyone.** You, the assistant, Unii and every agent file work in the same place. Agents file
   their own follow-ups, open questions and anything they had to defer, so nothing is lost when a session ends.
 - **Labels are the routing.** One `for:` label says who takes a ticket: `for:codex`, `for:claude`,
   `for:kimi`, `for:ds`, `for:assistant`, or `for:operator` for you. `laptop` and `vps` say where it runs, and
-  `from:assistant` marks what the personal assistant filed. Changing a label reassigns the work. Routing is never guessed from the text.
-- **Comments are the conversation.** Agents, the personal assistant, Unii and you all talk in the ticket thread. Every
+  `from:assistant` marks what the assistant filed. Changing a label reassigns the work. Routing is never guessed from the text.
+- **Comments are the conversation.** Agents, the assistant, Unii and you all talk in the ticket thread. Every
   agent signs its comments, so you can see who said what.
 - **The ticket is the job's state.** The dispatcher claims a ticket and the worker posts milestones. The
   ticket counts as done when a signed result is posted, not when a process exits. If a worker goes quiet the
@@ -60,9 +60,9 @@ that runtime's open work. All of the machinery is in [work/](work/README.md).
 
 ## The pieces
 
-**The personal assistant → your laptop.** The personal assistant is a personal AI assistant you talk to by chat. It has no API. Through the
+**Assistant → your laptop.** The assistant is a personal AI assistant you talk to by chat. It has no API. Through the
 [bridge](assistant-bridge/README.md) it reads a published copy of the team vault, suggests vault edits as pull
-requests, and files Linear tickets for you. Tickets addressed to the personal assistant show up for it as GitHub issues, and
+requests, and files Linear tickets for you. Tickets addressed to the assistant show up for it as GitHub issues, and
 Codex answers its questions there. One of its tickets can say "do X on my laptop": the dispatcher picks it up,
 and a worker on the laptop does it, browser included. A message from your phone ends up driving your own
 machine.
@@ -94,7 +94,7 @@ own ([claude/](claude/README.md), [codex/](codex/README.md), [deepseek/](deepsee
 
 **Shared memory.** Agents write one-line notes ([OptMem](memory/optmem/README.md)). At each session start a hook
 shows the notes that matter, so a new session, or a different model, carries on from the last one. Team
-knowledge lives in an Obsidian [vault](memory/brain/README.md) that agents, the personal assistant and people all read and
+knowledge lives in an Obsidian [vault](memory/brain/README.md) that agents, the assistant and people all read and
 write.
 
 ## Repo layout
@@ -102,7 +102,7 @@ write.
 | Folder | Contents |
 |---|---|
 | [work/](work/README.md) | Linear client, webhook receiver, dispatcher, workers, phone approvals, alerts |
-| [assistant-bridge/](assistant-bridge/README.md) | the personal assistant ↔ vault, tickets and GitHub |
+| [assistant-bridge/](assistant-bridge/README.md) | Assistant ↔ vault, tickets and GitHub |
 | [delegation/](delegation/README.md) | Routes to other models |
 | [AGENTS.md](AGENTS.md) | Shared instructions |
 | [claude/](claude/README.md), [codex/](codex/README.md), [deepseek/](deepseek/README.md), [kimi/](kimi/README.md) | Each runtime's agents, hooks and config |
@@ -112,8 +112,8 @@ write.
 ## Using it
 
 Take whichever piece you want; each folder's README says what it needs, and the `.example` files show the values
-to fill in. Cloning installs nothing. Linear, Obsidian, the model clients and the personal assistant are separate services.
-Inside the folders, the personal assistant is called "the assistant" and Unii "the steering agent". "The operator" is the
+to fill in. Cloning installs nothing. Linear, Obsidian, the model clients and the assistant are separate services.
+Inside the folders, Unii is called "the steering agent". "The operator" is the
 owner, and the machines are `laptop` and `vps`.
 
 ```sh
