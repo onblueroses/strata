@@ -1,4 +1,4 @@
-<!-- keywords: agent-bridge, hcom, Connectome, Astra, Fable, peer messaging, local agents, custom compaction -->
+<!-- keywords: agent-bridge, hcom, Connectome, resident, wake gate, Astra, Fable, peer messaging, local agents, custom compaction -->
 # Local agent communication
 
 Installed for local peer collaboration on 2026-09-11. Use one messaging launcher
@@ -58,6 +58,8 @@ enabled. Keep local logs and pilot artifacts under its ignored `.local/`.
 
 ## hcom terminal workspace
 
+Finding the owner of a piece of work (ruling of 2026-11-12: a lookup, not a resident router): `who-owns <ticket>` or `who-owns 'regex'` ranks sessions and worker runs by what they did: their signatures on the ticket (share, and the last one), the lines they wrote that name the work, and how recent the last such line is (Claude and Codex, over a recent window set by `--days`). Liveness decides only the route line: `hcom send` for a live owner, the resume command for an ended one, the successor when its brief has a `HANDED OFF` line, the ticket for a worker run. `verdict: unclear` means the two best are close: only then ask the operator. A signature maps by `@s/<id>`, by hcom name or by run id; a bare `(claude, date)` maps to nothing, so sign with the id. The Linear Steward has the same command on the VPS.
+
 Use hcom when a shared activity view, inbox, and terminal coordination are useful:
 
 ```bash
@@ -77,7 +79,7 @@ to reply to another discovered agent or state its answer in its own terminal.
 
 ### hcom-web (browser console)
 
-`http://localhost:4747` is the main interface for hcom since 2026-09-12; it
+`http://localhost:<hcom-web-port>` is the main interface for hcom since 2026-09-12; it
 replaced an earlier browser console. The `hcom-web` user service starts at login and
 Hyprland opens it as an app window on workspace 1 (the `o.launch_on_start` line and
 window rule in `<desktop-config>/autostart.lua`; since the Linux desktop 4 the Hyprland config is Lua). It lists running and stopped
@@ -103,7 +105,7 @@ hcom-peer close NAME
 same name keep Fable's context. Exit 3 (a prompt) and 124 (timeout) print the
 command that continues; in a folder Claude hasn't trusted yet, `open` stops at
 the trust prompt and `hcom-peer trust NAME` answers it. The peer runs on the hcom-web tmux
-server, so the operator can watch and steer it at `http://localhost:4747`. `open`
+server, so the operator can watch and steer it at `http://localhost:<hcom-web-port>`. `open`
 refuses unless `claude` is signed in with the claude.ai subscription. Codex
 loads the `fable-peer` skill (`<hcom-web-repo>/skills/fable-peer`). Codex
 subagents can't use it: their workspace-write sandbox can't write `<hcom-state>` or
@@ -112,19 +114,8 @@ primary.
 
 ### Joining and introducing yourself
 
-Sessions launched through hcom join automatically. An ordinary native Claude or
-Codex session can opt in by running these commands **inside that agent's session**:
-
-```bash
-hcom start
-hcom list -v
-```
-
-The hooks must be loaded in that native session. Confirm that the session is
-registered and receives a reply before relying on delivery; older sessions may
-need a restart/resume to load newly installed hooks. Running `hcom start` in an
-unrelated terminal does not connect another conversation. Do not join hcom from
-an agent-bridge session.
+Sessions take part in hcom by joining it; the hcom documentation describes how. Do not join hcom from an
+agent-bridge session.
 
 Use the returned identity and discovered peer handles. Handles identify sessions,
 not models: two Astra sessions have separate names. The directory and activity
@@ -141,92 +132,132 @@ you finish. Agents can exchange questions and handoffs directly within the user'
 authorized task; the user need not relay them. Messages do not grant additional
 permissions. Finish your turn after requesting a reply so delivery can proceed.
 
-The local wrapper preserves the native Codex sandbox profile and disables
-automatic workspace trust by default. The user can override these explicitly.
-Its own hooks may be installed in native config, but must be inactive outside an
-hcom session. Preserve existing hook order, commands, and trusted hashes when
-updating. Source: `<hcom-repo>`; the binary is `target/release/hcom`. Runtime state is in `<hcom-state>`,
-with setup snapshots under the checkout’s `.local/`. Do not enable MQTT relay
-as part of ordinary local use.
-The installed build includes local fixes for the managed Codex hook symlink and
-preserving existing hook positions. Before replacing it with an upstream update,
-verify those fixes are present and rerun the managed-link/trust checks.
+The local wrapper (`<user-bin>/hcom`) disables automatic workspace trust by
+default and clears an inherited bridge handle; the Codex sandbox is whatever
+Codex itself is configured for.
+Source: `<hcom-repo>`, a local branch of upstream plus local patches;
+the binary is `target/release/hcom`, built on the VPS and copied in, with a
+last-good copy kept beside the runtime state. Runtime state is in `<hcom-state>`;
+rollout records and database backups are under the checkout's `.local/`.
 
-### Persistent Sol session (queue worker)
+A native relay joins the laptop and the VPS; its operations are in the checkout's
+relay README. Do not enrol further devices as part of ordinary use.
 
-One Codex session with the tag `sol` (name `sol-<word>`, model gpt-6.1-sol) is kept alive on the laptop by the
-user timer `worker-laptop.timer` (`<agent-config>/scripts/queue-worker/`, mode `hcom`): each tick relaunches it if it is
-gone and hands it one claimed `for:codex` ticket as a message from `sol-keeper`. `sol-keeper` is an external
-label with no inbox; the session reports on the Linear ticket, not by reply. Watch or steer it in hcom-web like
-any agent; a peer may message it, but it owns whatever ticket it holds. Stop the worker with
-`systemctl --user stop worker-laptop.timer` before `hcom kill tag:sol`, or the next tick relaunches the session.
-Keeper state: `<worker-state>/state.json`. The VPS counterpart has no hcom and runs `codex exec`
-per ticket (`vps-operations.md`).
+The local patches exist because agent messages are permanent here: a peer reset
+or an event-id regression holds that peer for a person instead of deleting its
+imported history, RPC results and rotated logs are kept, and the legacy hook
+cleanup writes through the managed Codex `hooks.json` symlink. Since the
+second release of 2026-11-10 three more ride along: a
+launch in the current terminal shows its first screen at once (upstream waits
+for a terminal ID that only a new window gets), a persistent external
+participant can register as an owner (`hcom start --name NAME --owner`: kept
+through cleanup and peer expiry, mail waits between its `listen` calls), and
+idle relay timestamps persist less often. A third release the same day makes
+an owner stopped on its home device disappear from the peers. Before taking an
+upstream update, re-port all of these (tests on the branch name each one;
+mechanics in the checkout's `AGENTS.md`) and rerun the recorded rollout rehearsals
+under the checkout's `.local/`.
 
-## Connectome lab
+## Connectome
 
-`<connectome-repo>` is a separate runtime and memory experiment. It does not
-attach to an existing native conversation or inherit that runtime's full tool
-catalog. Start the local interface with:
+Connectome (upstream `connectome-host`) is the host for long-lived resident agents: one agent, one
+recipe, one append-only record (Chronicle), running headless under a supervisor. Ruling of
+2026-11-10: persistent owner agents become Connectome residents on the VPS. Sessions still reach each other
+through the bridge or hcom.
+
+Three residents run on the VPS, each the owner of one thing ([design](../stewards/README.md)); all are on hcom
+under their own name and answer there:
+
+| Steward | Owns | Reach it | Signs |
+|---|---|---|---|
+| Linear Steward (2026-11-10) | the record: every work and decision ticket, what is dispatched | on the ticket; hcom `linear-steward` | `(linear-steward, date)` |
+| Privacy Steward (2026-11-11) | the public boundary | see [stewards/](../stewards/README.md) | |
+| Infrastructure Steward (2026-11-12) | the health of the machines: alarms, failed units, disks, backups, updates | a ticket with the label `for:infrastructure`; hcom `infrastructure-steward` | `(infrastructure-steward, date)` |
+
+The Infrastructure Steward repairs what it can undo, asks the operator on its phone page before a reboot or a
+planned stop, and never touches the four approvals. Tell it on hcom before you stop a service on purpose or
+reboot a machine.
+
+To build another resident (a steward for a new domain), read
+[stewards/docs/BUILDING-A-STEWARD.md](../stewards/docs/BUILDING-A-STEWARD.md) first.
+
+Two installs, on the same upstream release:
+
+- **Laptop lab**: `<connectome-repo>`, a local `lab` branch on upstream `main`. Launcher `connectome-lab`;
+  details in `lab/README.md`.
+- **VPS**: a stock npm install (`bun add @animalabs/connectome-host`) owned by each steward's own account.
+  Update per upstream `docs/DEPLOYMENTS.md`, "Updating an install".
+
+What the current release provides that the earlier one did not, or that we had not used (upstream
+`README.md`, `docs/`):
+
+- **Residents as a supported shape**: `--headless` daemon with a JSONL Unix socket (one client at a time),
+  `--exit-when-idle` one-shots, a runbook for standing one up (`docs/AGENT-ONBOARDING.md`) and for running
+  it (`docs/DEPLOYMENTS.md`), `scripts/connectome-doctor` for "why is it silent".
+- **Wake gate** (`docs/ATTENTION-AND-GATING.md`): ordered rules in `gate.json`, first match wins; behaviours
+  `always`, `defer`, debounce, rate limit, sampling, and a **reply judge** (a small model that decides
+  whether a batch is worth a turn). The agent edits its own rules with `wake_add_rule` and
+  `wake_remove_rule`; a deferred event still enters its context.
+- **Its own schedule**: heartbeat and reminders (`reminder_add` with a delay, a time or a repeat), `sleep`,
+  `skip_reply` with a self-wake, and `lifecycle--restart` to restart its own host.
+- **Memory**: autobiographical folding in the agent's own voice over a record from which nothing is deleted;
+  `modules.history` lets it search and read its raw record; undo, checkpoints and branches on its context.
+- **Tools**: workspace mounts, MCP and MCPL servers (MCPL servers can push events into the gate), a shell
+  through the separate `terminal-sessions-mcp` daemon, sandboxed code execution.
+- **Subscriptions**: the ChatGPT/Codex login as a provider (`provider: "openai-codex"`), quota windows shown,
+  parking on a spent window, ops alerts (`CONNECTOME_OPS_WEBHOOK`) for failed inference and credentials.
+- **More agents**: fleets (a parent launching child recipes), subagents, a web operator console.
+
+Lab use:
 
 ```bash
-connectome-lab
+connectome-lab                      # offline mock provider, web UI on a loopback port
+connectome-lab --codex              # live gpt-6-astra, no tools
+connectome-lab --codex --no-webui   # the same without the web UI: a piped one-shot run exits when done
 ```
 
-The default is a **mock provider**, not a reasoning model. Its UI binds to
-`http://127.0.0.1:7340` while the process runs. `--headless` uses a Unix socket;
-no persistent service is installed. See `<connectome-repo>/lab/README.md`
-for available profiles and explicit state-directory controls. Stop the process
-after the experiment.
+A piped run is batch mode; with the web UI on, the process keeps serving after the agent stops, so one-shot
+runs take `--no-webui`. Each launch gets a fresh state directory unless `DATA_DIR` is set.
 
-For the live, tool-free Astra profile:
-
-```bash
-connectome-lab --codex
-```
-
-This explicitly uses your existing Codex subscription with `gpt-6-astra`, low
-reasoning, and no tools or speculative compression. The launcher clears ambient
-model, endpoint, CLI, and credential-directory overrides. It does not attach
-Fable to this environment. Each launch starts fresh; set `DATA_DIR` deliberately
-to keep and resume one experiment's history. Native collaboration belongs in
-the bridge or hcom; this profile is for testing the alternate runtime.
-
-The lab contains a custom autobiographical strategy extension and a two-host
-mock messaging/compaction smoke test. This tests that the compaction code path
-runs; mock summaries do not establish memory quality. The current upstream
-`summarySystemPrompt`/`summaryUserPrompt` fields are declared but not consumed
-by its autobiographical implementation. Customize through the lab extension's
-active instruction methods instead.
-
-Do not configure Connectome's Claude OAuth identity-spoofing path. Use the native
-Claude bridge for Fable. Any live profile must use a verified subscription-backed
-provider, with no API-billing or Prime Inference fallback. Exact adapter behavior
-and model availability must be checked when upgrading.
+Rules: do not configure Connectome's Claude OAuth identity path; use the native Claude bridge for Fable.
+Any live profile uses a verified subscription-backed provider, with no API-billing and no Prime Inference
+fallback. A resident stays on one model: upstream treats feeding one model's record to another as a break
+in continuity. The upstream host still carries no licence file; treat the checkout as local evaluation
+material. `summarySystemPrompt` and `summaryUserPrompt` are declared but unused by the autobiographical
+strategy; customise compaction through an extension, as `lab/extensions/lab-autobiographical.mjs` does.
 
 ## Verification and maintenance
 
-Verified with Codex 0.154.0 (`gpt-6-astra`), Claude Code 2.1.269 (Fable 5.1),
-and Node 25.8.0:
+Verified with the Codex, Claude Code and Node releases current at the time:
 
-- Bridge syntax checks and 10 transport/lifecycle tests passed.
+- Bridge syntax checks and the transport/lifecycle tests passed.
 - Actual Astra → Fable → Astra exchange returned nonce AB-A7 and result 1591.
-- Astra implemented clamp; Fable wrote 15 tests; Astra received the handoff and
-  ran all 15 successfully.
+- Astra implemented clamp; Fable wrote the tests; Astra received the handoff and
+  ran them all successfully.
 - BUSY-C9 queued during a foreground command and arrived on the next turn.
 - Sending to a closed Fable peer returned ENOENT; both pilot launchers stopped.
 - Codex `hooks/list` confirmed the bridge's session-flag hooks append alongside
   the original trusted OptMem, continuity, and privacy hooks.
 - Connectome's mock two-host relay and custom compaction path passed; full host
-  suite: 806 passed. TypeScript and the web build passed. Chrome UI send/reply
+  suite passed. TypeScript and the web build passed. Chrome UI send/reply
   was verified through the official Chrome integration.
 - hcom's native Astra → Fable → Astra exchange returned 1591 with nonce
   `HCOM-D4`. Its dashboard opened and exited; both test peers were stopped.
   Managed hook symlinks, existing hook positions, and all five original Codex
   trust entries were preserved after the local hcom fixes.
+- hcom with the local patches, 2026-11-10: both databases migrated in place;
+  relay connected both ways with no hold; a canary request crossed laptop to VPS
+  and its result came back; a Claude peer (`hcom-peer open`, `trust`, `ask`) and
+  a headless Codex peer each answered one message; the managed Codex
+  `optmem_start` hook ran inside the hcom-launched Codex session, so its trust
+  followed it to the new index; hcom-web served events, transcript and the live
+  snapshot. Connectome host and web suites on the VPS passed.
 - The live Connectome Codex profile returned `CONNECTOME_ASTRA_READY` and exited
   normally after a local timer/listener cleanup fix. That establishes a real
   subscription-backed turn, not long-run memory quality.
+
+- 2026-11-10: Connectome rebased to the current upstream release on the laptop and installed on the VPS;
+  the smokes listed under "Connectome" above passed.
 
 Bridge pilot evidence: `<agent-bridge-repo>/.local/pilot-evidence.json` and
 `hooks-probe.json`. hcom evidence is in `<hcom-repo>/.local/live-pilot-evidence.json`;
@@ -235,7 +266,6 @@ The bridge has no declared upstream license; Connectome host
 also has no root license declaration. Treat those checkouts as local evaluation
 material rather than assuming permission to redistribute them.
 
-The comparison is in
-`<notes-tree>/lore/research/agent-communication.md`.
+The comparison stays in the operator's notes tree.
 Recheck native CLI delivery contracts after upgrades; transport tests alone are
 not proof that a live model received a message.

@@ -26,6 +26,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from pydantic_ai import Agent
@@ -93,23 +94,57 @@ def resolve_system_prompt(
     return f"{core}\n\n{DEFAULT_SYSTEM}" if core else DEFAULT_SYSTEM
 
 
-def build_agent(
-    model_name: str, system_prompt: str | None, core_path: Path | None = None
-) -> Agent:
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
+# Providers. `deepseek` is the direct API (pay per token). `go` is the OpenCode Go plan
+# (ruling of 2026-11-12: Go first for bulk work); it refuses requests without the
+# x-opencode-session header (400 MissingSessionID, measured 2026-11-12) and knows Flash only as
+# its newer id. ds_agent itself defaults to `deepseek` so direct callers (benchmarks) keep their
+# backend; ds-flash and ds-pro select `go`.
+PROVIDERS = {
+    "deepseek": ("DEEPSEEK_API_KEY", "https://api.deepseek.com/v1", {}),
+    "go": (
+        "OPENCODE_API_KEY",
+        "https://opencode.ai/inference/go/openai/v1",
+        {"deepseek-v4-flash": "deepseek-v4.1-flash", "deepseek-flash": "deepseek-v4.1-flash"},
+    ),
+}
+
+
+def _key(name: str) -> str | None:
+    value = os.environ.get(name)
+    if not value:
         env_file = Path.home() / ".config" / "delegate" / ".env"
         if env_file.exists():
             for line in env_file.read_text().splitlines():
-                if line.startswith("DEEPSEEK_API_KEY="):
-                    api_key = line.split("=", 1)[1].strip()
+                if line.startswith(f"{name}="):
+                    value = line.split("=", 1)[1].strip().strip("\"'")
                     break
+    return value.strip() if value else None
+
+
+def build_agent(
+    model_name: str,
+    system_prompt: str | None,
+    core_path: Path | None = None,
+    provider_name: str = "deepseek",
+) -> Agent:
+    key_name, base_url, aliases = PROVIDERS[provider_name]
+    api_key = _key(key_name)
     if not api_key:
-        print("ds_agent: DEEPSEEK_API_KEY missing", file=sys.stderr)
+        print(f"ds_agent: {key_name} missing", file=sys.stderr)
         sys.exit(4)
 
-    provider = OpenAIProvider(api_key=api_key, base_url="https://api.deepseek.com/v1")
-    model = OpenAIChatModel(model_name, provider=provider)
+    if provider_name == "go":
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            default_headers={"x-opencode-session": f"ds-agent-{os.getpid()}-{int(time.time())}"},
+        )
+        provider = OpenAIProvider(openai_client=client)
+    else:
+        provider = OpenAIProvider(api_key=api_key, base_url=base_url)
+    model = OpenAIChatModel(aliases.get(model_name, model_name), provider=provider)
 
     agent = Agent(
         model,
@@ -187,6 +222,12 @@ def build_agent(
 def main() -> int:
     parser = argparse.ArgumentParser(description="DeepSeek agent harness")
     parser.add_argument("--model", default="deepseek-v4-flash")
+    parser.add_argument(
+        "--provider",
+        choices=sorted(PROVIDERS),
+        default=os.environ.get("DS_AGENT_PROVIDER", "deepseek"),
+        help="deepseek (direct API) or go (OpenCode Go plan); env DS_AGENT_PROVIDER",
+    )
     parser.add_argument("--prompt-file", help="Read prompt from file")
     parser.add_argument("--system", help="Override system prompt")
     parser.add_argument("--prompt", help="Inline prompt (else stdin)")
@@ -210,7 +251,7 @@ def main() -> int:
         return 1
 
     try:
-        agent = build_agent(args.model, args.system)
+        agent = build_agent(args.model, args.system, provider_name=args.provider)
         result = agent.run_sync(prompt)
         text = result.output if hasattr(result, "output") else str(result)
         if not text or not text.strip():

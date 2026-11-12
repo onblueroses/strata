@@ -116,39 +116,27 @@ retained under `.local/`.
 
 ## Evidence
 
-The full existing default suite passes **193941 checks, zero failures**.
-The native suite verifies **10045** Python/native partitions through U32 edges,
-realistic 5324/30, high budgets and infeasible budgets. Independent exact
-rational and exhaustive partition oracles test the preference semantics.
+The full existing default suite passes with zero failures.
+The native suite verifies Python/native partitions across many cases through
+U32 edges, a store-sized case, high budgets and infeasible budgets. Independent
+exact rational and exhaustive partition oracles test the preference semantics.
 Positive proof controls pass; mutations accepting bad layouts, dropping
 alignment/end checks, breaking the seed, changing status 1 to 3, rejecting
 all preferred candidates with an adapted vacuous soundness proof, or returning
 blanket None fail. Further controls cover
 stale-source reproving with preserved mtime, failed publication, requirement
-weakening, native bounds, 2000-call allocator reuse, GIL-serialized threads,
+weakening, native bounds, repeated allocator reuse, GIL-serialized threads,
 fork reset, unchanged signal handlers, pending signal delivery, reentrant
 signal callbacks with interruption and later reuse, memory refusal,
 and unchanged synthetic stores. Synthetic suites disable telemetry.
 
-Representative interleaved medians on 2026-09-28 with Bend 2.0.32, including
-certificate, source hashing, loading and conversion:
-
-| Workload | Python | Checked native |
-|---|---:|---:|
-| warm selector 5324/30 | 0.363 ms | 0.440 ms |
-| warm selector 5318/208 | 2.359 ms | 0.603 ms |
-| warm selector 1000000/208 | 2.531 ms | 0.732 ms |
-| warm selector U32 maximum/208 | 3.025 ms | 0.925 ms |
-| complete cold wake 5324/30 | 37.338 ms | 40.806 ms |
-| complete cold wake 5324/208 | 41.426 ms | 42.077 ms |
-
-Startup/IO dominate normal 30-line wake. The independent preference check
-makes that small selector slower than Python, and the cold command is about
-3.5 ms slower in this run; the 208-line cold wake is about 0.7 ms slower.
-An earlier run under machine contention measured 88.4/103.0 ms at 30 lines,
-so cold-command timing is sensitive to concurrent load. These measurements do
-not support an order-of-magnitude whole-wake speed claim. The healthy native
-65535/65534 case completes in tens of milliseconds, replacing the prior
-ten-second timeout. A forced slow recovery at that edge reaches the native
-resource limit and reports a controlled error. Rerun the benchmark on the
+The benchmark in `test_bend.py` compares the Python and checked native
+selectors warm and as a complete cold wake, including certificate, source
+hashing, loading and conversion. Startup and IO dominate a normal wake, and the
+independent preference check can make a small selection slower than Python;
+cold-command timing is sensitive to concurrent load. Do not claim an
+order-of-magnitude whole-wake speed-up from it. The native edge case at the
+largest supported total completes without the earlier timeout, and a forced
+slow recovery there reports a controlled error at the native resource limit.
+Rerun the benchmark on the
 target host.

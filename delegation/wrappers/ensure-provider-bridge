@@ -3,8 +3,8 @@
 # Shared service stays active until stopped; it is not enabled at login here.
 set -eu
 case "${1:-}" in
-  deepseek) unit=litellm-deepseek.service; url=http://127.0.0.1:4100/health/liveliness ;;
-  openrouter) unit=litellm-openrouter.service; url=http://127.0.0.1:4101/health/readiness ;;
+  deepseek) unit=litellm-deepseek.service; url="${DEEPSEEK_BRIDGE_URL:?set DEEPSEEK_BRIDGE_URL (see runtime.env.example)}/health/liveliness" ;;
+  openrouter) unit=litellm-openrouter.service; url="${OPENROUTER_BRIDGE_URL:?set OPENROUTER_BRIDGE_URL (see runtime.env.example)}/health/readiness" ;;
   *) echo 'usage: ensure-provider-bridge deepseek|openrouter' >&2; exit 2 ;;
 esac
 ready() { curl --noproxy '*' -fsS --connect-timeout 1 --max-time 2 "$url" >/dev/null 2>&1; }

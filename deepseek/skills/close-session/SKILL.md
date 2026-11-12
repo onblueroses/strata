@@ -1,6 +1,6 @@
 ---
 name: close-session
-description: Reconcile a primary DeepSeek run across relevant repository state, Linear, Mycelium, and OptMem. Use when the user asks to wrap up, end, close, hand off, or finish a work session cleanly.
+description: Reconcile a primary DeepSeek run across relevant repository state, Linear, the repository's AGENTS.md, and OptMem. Use when the user asks to wrap up, end, close, hand off, or finish a work session cleanly.
 ---
 
 # Close Session
@@ -10,7 +10,7 @@ Close the work actually done under the current role. Ordinary conversation needs
 ## Outcome contract
 
 - Goal: make completed work, remaining work, evidence, and restart state agree across relevant durable ledgers.
-- Success: applicable verification, repository, spec, issue, Mycelium, and accepted OptMem state are reconciled; unfinished work is restartable when it needs to be.
+- Success: applicable verification, repository, spec, issue, repository `AGENTS.md`, and accepted OptMem state are reconciled; unfinished work is restartable when it needs to be.
 - Does not count: closing before success, a mechanical note, a material deferral left untracked, or a delegated agent settling memory.
 - Stop: issues actually worked carry truthful outcomes, material follow-ups have an owner, and unfinished work has enough context to resume.
 
@@ -21,7 +21,7 @@ Close the work actually done under the current role. Ordinary conversation needs
 3. If there is an active spec, update it truthfully and close its Frontier only when its success conditions pass. Save a brief when unfinished work has context worth carrying forward.
 4. Append an outcome signed `(deepseek, YYYY-MM-DD)` to issues actually worked. Name artifacts, verification results, unknowns, and follow-ups. Move an issue to `Done` only after that comment succeeds.
 5. Track material deferrals and unresolved decisions that need follow-through with exactly one `for:` owner; passing ideas and quick questions need no ticket.
-6. Read Mycelium notes for changed files. Add a signed durable note only when it preserves non-mechanical knowledge.
+6. Re-read the `AGENTS.md` lines that concern the changed files. Add a line there only when it preserves knowledge a future agent cannot cheaply rediscover.
 7. For each durable memory candidate, if this is the root user-facing DeepSeek primary and startup reported OptMem available, judge it under `knowledge-management.md`, append accepted notes, and verify by exact recall. Delegated DeepSeek agents return candidates instead.
 8. Re-read `git status`. Commit scoped finished work unless the user said not to or dirty overlap prevents a safe commit. Never push without authority.
 

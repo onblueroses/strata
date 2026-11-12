@@ -1,5 +1,9 @@
 # Alarms and phone channels
 
-Choose one owner for each failure. The watchdog owns its pipeline's outcome alarm and recovery; its pipeline service has no `OnFailure=brain-alarm@`. A transient tracker fetch error alone is not an alarm, because one remote 5xx or timeout often clears. Sustained staleness escalates through the watchdog. `brain-alarm@` owns other units, folds repeated failures for a unit into a later notice, and does not claim recovery. The watchdog itself can use `OnFailure=brain-alarm@` because its failure is separate from a pipeline outcome. These units call a host-provided alarm command and watchdog with the indicated arguments; their topic files and state belong outside the repository.
+When a service fails, an alarm reaches the operator's phone, and the [Infrastructure Steward](../../stewards/README.md)
+works on the same alarm beside it. Each failure has one owner that sends its alarm and its recovery, so the phone
+sees one coherent lifecycle.
 
-ntfy has three channels, chosen by what the operator must do: **approve** for a waiting phone tap, **alarm** for a broken system, **fyi** for completion without required action. An approval push contains no ticket text or action. Senders read their channel's topic from a protected file, never inline it in code, a unit or a process argument. Alarms are high priority; recovery notices are low priority. The owner of an alarm sends its recovery so the phone receives one coherent lifecycle.
+Phone pushes use three channels, chosen by what the operator must do: **approve** for a waiting tap, **alarm** for
+a broken system, **fyi** for a completion that needs no action. Pushes carry no ticket text. The units and helpers
+are private. See [the work system](../README.md).

@@ -1,6 +1,6 @@
 # Walker brief template
 
-One file per walker under `raw/briefs/<walker>.md`. On the free route everything in it goes to a prompt-logging endpoint, so the context paragraph is generic and public. Replace every `<…>`; delete a harvest block the run does not take.
+One file per walker under `raw/briefs/<walker>.md`. On a free model everything in it goes to a prompt-logging endpoint, so the context paragraph is generic and public. Replace every `<…>`; delete a harvest block the run does not take.
 
 ```
 You are one walker in a research run. Use live web search and open the actual pages. Today is

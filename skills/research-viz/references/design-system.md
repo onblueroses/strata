@@ -223,7 +223,7 @@ horizontal padding, giving `.card { padding: 12px 14px }` · **24px** gutter bet
 must read as separate regions · **236 / 248px** fixed panel width, 236 floating over a scene and 248
 on a flat page · **272px** `#main { margin-left: 272px }` = 248 panel + 12 margin + 12 gutter.
 
-**Radii are near-zero on purpose.** 52 of 68 declarations are `2px`; the `1px` ones are the smallest
+**Radii are near-zero on purpose.** Most declarations are `2px`; the `1px` ones are the smallest
 marks; `5px` appears only on the scrollbar thumb, `50%` only on legend dots. Nothing is pill-shaped.
 At this density a 6px radius eats a visible fraction of an 11px cell and the grid stops reading as one.
 

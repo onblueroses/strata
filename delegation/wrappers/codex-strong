@@ -174,6 +174,8 @@ REASONING="xhigh"
 # at an answer. Cost of the raise is bounded by the same cap on a genuinely hung run.
 TIMEOUT=5400
 RAW=0
+HCOM=0
+TIMEOUT_SET=0
 PROMPT=""
 PROMPT_FILE=""
 CACHE_MODE="off"
@@ -291,8 +293,9 @@ while [[ $# -gt 0 ]]; do
       MODEL="$2"; shift 2 ;;
     --reasoning) REASONING="$2"; shift 2 ;;
     --service-tier) SERVICE_TIER="$2"; shift 2 ;;
+    --hcom) HCOM=1; shift ;;
     --raw) RAW=1; shift ;;
-    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --timeout) TIMEOUT="$2"; TIMEOUT_SET=1; shift 2 ;;
     --cache) CACHE_MODE="$2"; shift 2 ;;
     --cwd) CWD="$2"; shift 2 ;;
     --resume)
@@ -308,7 +311,7 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 && -n "${2:-}" ]] || { echo "codex-strong: --memory-entity requires a slug" >&2; exit 1; }
       MEMORY=1; MEMORY_ENTITY="$2"; shift 2 ;;
     --print-prompt) PRINT_PROMPT=1; shift ;;
-    -h|--help) echo "codex-strong: codex exec wrapper (default: $DEFAULT_MODEL; --raw emits the exact Codex JSONL event stream; flags: --file --model SLUG --reasoning --service-tier --raw --timeout --cache --cwd DIR --resume ID|last --sandbox MODE --web-search on|off --browser --agentic|--oneshot --memory --memory-entity SLUG --print-prompt; env: CODEX_MODEL; every run prints its progress-file path and session id to stderr)" >&2; exit 1 ;;
+    -h|--help) echo "codex-strong: codex exec wrapper (default: $DEFAULT_MODEL; --raw emits the exact Codex JSONL event stream; flags: --hcom (long main run) --file --model SLUG --reasoning --service-tier --raw --timeout --cache --cwd DIR --resume ID|last --sandbox MODE --web-search on|off --browser --agentic|--oneshot --memory --memory-entity SLUG --print-prompt; env: CODEX_MODEL; every run prints its progress-file path and session id to stderr)" >&2; exit 1 ;;
     --) shift; PROMPT="$*"; break ;;
     -*) echo "unknown flag: $1" >&2; exit 1 ;;
     *) PROMPT="$*"; break ;;
@@ -362,6 +365,15 @@ fi
 if [[ -n "$RESUME" && -n "$CWD" ]]; then
   echo "codex-strong: --resume continues in the session's original cwd; drop --cwd" >&2
   exit 1
+fi
+
+if [[ "$HCOM" -eq 1 ]]; then
+  if [[ -n "$RESUME" || "$RAW" -eq 1 ]]; then
+    echo "codex-strong: --hcom does not support --resume or --raw" >&2
+    exit 1
+  fi
+  CACHE_MODE="off"
+  [[ "$TIMEOUT_SET" -eq 1 ]] || TIMEOUT=0
 fi
 
 if [[ "$MEMORY" -eq 1 ]]; then
@@ -428,7 +440,12 @@ esac
 if [[ "$BROWSER" != 1 ]]; then
   # Plugin MCPs (cua_repl comes from unified-computer-use) ignore per-plugin -c keys; only the
   # plugins feature switch removes them (codex 0.156.1, `codex --disable plugins mcp list`).
-  CODEX_ARGS+=( -c mcp_servers.node_repl.enabled=false -c mcp_servers.playwright.enabled=false )
+  # Only disable servers the config defines: a -c override on an undefined table leaves codex a
+  # partial [mcp_servers.x] with no transport and it refuses to start ("invalid transport").
+  for srv in node_repl playwright; do
+    grep -q "^\[mcp_servers\.$srv\]" "${CODEX_HOME:-$HOME/.codex}/config.toml" 2>/dev/null \
+      && CODEX_ARGS+=( -c "mcp_servers.$srv.enabled=false" )
+  done
   for feat in plugins computer_use browser_use browser_use_external in_app_browser; do
     CODEX_ARGS+=( -c "features.$feat=false" )
   done
@@ -455,7 +472,18 @@ if ! __prepare_capture; then
   echo "codex-strong: private capture setup failed" >&2
   exit 2
 fi
-CODEX_ARGS+=( --json --output-last-message "$LAST_MESSAGE_FILE" )
+if [[ "$HCOM" -eq 1 ]]; then
+  HCOM_ARGS=()
+  for arg in "${CODEX_ARGS[@]:1}"; do
+    [[ "$arg" == "--skip-git-repo-check" ]] || HCOM_ARGS+=( "$arg" )
+  done
+  # Use the subscription provider even when hcom has configured default arguments.
+  HCOM_ARGS+=( -c 'model_provider="openai"' )
+  RUNNER=( python3 "$WRAPPER_DIR/codex-hcom.py" --last-message "$LAST_MESSAGE_FILE" --directory "$CWD" -- "${HCOM_ARGS[@]}" )
+else
+  CODEX_ARGS+=( --json --output-last-message "$LAST_MESSAGE_FILE" )
+  RUNNER=( codex "${CODEX_ARGS[@]}" )
+fi
 
 # Durable progress mirror: tee the JSONL event stream so a supervising session can tail
 # mid-flight state (phase, tool calls, agent messages) while the run is live. Pruned at 7 days.
@@ -492,9 +520,9 @@ __interrupt_dispatch() {
 trap __interrupt_dispatch INT TERM
 EXIT=0
 if [[ -n "$PROGRESS_FILE" ]]; then
-  { printf '%s' "$PROMPT" | timeout "$TIMEOUT" codex "${CODEX_ARGS[@]}" 2>"$STDERR_FILE" | tee -- "$PROGRESS_FILE" >"$EVENT_FILE"; } &
+  { printf '%s' "$PROMPT" | timeout "$TIMEOUT" "${RUNNER[@]}" 3>&2 2>"$STDERR_FILE" | tee -- "$PROGRESS_FILE" >"$EVENT_FILE"; } &
 else
-  { printf '%s' "$PROMPT" | timeout "$TIMEOUT" codex "${CODEX_ARGS[@]}" >"$EVENT_FILE" 2>"$STDERR_FILE"; } &
+  { printf '%s' "$PROMPT" | timeout "$TIMEOUT" "${RUNNER[@]}" 3>&2 >"$EVENT_FILE" 2>"$STDERR_FILE"; } &
 fi
 PIPE_PID=$!
 wait "$PIPE_PID" || EXIT=$?

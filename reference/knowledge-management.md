@@ -1,15 +1,15 @@
 <!-- keywords: OptMem, memo, append-only memory, proposal inbox, drain, note grammar, UTF-8 bytes, regex recall, recall truncation, live state, document pointer, session scope, PARA, cross-linking, frozen history -->
 # Knowledge Management
 
-OptMem is the operator's operational memory. It stores compact facts, state, events, and document pointers in one append-only log. The `<notes-tree>/lore/` vault is the document layer: rich content stays in files there, and OptMem points to those files when needed. The `<notes-tree>/life/` tree keeps project and area state (specs, handoffs, operational files).
+OptMem is the operator's operational memory. It stores compact facts, state, events, and document pointers in one append-only log. The `<notes-tree>/` vault is the document layer: rich content stays in files there, and OptMem points to those files when needed. The `<notes-archive>/` tree keeps project and area state (specs, handoffs, operational files).
 
 | Layer | Location | Purpose |
 |---|---|---|
 | Linear | a configured workspace, via `brain-linear` | Live task + decision state (`linear-spine.md`); OptMem carries no task state post-cutover, only closed-ruling mirrors |
 | OptMem | `<optmem-state>/memory` | Live records and the index to documents |
 | Proposal inbox | `<optmem-state>/proposals` | Detached delegated-agent candidates awaiting a user-facing primary's judgment |
-| Lore vault | `<notes-tree>/lore/` | Knowledge documents: notes, research, journal + diary, entity hubs, traces; constitution `<notes-tree>/lore/CLAUDE.md` |
-| PARA state | `<notes-tree>/life/{projects,areas}/` | Project and area state: specs, handoffs, operational files |
+| Notes vault | `<notes-tree>/` | Knowledge documents: notes, research, journal + diary, entity hubs, traces; constitution `<notes-tree>/CLAUDE.md` |
+| Archive | `<notes-archive>/` | Read-only since 2026-11-10: the pre-OptMem memory, plus specs, handoffs and session saves up to that day. Nothing new is written there; a project's state lives in its repo `AGENTS.md`, OptMem and Linear, session briefs in the vault's run-notes folder |
 
 Substitute the local absolute OptMem checkout for `<optmem-root>` before running:
 
@@ -79,9 +79,9 @@ One filled example per type:
 
 ```text
 F @e/agent-setup @g @k/optmem-recall Recall is case-insensitive regex only; use stable @e/, @s/, and @k/ tokens, not paraphrase.
-S @e/project-a @g @k/next-phase Phase 14 is next; verified against <notes-tree>/life/projects/project-a, 2026-07-27.
-E @e/agent-setup @s/e1427637 @k/session-end Finished the canonical note grammar; next: migrate writer skills.
-P @e/operator @s/e1427637 @k/diary <notes-tree>/lore/journal/diary/2026-07-27-memory-without-a-second-store.md | Reflective record of choosing one append-only memory.
+S @e/project-a @g @k/next-phase Phase 14 is next; verified against <notes-archive>/projects/project-a, 2026-07-27.
+E @e/agent-setup @s/<session-id> @k/session-end Finished the canonical note grammar; next: migrate writer skills.
+P @e/operator @s/<session-id> @k/diary <notes-tree>/journal/<entry>.md | Reflective record of choosing one append-only memory.
 ```
 
 Set `<notes-tree>` to an absolute local path. Create the file a `P` note names before appending the note.
@@ -182,7 +182,7 @@ The shipped CLI's `PART_CHARS` default is 20,000 — the basis for the recall re
 
 The store has no entity registry; a broad whole-store recall can truncate. Build a sweep as a partition:
 
-1. Enumerate direct entity directories under `<notes-tree>/life/areas/` and `<notes-tree>/life/projects/`; add grammar-reserved `operator`.
+1. Enumerate the vault's entity hubs (`<notes-tree>/entities/*.md`) and the direct entity directories of the archive under `<notes-archive>/areas/` and `<notes-archive>/projects/` (frozen 2026-11-10, so entities born later appear only as hubs or in the store); add grammar-reserved `operator`.
 2. When store-only state slugs matter, recall `S` with first-letter partitions `[a-f]`, `[g-p]`, `[q-z]`; require a complete status line each, extract entity slugs, merge with the directory list. Split any truncating range further.
 3. Recall each entity and type separately. Narrow by scope, key prefix, and date until every record-bearing slice proves completeness.
 
@@ -190,7 +190,7 @@ The current `/tidy` sweep uses the complete first-letter `S` partitions. It cann
 
 ## Documents and Pointer Notes
 
-The `<notes-tree>/lore/` vault holds knowledge documents; `<notes-tree>/life/{projects,areas}/` keep project and area state. Direct project and area directory names supply canonical entity slugs, matching the vault's `entities/` hubs. For rich content, OptMem indexes; the filesystem holds the content.
+The `<notes-tree>/` vault holds knowledge documents; the read-only `<notes-archive>/` archive holds what was written before 2026-11-10. Entity slugs match the vault's `entities/` hubs (and, for older entities, the archive's project and area directory names). For rich content, OptMem indexes; the filesystem holds the content.
 
 Write the document first. Then append:
 
@@ -200,10 +200,10 @@ P @e/<entity> <scope> @k/<document-kind> /absolute/path/to/file | <one-line reca
 
 Substitute an absolute local path for `<notes-tree>`; the resulting pointer must begin with `/`. Use a non-empty reason after the first literal ` | `, `@s/<id>` for a session document, and `@g` for a canonical document. A document concerning several entities gets one pointer per entity. When a current document moves, append a newer `P` with the same identity.
 
-Diary entries live in `<notes-tree>/lore/journal/diary/`; their main pointer identity:
+Diary entries live in `<notes-tree>/journal/diary/`; their main pointer identity:
 
 ```text
-P @e/operator @s/<session-id> @k/diary <notes-tree>/lore/journal/diary/<filename>.md | <what the entry holds>
+P @e/operator @s/<session-id> @k/diary <notes-tree>/journal/diary/<filename>.md | <what the entry holds>
 ```
 
 Agenda and epistle variants use distinct keys, as defined by the diary skill.
@@ -250,12 +250,12 @@ Read current state from OptMem; read a legacy file only when the task explicitly
 
 ## People Pattern
 
-Store relationship documents for recurring clients, collaborators, and stakeholders under `<notes-tree>/lore/notes/people/`. These are vault documents, not entity-state records. Add `P` notes when a person document needs an OptMem index entry.
+Store relationship documents for recurring clients, collaborators, and stakeholders under `<notes-tree>/notes/people/`. These are vault documents, not entity-state records. Add `P` notes when a person document needs an OptMem index entry.
 
 ## Cross-linking
 
-Inside the vault, use relative paths so related files move together, for example `../entities/project-a.md` from a file in `notes/`. Links that cross roots (a vault note referencing `<notes-tree>/life/` state, or the reverse) use absolute paths, as does every `P` note, per the pointer grammar.
+Inside the vault, use relative paths so related files move together, for example `../entities/project-a.md` from a file in `notes/`. Links that cross roots (a vault note referencing `<notes-archive>/` state, or the reverse) use absolute paths, as does every `P` note, per the pointer grammar.
 
 ## Progressive Disclosure in Human-Browsed Markdown
 
-Long human-browsed markdown (life/ knowledge base, specs, reference docs) uses `<details>`/`<summary>`; keep `## Heading` above the block and make `<summary>` match the heading. Model-facing instruction files (SKILL.md bodies, `commands/*.md`, agent prompts) skip `<details>`: bodies load whole, so collapsing saves no tokens. Do not collapse short sections, Quick Nav tables, intros, daily notes, or short configs.
+Long human-browsed markdown (archive knowledge base, specs, reference docs) uses `<details>`/`<summary>`; keep `## Heading` above the block and make `<summary>` match the heading. Model-facing instruction files (SKILL.md bodies, `commands/*.md`, agent prompts) skip `<details>`: bodies load whole, so collapsing saves no tokens. Do not collapse short sections, Quick Nav tables, intros, daily notes, or short configs.

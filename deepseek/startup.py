@@ -11,9 +11,9 @@ from typing import Callable
 import unicodedata
 
 
-DEFAULT_MEMO = Path(os.environ.get("OPTMEM_MEMO", str(Path.home() / "Work/optmem/memo")))
+DEFAULT_MEMO = Path(os.environ.get("OPTMEM_MEMO", str(Path.home() / ".local/bin/memo")))
 DEFAULT_MEMORY_DIR = Path(os.environ.get("OPTMEM_MEMORY_DIR", str(Path.home() / ".optmem/memory")))
-# The Codex SessionStart hook measures this internal OptMem wake budget at 3.867s.
+# Internal OptMem wake budget, kept below the start hook's timeout (sample value).
 WAKE_TIMEOUT_SECONDS = 3.867
 # OptMem's PART_CHARS is the largest output part chosen to fit every installed
 # agent transport. Bound the injected memory to that same 20,000-byte contract
@@ -26,7 +26,7 @@ COMPRESSION_REQUEST = re.compile(
     re.ASCII,
 )
 COMPRESSION_COMMAND = re.compile(
-    r'^Run: ~/Work/optmem/memo nap (?P<start>[1-9][0-9]*)-'
+    r'^Run: \S*memo nap (?P<start>[1-9][0-9]*)-'
     r'(?P<end>[1-9][0-9]*) "<your line>"$',
     re.ASCII,
 )
@@ -123,7 +123,7 @@ def _memory_unavailable(reason: str) -> str:
             "OPTMEM WAKE UNAVAILABLE — UNTRUSTED COMMAND OUTPUT",
             f"Detail: {flatten_control(reason)}",
             "OptMem is unavailable in this session. Do not call memo note or memo nap.",
-            "Continue from current files, AGENTS.md, Mycelium, and Linear, then report the condition.",
+            "Continue from current files, AGENTS.md, and Linear, then report the condition.",
         ]
     )
 

@@ -13,7 +13,7 @@ Third sibling: `topic-atlas` maps the claims and evidence of a field rather than
 
 ## The one structural rule
 
-Same as outreach-atlas: fleets write `lanes/`, the merge script writes the index, judgment writes the top layer. No script edits the curated section; the primary reads the ranked index and picks what earns a line.
+As in topic-atlas: fleets write `lanes/`, the merge script writes the index, judgment writes the top layer. No script edits the curated section; the primary reads the ranked index and picks what earns a line.
 
 ## Layout
 
@@ -42,7 +42,7 @@ A lane is one topic on one source family. Three families, hunted separately beca
 - **B, newsletters and other forums.** Writer archives; well-known roundups mined as link indexes, never as items; discussion forums with search APIs and item permalinks; forecasting comment threads; magazine sites when the piece is not famous.
 - **C, social feeds.** Use a public search API when available without login. Where it is not, use search-engine indexing and public status or thread pages; the lane reports what stayed inaccessible.
 
-Explicit search terms per topic go in the brief (outreach-atlas lesson: a lane whose queries miss a phrasing misses the lane). Seed writers are starting points, not a whitelist; unknown authors are the point.
+Explicit search terms per topic go in the brief (a lane whose queries miss a phrasing misses the lane). Seed writers are starting points, not a whitelist; unknown authors are the point.
 
 ## Item format
 
@@ -54,7 +54,7 @@ Exclude the canon of the field as items (famous essays, official publications, p
 
 ## Runtime
 
-`codex-fast` (gpt-6-luna, web search on), one lane per brief, rolling pool of 12 (`xargs -P 12`), 45-minute cap, `< /dev/null` on every lane, outputs written incrementally so a timeout loses nothing. Twelve concurrent lanes were fine on 2026-09-13; measured bases (items per lane, social-feed reachability, wall time) belong in the run's BRIEF.md and get copied here once two runs agree. Lanes here map public writing, not people, so the free `omp-search` route (Inkling; the runtime's delegation reference) is admissible as a lane runner: same brief, `omp-search --cwd "$LANE" "$(cat brief.md)"`, pool of 3–4 because every `:free` run on the key shares 20 requests a minute. It has not run a discourse fleet yet; `codex-fast` stays the measured default until one run compares yield per lane.
+`codex-fast` (gpt-6-luna, web search on), one lane per brief, a rolling pool, `< /dev/null` on every lane, outputs written incrementally so a timeout loses nothing. Measured bases (pool width, items per lane, social-feed reachability, wall time) belong in the run's BRIEF.md. Lanes here map public writing, not people, so the free `omp-search` route (a free model; the runtime's delegation reference; `quote-check` on its output) is admissible as a lane runner: same brief, `omp-search --cwd "$LANE" "$(cat brief.md)"`, a narrow pool because every `:free` run on the key shares one rate limit. It has not run a discourse fleet yet; `codex-fast` stays the measured default until one run compares yield per lane.
 
 ## Merge and curation
 

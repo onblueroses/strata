@@ -15,7 +15,7 @@ Success means:
 - Build the cheapest honest loop that can refuse incorrect work, then iterate against it.
 - Spend agent labor to conserve the operator's review attention when the task authorizes the additional metered calls. Keep judgment, synthesis, and acceptance in the root primary.
 - Encourage real progress warmly when earned. Confidence supports ambitious verification; it never replaces it.
-- Leave code, documentation, Git, Mycelium, Linear, OptMem, and the active spec in one truthful state.
+- Leave code, documentation, Git, the repository's `AGENTS.md`, Linear, OptMem, and the active spec in one truthful state.
 
 Does not count: a plausible status report, a delegated agent's unsupported conclusion, a passing command that misses the changed behavior, an unclaimed Linear title, or a memory append that bypasses the canonical grammar.
 
@@ -60,9 +60,9 @@ Start from the operator's direct task. When resuming work or choosing a durable 
 3. Preserve every non-routing label. Remove only the previous `for:` label, add `for:ds`, and move the issue to `In Progress`.
 4. Re-read the issue. Accept the claim only if the status is correct, exactly one `for:` label remains, and every prior non-routing label remains.
 5. Append `Starting @s/<session>: <concrete scope and owned files>. (deepseek, YYYY-MM-DD)`.
-6. After a handoff, interruption, or compaction, re-read the issue, Git status, and Mycelium before the first mutation.
+6. After a handoff, interruption, or compaction, re-read the issue, Git status, and the repository's `AGENTS.md` before the first mutation.
 
-A claim is cooperative evidence, not a file lock. Linear coordinates intent; Git and Mycelium coordinate shared mutable bytes.
+A claim is cooperative evidence, not a file lock. Linear coordinates intent; Git coordinates shared mutable bytes.
 
 ### Write at recognition
 
@@ -98,17 +98,15 @@ Use `F`, `S`, `E`, or `P`; one `@e/<lowercase-slug>`; `@g` or the injected `@s/<
 
 The append lock gives concurrent primaries unique ids. It does not resolve semantic conflict. Judge and reconcile delegated candidates before writing them.
 
-## Mycelium and Git
+## Repository knowledge and Git
 
-On arrival in a Git repository:
+On arrival in a Git repository, read its `AGENTS.md` before you change anything; it holds what earlier agents could not cheaply rediscover. Then:
 
 ```bash
-mycelium.sh find constraint
-mycelium.sh find warning
 git status --short
 ```
 
-Run `mycelium.sh read <file>` before modifying a tracked file. Preserve unrelated changes. Keep one owner for overlapping files. After meaningful work, leave a signed Mycelium decision, warning, constraint, context, or observation only when it preserves knowledge a future agent cannot cheaply rediscover. Never initialize note sync without the operator's decision.
+Preserve unrelated changes. Keep one owner for overlapping files. After meaningful work, add a line to that repository's `AGENTS.md` only when it preserves knowledge a future agent cannot cheaply rediscover; a delegate returns such a line as a candidate and its primary decides and writes it.
 
 Commit scoped finished work before session close unless the operator says not to or dirty overlap makes a safe commit impossible. Never push without authority. Public commit messages use a short capitalized imperative subject and no process narration.
 
@@ -136,7 +134,7 @@ Use explicit roots for recursive searches, formatters, and test collectors. Neve
 - Measure instead of guessing. Every scalar names its requirement, source, measurement, or resolution path.
 - Put refusal checks before money, long compute, and irreversible work. Preserve post-spend artifacts for adjudication.
 - Treat a null as “not yet made to work” unless a same-rig positive control and detection limit justify more.
-- Search `~/lore/decisions/` before proposing or reopening a ruled direction. Beat the recorded reason, not the policy that produced it.
+- Search `$DECISIONS_DIR` (the sealed decisions directory) before proposing or reopening a ruled direction. Beat the recorded reason, not the policy that produced it.
 
 The shared [operating contract](../AGENTS.md) governs any missing detail.
 

@@ -2,8 +2,8 @@
 
 Everything needed to type a research figure by hand: the file skeleton, the full light→dark hex map,
 what the shapes and colors mean, how to lay out a fixed canvas without crowding, and two complete
-skeletons that pass the theme linter. The measured corpus had 44 files in a diagram directory,
-about 256 KB, no editor fingerprints, and no build step.
+skeletons that pass the theme linter. The source corpus was a directory of hand-typed SVG files
+with no editor fingerprints and no build step.
 
 ## The file skeleton
 
@@ -14,10 +14,10 @@ about 256 KB, no editor fingerprints, and no build step.
 ```
 (`doc/img/k-pipeline.svg:1`)
 
-- `width` equals the viewBox width and **`height` is absent on the root**, in all 44 files. The browser
+- `width` equals the viewBox width and **`height` is absent on the root**, in every file. The browser
   derives height from the ratio, so `max-width: 100%` scales the figure into the markdown column with
   no distortion and no second number to keep in sync.
-- Root `font-size` is `13` in 43 files, `12.5` in one. The mono stack is
+- Root `font-size` is `13` in nearly every file, `12.5` in the rest. The mono stack is
   `ui-monospace, Menlo, monospace`, applied per element.
 - Absent everywhere: `<?xml?>`, `<!DOCTYPE>`, `preserveAspectRatio`, `<title>`, `<desc>`, `class=`,
   `style=`, gradients, filters, clip paths, `foreignObject`, `dominant-baseline`, `inkscape:`.
@@ -483,5 +483,5 @@ It reports every `fill=`/`stroke=` value missing from that file's own dark block
 failure, so it drops into a pre-commit hook. **Both skeletons above were extracted from this file, run
 through it (`ok`, exit 0), and rendered light and dark before it shipped**, because the earlier version
 of this material shipped two "copy me" skeletons that each failed that linter. Against the source corpus
-it reports 7 of 44 files failing: six with an authored `#9ca3af`, one with an unmapped
+it reports some files failing, with an authored `#9ca3af` or an unmapped
 `stroke="#9a3412"`. A hand-authored corpus cannot hold this invariant by attention.

@@ -1,8 +1,12 @@
 {
+  "_timeouts": "Hook timeouts are sample values in seconds; set your own.",
   "model": "opus",
   "effortLevel": "xhigh",
   "permissions": {
-    "defaultMode": "bypassPermissions"
+    "defaultMode": "default"
+  },
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "opus"
   },
   "hooks": {
     "Notification": [
@@ -11,76 +15,6 @@
           {
             "type": "command",
             "command": "bash ~/.claude/hooks/notify.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/observe-track-edits.sh",
-            "timeout": 3
-          }
-        ],
-        "matcher": "Edit|Write"
-      }
-    ],
-    "PreToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/allow-claude-dir-edits.sh",
-            "timeout": 2
-          }
-        ],
-        "matcher": "Edit|Write"
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/warn-file-ownership.sh",
-            "timeout": 2
-          }
-        ],
-        "matcher": "Write"
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/gate-repo-pair-isolation.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/gate-pre-push.sh",
-            "timeout": 20
-          }
-        ],
-        "matcher": "Bash"
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/gate-gh-public-actions.sh",
-            "timeout": 3
-          }
-        ],
-        "matcher": "Bash"
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/lifecycle-sync-life-repo.sh",
             "timeout": 10
           }
         ]
@@ -91,50 +25,34 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/optmem-wake.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/optmem-core.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/lifecycle-sync-life-repo.sh",
+            "command": "bash ~/.claude/hooks/optmem-wake.sh",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/session-cleanup-codex.sh",
-            "timeout": 3
+            "command": "bash ~/.claude/hooks/optmem-core.sh",
+            "timeout": 10
           },
           {
             "type": "command",
             "command": "bash ~/.claude/hooks/session-post-compaction-restore.sh",
-            "timeout": 5
+            "timeout": 10
           },
           {
             "type": "command",
             "command": "bash ~/.claude/hooks/session-inject-time.sh",
-            "timeout": 3
-          },
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/guard-paid-compute.sh --report"
-          },
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/guard-estate-backup.sh --report"
+            "timeout": 10
           }
         ]
       }
     ],
-    "Stop": [
+    "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/notify.sh",
-            "timeout": 5
+            "command": "bash ~/.claude/hooks/session-inject-time.sh",
+            "timeout": 10
           }
         ]
       }

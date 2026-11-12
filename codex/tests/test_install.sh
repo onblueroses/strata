@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bash codex/tests/test_install.sh -- covers the link installer and the privacy hook.
+# bash codex/tests/test_install.sh -- covers the link installer.
 # HOME is always a throwaway directory: this test must never see the live ~/.codex.
 set -uo pipefail
 
@@ -29,7 +29,11 @@ is "AGENTS.md links the constitution" "$(readlink "$HOME/.codex/AGENTS.md")" "$R
 is "hooks.json links the repo"        "$(readlink "$HOME/.codex/hooks.json")" "$REPO/codex/hooks.json"
 is "hook scripts link the repo"       "$(readlink "$HOME/.codex/hooks")" "$REPO/codex/hooks"
 is "seven roles linked"      "$(find "$HOME/.codex/agents" -type l | wc -l)" 7
-is "six skills linked"       "$(find "$HOME/.codex/skills" -maxdepth 1 -type l | wc -l)" 6
+# Expected count comes from install.sh itself: the codex/skills directories plus the shared
+# names it lists (a fixed number went stale twice as skills were added).
+shared="$(sed -n 's/^for name in \(.*\); do$/\1/p' "$REPO/codex/install.sh" | wc -w)"
+native="$(find "$REPO/codex/skills" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+is "every managed skill linked" "$(find "$HOME/.codex/skills" -maxdepth 1 -type l | wc -l)" "$((shared + native))"
 is "every link resolves"     "$(find "$HOME/.codex" -xtype l | wc -l)" 0
 for retired in ask-better directional-prompting humanizer skill-creator verify-work; do
     [ ! -e "$HOME/.codex/skills/$retired" ] && [ ! -L "$HOME/.codex/skills/$retired" ] \
@@ -58,59 +62,6 @@ mv "$ROOT/parked-link" "$HOME/.codex/skills/triage"
 mkdir -p "$HOME/.codex/skills/night-check"
 run >/dev/null
 [ -d "$HOME/.codex/skills/night-check" ] && ok "unmanaged skills stay" || no "unmanaged skill removed"
-
-# --- the privacy hook, against stub gates only: the real gates are not under test here ---
-# CODEX_PRIVACY_GATE names a DIRECTORY holding both gate filenames, so a case can watch which
-# of the two a payload reaches; each stub records its own name in $GATE_LOG.
-GH=gate-gh-public-actions.sh
-PP=gate-pre-push.sh
-stub() {  # stub <dir>/<gate filename> <exit status> [reason on stderr]
-    mkdir -p "${1%/*}"
-    { printf '#!/usr/bin/env bash\ncat >/dev/null\n'
-      printf 'printf "%%s\\n" "${0##*/}" >> "${GATE_LOG:-/dev/null}"\n'
-      [ -n "${3:-}" ] && printf 'printf "%%s\\n" "%s" >&2\n' "$3"
-      printf 'exit %s\n' "$2"
-    } > "$1"
-    chmod 755 "$1"
-}
-stub "$ROOT/allow/$GH" 0;                 stub "$ROOT/allow/$PP" 0
-stub "$ROOT/deny/$GH" 2 'no: reason';     stub "$ROOT/deny/$PP" 0
-stub "$ROOT/denypush/$GH" 0;              stub "$ROOT/denypush/$PP" 2 'no: push reason'
-stub "$ROOT/broken/$GH" 7;                stub "$ROOT/broken/$PP" 0
-stub "$ROOT/halfgh/$GH" 0                 # the pre-push gate is simply not there
-stub "$ROOT/slow/$PP" 0
-printf '#!/usr/bin/env bash\nsleep 30\n' > "$ROOT/slow/$GH"
-chmod 755 "$ROOT/slow/$GH"
-
-hook() {  # hook <stub directory> <payload> -> exit status; $ROOT/gatelog lists the gates run
-    : > "$ROOT/gatelog"
-    CODEX_PRIVACY_GATE="$1" GATE_LOG="$ROOT/gatelog" \
-        python3 "$REPO/codex/hooks/pre_tool_use.py" >"$ROOT/hout" 2>"$ROOT/herr" <<< "$2"
-    echo $?
-}
-ran() { awk 'END {print NR}' "$ROOT/gatelog"; }
-payload="{\"tool_input\":{\"command\":\"echo hi\"},\"cwd\":\"$HOME\"}"
-pushload="{\"tool_input\":{\"command\":\"git push origin main\"},\"cwd\":\"$HOME\"}"
-
-is "two permitting gates permit"      "$(hook "$ROOT/allow" "$payload")" 0
-is "both gates ran"                   "$(ran)" 2
-is "a refusing gh gate refuses"       "$(hook "$ROOT/deny" "$payload")" 2
-is "the gate's own reason relays"     "$(cat "$ROOT/herr")" "no: reason"
-is "the first refusal wins"           "$(ran)" 1
-# The defect this pair pins: a git push used to reach only the gh gate, whose git-free
-# prefilter allows at once, so no outgoing history was ever scanned for a Codex push.
-is "a git push reaches the pre-push gate" "$(hook "$ROOT/denypush" "$pushload")" 2
-is "the pre-push gate is the one that ran" "$(tail -1 "$ROOT/gatelog")" "$PP"
-is "its reason relays too"            "$(cat "$ROOT/herr")" "no: push reason"
-is "a gate with no verdict refuses"   "$(hook "$ROOT/broken" "$payload")" 2
-is "a hanging gate refuses"           "$(hook "$ROOT/slow" "$payload")" 2
-is "a missing gate refuses"           "$(hook "$ROOT/absent" "$payload")" 2
-is "a missing second gate refuses"    "$(hook "$ROOT/halfgh" "$payload")" 2
-is "a payload with no cwd refuses"    "$(hook "$ROOT/allow" '{"tool_input":{"command":"x"}}')" 2
-# A corrupted event carries no verdict, so it cannot be an authorization.
-is "a payload with no command refuses" "$(hook "$ROOT/allow" '{"tool_input":{}}')" 2
-is "a non-JSON payload refuses"        "$(hook "$ROOT/allow" 'not json')" 2
-is "truncated JSON refuses"            "$(hook "$ROOT/allow" '{"tool_input":{"command":')" 2
 
 printf '\n%s failure(s); scratch under %s\n' "$fails" "$ROOT"
 [ "$fails" = 0 ]

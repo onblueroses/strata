@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parent
 memo = SourceFileLoader("memo_bend_test", str(ROOT / "memo")).load_module()
 
 
-def fixture(total=5324, budget=30):
+def fixture(total=5000, budget=30):
     store = ROOT / ".local/bend/fixtures" / uuid.uuid4().hex
     (store / "TREE").mkdir(parents=True)
     (store / "LOG.txt").write_bytes(b"".join(
@@ -61,7 +61,7 @@ class BendSelectionTest(unittest.TestCase):
                   for _ in range(300)]
         cases += [(t, b) for d in range(9, 32) for t in [(1 << d)-1, 1 << d, (1 << d)+1]
                   for b in [1, 2, 30, 208]]
-        cases += [(0, 1), (5324, 30), (65535, 1001), (65535, 10000),
+        cases += [(0, 1), (5000, 30), (65535, 1001), (65535, 10000),
                   (65535, 65534), (65535, 65535), (1, bend.MAX_TOTAL),
                   (bend.MAX_TOTAL, 1000), (bend.MAX_TOTAL, 208)]
         for total, budget in cases:
@@ -123,7 +123,7 @@ class BendSelectionTest(unittest.TestCase):
         self.assertEqual(recovery.stdout, default.stdout)
         self.assertEqual(before, {p: p.read_bytes() for p in store.rglob("*") if p.is_file()})
         with patch.object(bend, "checked_module", side_effect=bend.SelectionError("rejected")):
-            with self.assertRaises(bend.SelectionError): bend.cover(5324, 30)
+            with self.assertRaises(bend.SelectionError): bend.cover(5000, 30)
 
     def test_proof_controls(self):
         generation = bend.build()
@@ -181,17 +181,17 @@ class BendSelectionTest(unittest.TestCase):
     def test_threads_signals_and_allocator(self):
         module = bend.checked_module()
         before = {s: signal.getsignal(s) for s in [signal.SIGSEGV, signal.SIGBUS, signal.SIGPIPE]}
-        expected = memo.cover_python(5324, 30)
-        module.cover(5324, 30)
+        expected = memo.cover_python(5000, 30)
+        module.cover(5000, 30)
         warm_pages = module._stats()[1]
-        for _ in range(2000): self.assertEqual(module.cover(5324, 30), expected)
+        for _ in range(2000): self.assertEqual(module.cover(5000, 30), expected)
         self.assertEqual(module._stats()[1], warm_pages)
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-            self.assertTrue(all(x == expected for x in pool.map(lambda _: module.cover(5324, 30), range(80))))
+            self.assertTrue(all(x == expected for x in pool.map(lambda _: module.cover(5000, 30), range(80))))
         self.assertEqual(before, {s: signal.getsignal(s) for s in before})
         pid = os.fork()
         if pid == 0:
-            okay = module.cover(5324, 30) == expected and module._stats()[0] == os.getpid()
+            okay = module.cover(5000, 30) == expected and module._stats()[0] == os.getpid()
             os._exit(0 if okay else 1)
         self.assertEqual(os.waitpid(pid, 0)[1], 0)
         self.assertEqual(module._stats()[0], os.getpid())
@@ -277,7 +277,7 @@ m=l.create_module(ModuleSpec('_optmem_selection',l,origin=sys.argv[1]));l.exec_m
 '''
         cases = [prefix + '''import resource
 resource.setrlimit(resource.RLIMIT_AS,(128<<20,128<<20))
-try:m.cover(5324,30)
+try:m.cover(5000,30)
 except OSError:pass
 else:raise AssertionError('reservation did not refuse')
 assert m._stats()==(0,0)
@@ -314,8 +314,8 @@ assert m.cover(1,1)==[(0,1)]
 
 
 def benchmark():
-    bend.cover(5324, 30)
-    for total, budget in [(5324, 30), (5318, 208), (1_000_000, 208), (bend.MAX_TOTAL, 208)]:
+    bend.cover(5000, 30)
+    for total, budget in [(5000, 30), (4994, 208), (1_000_000, 208), (bend.MAX_TOTAL, 208)]:
         native, python = [], []
         for _ in range(60):
             start = time.perf_counter_ns(); bend.cover(total, budget)
@@ -325,7 +325,7 @@ def benchmark():
         print("full adapter %d/%d: native %.3fms, Python %.3fms" %
               (total, budget, statistics.median(native), statistics.median(python)))
     for budget in [30, 208]:
-        store = fixture(5324, budget)
+        store = fixture(5000, budget)
         samples = {"python": [], "default": []}
         output = None
         for i in range(40):
@@ -335,7 +335,7 @@ def benchmark():
                 if result.returncode: raise RuntimeError(result.stderr)
                 if output is None: output = result.stdout
                 assert result.stdout == output
-        print("whole cold memo wake 5324/%d (%d output bytes): Python %.3fms, default %.3fms" %
+        print("whole cold memo wake 5000/%d (%d output bytes): Python %.3fms, default %.3fms" %
               (budget, len(output), statistics.median(samples["python"]), statistics.median(samples["default"])))
 
 

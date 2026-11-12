@@ -1,97 +1,52 @@
 #!/usr/bin/env bash
-# Claude Code Notification Script
-# Parses hook JSON input for rich notifications via notify-send
+# Desktop toast for the Notification and Stop hooks.
+#
+# The summary line names the conversation: with several sessions open, "Turn finished" over a
+# directory name did not say which one (every home session read the account name). The name is the
+# transcript's newest title row, a /rename title or the generated one.
+#
+# One jq call reads the event. Every path exits 0: a toast is never worth a hook error.
 
-# Parse arguments
-title="Claude Code"
-message=""
-context=""
+command -v notify-send >/dev/null 2>&1 || exit 0
+data=""
+[ -t 0 ] || data=$(cat)
 
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --title|-t) title="$2"; shift 2 ;;
-        --message|-m) message="$2"; shift 2 ;;
-        --context|-c) context="$2"; shift 2 ;;
-        *) shift ;;
-    esac
-done
-
-# Try to read JSON from stdin (hook data)
-hookData=""
-if [ ! -t 0 ]; then
-    hookData=$(cat)
+event="" cwd="" message="" kind="" transcript=""
+if [ -n "$data" ]; then
+    IFS=$'\x1f' read -r -d '' event cwd message kind transcript < <(
+        printf '%s' "$data" | jq -j '[.hook_event_name, .cwd, .message, .notification_type, .transcript_path]
+            | map(. // "" | tostring) | join("\u001f") + "\u0000"' 2>/dev/null)
 fi
 
-# Extract information from hook data
-displayTitle="$title"
-displayMessage="$message"
-urgency="normal"
-projectName=""
-gitBranch=""
-workingDir="$context"
-hookEvent=""
+case "$kind" in
+    permission_prompt) label="Permission required"; urgency=critical ;;
+    idle_prompt)       label="Waiting for input";   urgency=normal ;;
+    ?*)                label="Claude Code";         urgency=low ;;
+    *)  urgency=normal
+        if [ "$event" = Stop ]; then label="Turn finished"; else label="Claude Code"; fi ;;
+esac
 
-if [ -n "$hookData" ]; then
-    hookEvent=$(echo "$hookData" | jq -r '.hook_event_name // empty' 2>/dev/null)
-    # Get working directory
-    cwdVal=$(echo "$hookData" | jq -r '.cwd // empty' 2>/dev/null)
-    [ -n "$cwdVal" ] && workingDir="$cwdVal"
-
-    # Get the actual message from hook
-    msgVal=$(echo "$hookData" | jq -r '.message // empty' 2>/dev/null)
-    [ -n "$msgVal" ] && displayMessage="$msgVal"
-
-    # Route based on notification type (urgency + title)
-    # Maps to Claude Code's typed notification system
-    notifType=$(echo "$hookData" | jq -r '.notification_type // empty' 2>/dev/null)
-    case "$notifType" in
-        permission_prompt)
-            displayTitle="Permission Required"
-            urgency="critical"
-            ;;
-        idle_prompt)
-            displayTitle="Waiting for Input"
-            urgency="normal"
-            ;;
-        ?*)
-            displayTitle="Claude Code"
-            urgency="low"
-            ;;
-    esac
+# Title rows recur through a transcript, so the tail nearly always holds one; the head is the
+# fallback for a turn that wrote more than the tail window since the last title.
+title=""
+if [ -n "$transcript" ] && [ -r "$transcript" ]; then
+    row=$(tail -c 400000 -- "$transcript" 2>/dev/null | grep -a -E '^\{"type":"(ai|custom)-title"' | tail -1)
+    [ -n "$row" ] || row=$(head -c 2000000 -- "$transcript" 2>/dev/null | grep -a -E '^\{"type":"(ai|custom)-title"' | tail -1)
+    [ -z "$row" ] || title=$(printf '%s' "$row" | jq -r '.customTitle // .aiTitle // empty' 2>/dev/null)
 fi
 
-# Get project/folder name
-if [ -n "$workingDir" ]; then
-    projectName=$(basename "$workingDir")
-
-    # Try to get git branch
-    gitBranch=$(git -C "$workingDir" rev-parse --abbrev-ref HEAD 2>/dev/null)
+where=""
+if [ -n "$cwd" ]; then
+    where=$(basename -- "$cwd")
+    branch=$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)
+    [ -z "$branch" ] || where="$where [$branch]"
 fi
 
-# Build the notification text
-# Default message when body would be empty (e.g., Stop hook with no .message field)
-if [ -z "$displayMessage" ]; then
-    if [ "$hookEvent" = "Stop" ]; then
-        displayMessage="Turn finished"
-    else
-        displayMessage="Session activity"
-    fi
-fi
-notificationBody="$displayMessage"
+summary="$label"
+[ -z "$title" ] || summary="${title:0:60}: $label"
+body="$message"
+[ -z "$where" ] || body="${body:+$body
+}$where"
 
-contextLine=""
-[ -n "$projectName" ] && contextLine="$projectName"
-[ -n "$gitBranch" ] && contextLine="$contextLine [$gitBranch]"
-contextLine=$(echo "$contextLine" | sed 's/^[[:space:]]*//')
-
-if [ -n "$contextLine" ]; then
-    notificationBody="$notificationBody
-$contextLine"
-fi
-
-# Show notification via notify-send
-if command -v notify-send &>/dev/null; then
-    notify-send --urgency="$urgency" "$displayTitle" "$notificationBody" 2>/dev/null
-fi
-
+notify-send --urgency="$urgency" -- "$summary" "$body" 2>/dev/null
 exit 0

@@ -80,6 +80,7 @@ expect() {
           HOME="$tmpdir/home" \
           DELEGATE_CACHE_DIR="$tmpdir/cache-$wrapper-$CASE" \
           DEEPSEEK_API_KEY="stub-key-unused-by-the-codex-stub" \
+          DEEPSEEK_BRIDGE_URL="http://127.0.0.1:0" \
           CODEX_STUB_SCENARIO="$SCENARIO" \
           bash "$WRAPPER_DIR/$wrapper" "regression probe" 2>/dev/null)
     rc=$?

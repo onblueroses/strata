@@ -1,124 +1,147 @@
 # Strata
 
-A setup where AI agents run as one connected system, with **Linear at the center**. Every task, question,
-handoff and result is a Linear ticket. You message your personal assistant from your phone, and a ticket appears. Unii routes
-it. A dispatcher wakes an agent on your laptop or server, and the agent does the work, hands parts to other
-models if needed, and posts the result back on the ticket. Claude Code, Codex, DeepSeek and Kimi share one set
-of instructions and one memory, so any of them can pick up where another stopped.
+A setup where AI agents run as one connected system, with **Linear at the center** and **stewards** that own it.
+Work and its results are recorded on Linear tickets. Your personal assistant files tickets for you. The Linear Steward, a persistent agent on the server, triages it and decides who does it. A
+dispatcher wakes a worker on your laptop or server, the worker does the work and posts the result on the ticket.
+Two more stewards own the rest: one reviews everything bound for public GitHub, one owns the health of the
+machines. Claude Code, Codex, DeepSeek and Kimi share one set of instructions and one memory, so any of them can
+pick up where another stopped.
 
-Everything here comes from a setup in daily use. Snapshot of 2026-10-17.
+Everything here comes from a setup in daily use, and only what runs in production. Snapshot of 2026-11-12.
 
 ## How it connects
 
 ```text
-   you (phone)                 you (terminal)              Claude · Codex · DeepSeek · Kimi
-       │                             │                                  │
-       ▼                             │                                  │
-  assistant ──files tickets──┐       │                                  │
-                             ▼       ▼                                  ▼
-                 ┌─────────────────────────────────────────────────────────────┐
-                 │                         LINEAR                              │
-                 │   tickets · labels (who) · pins (where) · comments (talk)   │
-                 └─────────────────────────────────────────────────────────────┘
-                             │ webhook, within seconds              ▲
-                             ▼                                      │
-                    Unii ◀── event log ──▶ dispatcher               │
-               (routes, labels,               │ SSH                 │
-                answers, chat)                ├──▶ worker on the laptop (Codex, or Claude with your browser)
-                                              └──▶ worker on the server (Codex)
-                                                          │
-                                                          └── progress + signed result ──┘
+   you (phone)            you (terminal)                Claude · Codex · DeepSeek · Kimi
+       │                        │                                     │
+  assistant ──files tickets──┐  │                                     │
+                             ▼  ▼                                     ▼
+          ┌────────────────────────────────────────────────────────────────────┐
+          │                              LINEAR                                │
+          │      tickets · labels (who) · pins (where) · comments (talk)       │
+          └────────────────────────────────────────────────────────────────────┘
+                 │ change events                                   ▲
+                 ▼                                                 │
+          event log ──▶ Linear Steward ──orders──▶ dispatcher      │
+                        (triage, routes,              │            │
+                         links, follow-up,            ├──▶ worker on the laptop (Codex, or Claude with your browser)
+                         asks you on a                └──▶ worker on the server (Codex, DeepSeek)
+                         phone page)                              │
+                                                                  └── milestones + signed result ──┘
+
+   laptop push / gh ──▶ Privacy Steward ──signed verdict──▶ push goes out, or not
+   alarms ──▶ your phone, and the Infrastructure Steward beside it ──▶ repairs what it can undo, asks you before a reboot
 ```
+
+## The stewards
+
+A steward is a persistent owner agent: one long-lived resident on the server with its own account, login,
+standing instructions and memory, which owns exactly one thing and acts on it without being asked.
+Their design, and how to build another one, is in [stewards/](stewards/README.md).
+
+| Steward | Owns | What it does |
+|---|---|---|
+| **Linear Steward** | the record | Reads every Linear event as it happens. Triages, labels, routes, links and reconciles tickets, keeps each ticket's current state, and decides which tickets the dispatcher starts. Asks you ready decisions with options on a phone page and wakes on your answer. |
+| **Privacy Steward** | the public boundary | Everything bound for a public destination (pushes, GitHub text) passes this independent reviewer first. It runs on the server, signs its verdicts, and the laptop refuses to publish without a valid signature. What it checks and how is private by design. |
+| **Infrastructure Steward** | the machines | Works on every alarm while the alarm also reaches your phone. Owns failed units, disks, backups and updates; repairs what it can undo, asks before a reboot or a planned stop. |
+
+One owner per domain: a steward that sees something outside its post files one ticket or sends one message to
+the owner, and stops there. Each is watched from outside by liveness and telemetry of its own.
 
 ## Linear is the backbone
 
-Nothing talks to anything else directly. Everything goes through a Linear ticket, which is why the system holds
-together:
+Work and decisions go through Linear tickets. The stewards also take alarms, phone answers and peer messages
+directly, but what they do about them lands on a ticket:
 
-- **One inbox for everyone.** You, the assistant, Unii and every agent file work in the same place. Agents file
-  their own follow-ups, open questions and anything they had to defer, so nothing is lost when a session ends.
-- **Labels are the routing.** One `for:` label says who takes a ticket: `for:codex`, `for:claude`,
-  `for:kimi`, `for:ds`, `for:assistant`, or `for:operator` for you. `laptop` and `vps` say where it runs, and
-  `from:assistant` marks what the assistant filed. Changing a label reassigns the work. Routing is never guessed from the text.
-- **Comments are the conversation.** Agents, the assistant, Unii and you all talk in the ticket thread. Every
-  agent signs its comments, so you can see who said what.
-- **The ticket is the job's state.** The dispatcher claims a ticket and the worker posts milestones. The
-  ticket counts as done when a signed result is posted, not when a process exits. If a worker goes quiet the
-  ticket comes back to the queue; after a second failure it comes to you. If you reply later, a new run picks
-  it up.
-- **Instant reaction.** A webhook pushes every ticket, comment and label change to the server within seconds
-  and appends it to a durable event log ([linear-hook](work/linear-hook/README.md)). A five-minute poll
-  catches anything the webhook missed.
-- **Each agent has its own identity.** Unii, the dispatcher and the workers act as their own Linear apps.
-  They can be assigned and mentioned like teammates.
-- **Approvals happen on the ticket too.** A worker that needs a yes ends its comment with
-  `APPROVAL NEEDED:`. You tap once on your phone, and the dispatcher continues
-  ([approve-gate](work/approve-gate/README.md)).
+- **One inbox for everyone.** You, the assistant, the stewards and every agent file work in the same place.
+  Every start of work gets an In Progress ticket first, and every ticket sits in the outcome project it serves.
+- **Labels are the routing.** One `for:` label says who takes a ticket (`for:codex`, `for:claude`, `for:ds`,
+  `for:kimi`, `for:assistant`, `for:operator`); `for:infrastructure` may stand beside it. `laptop` and `vps`
+  pin where it runs. Routing is never guessed from the text.
+- **Comments are the conversation.** Every agent signs its comments. The Linear Steward reads every comment and
+  answers there.
+- **The ticket is the job's state.** The dispatcher claims, the worker posts milestones, and the ticket is done
+  when a signed result is posted, not when a process exits. A quiet worker hands the ticket back; a second
+  failure brings it to you.
+- **Instant reaction.** Every ticket, comment and label change lands in a durable event log
+  ([linear-hook](work/linear-hook/README.md)).
+- **Approvals happen on the ticket too.** Four things always need your tap: spending money, messages sent as
+  you, secrets or privacy disclosures, and destruction that cannot be undone ([approve-gate](work/approve-gate/README.md)).
+- **Plain words.** Ticket text is written in Simplified Technical English, so any agent reads it the same way.
 
-The Linear client every agent uses is [brain-linear](work/linear/README.md): `brain-linear pickup codex` lists
-that runtime's open work. All of the machinery is in [work/](work/README.md).
+The Linear client every agent uses is [brain-linear](work/linear/README.md). All of the machinery is in [work/](work/README.md).
 
 ## The pieces
 
-**Assistant → your laptop.** The assistant is a personal AI assistant you talk to by chat. It has no API. Through the
+**Assistant → your laptop.** A personal AI assistant you talk to by chat, with no API. Through the
 [bridge](assistant-bridge/README.md) it reads a published copy of the team vault, suggests vault edits as pull
-requests, and files Linear tickets for you. Tickets addressed to the assistant show up for it as GitHub issues, and
-Codex answers its questions there. One of its tickets can say "do X on my laptop": the dispatcher picks it up,
-and a worker on the laptop does it, browser included. A message from your phone ends up driving your own
-machine.
+requests and files Linear tickets for you; the work system routes them.
 
-**Unii.** The steering agent. It reads every Linear event as it happens, files and labels tickets, and answers in
-comments or in its own chat. It never claims work; that is the dispatcher's job.
+**The chat agent.** Keeps your chat with the system and files or changes a ticket on your word. It no longer
+routes; that is the Linear Steward's job.
 
-**Dispatcher and workers.** The [dispatcher](work/dispatcher/) is the only thing that claims tickets. For each
-one it starts a fresh worker over SSH, on a key that can only launch that worker. Alerts reach your phone through ntfy
-([work/alarms/](work/alarms/)).
+**Dispatcher and workers.** The [dispatcher](work/dispatcher/README.md) is the only thing that claims tickets,
+and it starts what the Linear Steward orders. For each ticket it starts a fresh worker, on a key that can only
+start a worker. Alerts reach your phone through ntfy ([work/alarms/](work/alarms/README.md)).
 
 **Delegation.** Any main session can pass work down ([delegation/](delegation/README.md)):
 
 | Route | Model | Use |
 |---|---|---|
+| `opencode-fast` | DeepSeek Flash via OpenCode Go | First route for bulk and groundwork |
+| `codex-fast` | Codex, cheap tier | Mechanical work that needs Codex |
 | `codex-strong` | Codex, strong tier | Hard work and reviews that try to break things |
-| `codex-fast` | Codex, cheap tier | Bulk and repetitive work |
-| `ds-pro`, `ds-flash`, `dsh-agent` | DeepSeek | Another provider's view; pro and fast tiers |
-| `omp-search`, `omp-inkling` | Free models | Web research and general tasks on public inputs |
-| Claude [orchestrator](claude/agents/orchestrator.md) | Claude | Plans, fans work out to the routes above, checks and combines the results |
+| `ds-pro`, `ds-flash`, `dsh-agent` | DeepSeek | Another provider's view |
+| Free models | A free model, in a sandbox with no view of the machine | Web research on public inputs only; every quote is checked by `quote-check` |
+| Claude [orchestrator](claude/agents/orchestrator.md) | Claude | Plans, fans out to the routes above, checks and combines |
 
-Codex has its own roles too ([codex/agents/](codex/agents/)): a load-bearing worker, an implementation worker, a
-mechanical worker, an adversarial reviewer and researchers. Live Claude and Codex sessions on one machine can
-also message each other directly ([agent communication](reference/agent-communication.md)).
+**Rules with sources.** [AGENTS.md](AGENTS.md) is read by all four runtimes. Among its rules: no limit (cap,
+timeout, budget, threshold) goes into a config or prompt without its source beside it; heavy work runs on the
+server, the laptop only runs quick checks; every secret lives in one secret store and files are generated from
+it. Each ruling has its date and reason in [decisions/](decisions/README.md).
 
-**One instruction file.** [AGENTS.md](AGENTS.md) is read by all four runtimes; each adds a few lines of its
-own ([claude/](claude/README.md), [codex/](codex/README.md), [deepseek/](deepseek/README.md),
-[kimi/](kimi/README.md)).
+**Shared memory, kept forever.** Agents write one-line notes ([OptMem](memory/optmem/README.md)) that a hook
+shows at each session start. Team knowledge lives in an Obsidian [vault](memory/brain/README.md). Every message
+between agents is kept, backed up and never pruned ([memory/](memory/README.md)). Live sessions on one machine
+talk through hcom ([agent communication](reference/agent-communication.md)).
 
-**Shared memory.** Agents write one-line notes ([OptMem](memory/optmem/README.md)). At each session start a hook
-shows the notes that matter, so a new session, or a different model, carries on from the last one. Team
-knowledge lives in an Obsidian [vault](memory/brain/README.md) that agents, the assistant and people all read and
-write.
+## Not in this copy
+
+The live setup has more parts than this copy. Some are here as a design only; others are named here and left
+out, because a public copy of them would help an attacker more than a builder, or would not stay true:
+
+- **Guards.** Hooks that check a command before it runs and refuse the dangerous ones. Each runtime has them.
+- **Server operations.** How the machines are set up, deployed to, watched and backed up. On the live setup
+  the Infrastructure Steward owns this work.
+- **Rented compute.** Notes on renting GPU machines and hosted inference. Vendors and prices change too fast
+  for a copy to stay correct.
+- **Outreach.** Methods that find the right people for a research question and write a first note to them.
+- **Session launch.** A small helper that starts each operator session already joined to hcom.
+- **Free-model sandbox.** The isolation around free models; the design is in
+  [delegation/wrappers/](delegation/wrappers/README.md).
 
 ## Repo layout
 
 | Folder | Contents |
 |---|---|
-| [work/](work/README.md) | Linear client, webhook receiver, dispatcher, workers, phone approvals, alerts |
-| [assistant-bridge/](assistant-bridge/README.md) | Assistant ↔ vault, tickets and GitHub |
+| [stewards/](stewards/README.md) | The three stewards and how to build one (design) |
+| [work/](work/README.md) | The Linear client; the design of the receiver, dispatcher, phone approvals and alerts |
+| [assistant-bridge/](assistant-bridge/README.md) | Assistant ↔ vault and tickets (design) |
 | [delegation/](delegation/README.md) | Routes to other models |
 | [AGENTS.md](AGENTS.md) | Shared instructions |
 | [claude/](claude/README.md), [codex/](codex/README.md), [deepseek/](deepseek/README.md), [kimi/](kimi/README.md) | Each runtime's agents, hooks and config |
-| [memory/](memory/README.md) | Notes and the team vault |
+| [memory/](memory/README.md) | Notes, the team vault, agent message records |
 | [skills/](skills/README.md), [reference/](reference/README.md), [decisions/](decisions/README.md) | Methods, how-tos, and why each rule exists |
 
 ## Using it
 
 Take whichever piece you want; each folder's README says what it needs, and the `.example` files show the values
-to fill in. Cloning installs nothing. Linear, Obsidian, the model clients and the assistant are separate services.
-Inside the folders, Unii is called "the steering agent". "The operator" is the
-owner, and the machines are `laptop` and `vps`.
+to fill in. Cloning installs nothing. Linear, Obsidian, the model clients and the assistant are separate
+services. "The operator" is the owner, and the machines are `laptop` and `vps`.
 
 ```sh
 python3 scripts/check_setup.py     # structure and links
-python3 scripts/test_adapters.py   # offline tests
+python3 scripts/test_adapters.py   # offline tests of the launch adapters
 ```
 
 ## License

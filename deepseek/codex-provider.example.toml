@@ -2,7 +2,7 @@
 # This bridge is used only by ds-codex; it is not the native OpenAI route.
 [model_providers.deepseek]
 name = "DeepSeek (local responses bridge)"
-base_url = "http://127.0.0.1:4100/v1"
+base_url = "http://127.0.0.1:<deepseek-bridge-port>/v1"
 env_key = "DEEPSEEK_API_KEY"
 wire_api = "responses"
 

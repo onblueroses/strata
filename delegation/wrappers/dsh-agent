@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # dsh-agent - delegated DeepSeek agentic route via DeepSeek Harness (headless).
-# Full rc.6 toolset: bash, read/write/edit, glob/grep, web_search,
-# jobs, todo, skills, plan mode, goals, subagent/subagent_fork (+ control),
-# workflow (scripted multi-agent), ralph (bounded fresh-child rounds).
+# rc.3 tools include bash, file edits, web search/fetch, jobs, skills,
+# goals, subagents, and workflow. --code selects the PTC tool mode.
 # The house contract (~/.claude/agents-core/CORE-compact.md) is embedded in the
 # system prefix - briefs do NOT restate it. Workspace AGENTS.md is read natively.
 #
 # WHEN TO DISPATCH HERE (delegation guidance for the calling model):
-#   Agentic DS work on the metered API: implementation probes, repo surveys,
-#   bulk agentic edits, multi-round loops. The subagent can itself fan out
-#   (subagent/workflow) or loop (ralph, goals) - say so in the brief when wanted.
+#   Agentic DS work on the metered API after spend authorization: implementation
+#   probes, repo surveys, bulk edits. Subagents and workflow support delegation;
+#   goals support repeated rounds.
 #   Brief discipline: Goal / Success means / Stop when (model-delegation.md).
 #
 # Usage:
@@ -17,11 +16,11 @@
 #   dsh-agent --file brief.md
 #
 # Flags:
-#   --pro          deepseek-v4-pro (default: deepseek-v4-flash)
+#   --pro          deepseek-v4-pro (default: deepseek-flash)
 #   --file PATH    Read brief from file
 #   --read-only    Sandbox: no writes (recommended when mutation is unneeded)
 #   --danger       Sandbox: danger-full-access, approval never. Deliberate use only.
-#   --code         Code mode: one run_code tool over a generated TS SDK instead of
+#   --code         PTC mode: one run_code tool over a generated TS SDK instead of
 #                  native tool calls. CACHE FORK: different schema bytes, separate
 #                  prefix-cache namespace - pay one cold prompt per workspace*mode.
 #   --timeout SECS Default 1800. Basis: inherited from ds-flash as a pilot value;
@@ -38,30 +37,27 @@
 # inspect the workspace diff before retrying. Dispatch artifacts accumulate under
 # $DRIVER_HOME/dispatches/ (session log + overlay per run) for audit.
 #
-# Cache discipline: the system prefix (persona + house contract + tool schemas)
+# Cache discipline: the system prefix (personaPrefix + house contract + tool schemas)
 # is byte-stable per workspace via the static overlay - do not edit
 # ~/.config/delegate/dsh/dsh-agent.yml casually. In briefs, keep the opening
 # stable per workspace and put volatile content (timestamps, run ids, fresh
-# data) at the END. Not shipped in rc.6 npm (revisit on upgrade): terminal,
-# lsp, session-query tools, MCP client, web_fetch provider (tool errors
-# WEB_PROVIDER_UNAVAILABLE; agents fall back to curl where the sandbox allows).
-# Briefs that use background subagents: demand the final answer AFTER all
-# children are collected - a late completion notice otherwise displaces the
-# real answer on stdout (rc.6 harness behavior). Env hygiene: inherited DSH_*
+# data) at the END. Keep the final answer after collecting background children.
+# Env hygiene: inherited DSH_*
 # vars are cleared before dispatch; a non-empty caller DEEPSEEK_API_KEY wins
 # over the env file.
 
 set -uo pipefail
 umask 077
 
-DRIVER_ROOT="${DSH_DRIVER_ROOT:-$HOME/.local/share/dsh-driver}"
+# The delegated route pins its own driver release; its state home stays with the shared driver.
+DRIVER_ROOT="${DSH_AGENT_DRIVER_ROOT:-$HOME/.local/share/dsh-driver-0.2.1-rc.3}"
 DRIVER_BIN="$DRIVER_ROOT/node_modules/.bin/dsh"
-DRIVER_HOME="$DRIVER_ROOT/home"
+DRIVER_HOME="$HOME/.local/share/dsh-driver/home"
 ENV_FILE="${DELEGATE_ENV_FILE:-$HOME/.config/delegate/.env}"
 
 STATIC_OVERLAY="${DSH_AGENT_OVERLAY:-$HOME/.config/delegate/dsh/dsh-agent.yml}"
 
-MODEL="deepseek-v4-flash"
+MODEL="deepseek-flash"
 PERMISSION_MODE="workspace-write"
 TIMEOUT_SECS=1800
 TOOLS_MODE=""
@@ -78,7 +74,7 @@ while [ $# -gt 0 ]; do
             BRIEF_FILE="$2"; shift 2 ;;
     --read-only) PERMISSION_MODE="read-only"; shift ;;
     --danger) PERMISSION_MODE="danger-full-access"; shift ;;
-    --code) TOOLS_MODE="code"; shift ;;
+    --code) TOOLS_MODE="ptc"; shift ;;
     --timeout) [ $# -ge 2 ] || { echo "dsh-agent: --timeout wants seconds" >&2; exit 64; }
                TIMEOUT_SECS="$2"; shift 2 ;;
     --print-prompt) PRINT_PROMPT=1; shift ;;
@@ -98,6 +94,7 @@ if [ -n "$BRIEF_FILE" ]; then
 fi
 [ -n "$BRIEF" ] || { echo "dsh-agent: no brief given (arg or --file)" >&2; exit 64; }
 case "$TIMEOUT_SECS" in ''|*[!0-9]*) echo "dsh-agent: --timeout wants seconds" >&2; exit 64 ;; esac
+[ "$TIMEOUT_SECS" -gt 0 ] 2>/dev/null || { echo "dsh-agent: --timeout wants positive seconds" >&2; exit 64; }
 [ -x "$DRIVER_BIN" ] || { echo "dsh-agent: driver missing at $DRIVER_BIN (npm ci in $DRIVER_ROOT)" >&2; exit 65; }
 [ -r "$ENV_FILE" ] || { echo "dsh-agent: $ENV_FILE unreadable" >&2; exit 65; }
 command -v zstd >/dev/null 2>&1 || { echo "dsh-agent: zstd decoder is required for session-log verification" >&2; exit 65; }
@@ -148,6 +145,11 @@ export DSH_HOME="$DRIVER_HOME" DSH_TELEMETRY_DISABLED=1 DSH_PERMISSION_MODE="$PE
 timeout --kill-after=15 "$TIMEOUT_SECS" \
   "$DRIVER_BIN" --profile headless --patch "$STATIC_OVERLAY" --patch "$OVERLAY" "$BRIEF" < /dev/null
 RC=$?
+# GNU timeout records the deadline even when dsh handles SIGTERM with exit 0.
+if [ "$RC" -eq 124 ] || [ "$RC" -eq 137 ]; then
+  echo "dsh-agent: timed out; run killed after $TIMEOUT_SECS seconds; sessions: $DISPATCH_DIR/sessions" >&2
+  exit 124
+fi
 
 # --- post-run: usage fold + model verification from THIS dispatch's logs only ---
 PARSE_STATUS=0
@@ -156,7 +158,8 @@ import json, pathlib, subprocess, sys
 root, expected = pathlib.Path(sys.argv[1]), sys.argv[2]
 tot = {"input":0,"output":0,"cache_read":0,"cache_write":0,"reasoning":0,"requests":0}
 mismatch, errors, root_log = [], [], None
-for log in sorted(root.rglob("session.jsonl.zstd")):
+root_count = 0
+for log in sorted(root.rglob("session*.jsonl.zstd")):
     try:
         decoded = subprocess.run(["zstd","-dc",str(log)], capture_output=True, timeout=15)
     except Exception as exc:
@@ -169,6 +172,7 @@ for log in sorted(root.rglob("session.jsonl.zstd")):
     per_step = {}
     depth = None
     log_mismatch = []
+    model_headers = 0
     for line in raw.splitlines():
         if not line.strip():
             continue
@@ -179,8 +183,14 @@ for log in sorted(root.rglob("session.jsonl.zstd")):
         t, d = e.get("type"), e.get("data") or {}
         if t == "session": depth = e.get("delegationDepth")
         elif t == "request/header":
-            m = ((d.get("header") or {}).get("config") or {}).get("model")
-            if m and m != expected: log_mismatch.append(m)
+            config = (d.get("header") or {}).get("config") or {}
+            m, provider = config.get("model"), config.get("provider")
+            if not m or not provider:
+                errors.append(f"{log}: request/header missing model or provider")
+            else:
+                model_headers += 1
+                if m != expected: log_mismatch.append(m)
+                if provider != "deepseek-official": log_mismatch.append(f"provider:{provider}")
         elif t == "assistant/message":
             u = (d.get("message") or {}).get("usage") or d.get("usage")
             if u: per_step[(d.get("turn"), d.get("step"))] = u
@@ -188,6 +198,9 @@ for log in sorted(root.rglob("session.jsonl.zstd")):
             u = d.get("usage")
             if u: per_step.setdefault((d.get("turn"), d.get("step")), u)
     if depth == 0:
+        root_count += 1
+        if not model_headers:
+            errors.append(f"{log}: root session has no model request/header")
         root_log = str(log)
         mismatch.extend(log_mismatch)
     for u in per_step.values():
@@ -195,6 +208,8 @@ for log in sorted(root.rglob("session.jsonl.zstd")):
         tot["cache_read"] += u.get("cacheReadTokens",0); tot["cache_write"] += u.get("cacheWriteTokens",0)
         tot["reasoning"] += u.get("reasoningTokens",0); tot["requests"] += 1
 tot["total"] = tot["input"] + tot["output"]
+if root_count != 1:
+    errors.append(f"expected one root session log, found {root_count}")
 print(json.dumps({"tokens":tot,"mismatch":sorted(set(mismatch)),"root_log":root_log,"errors":errors}))
 PYEOF
 )

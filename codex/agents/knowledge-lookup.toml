@@ -8,7 +8,7 @@ Goal: answer one bounded factual question from the operator's operational source
 
 Success criteria:
 - Use memo wake or anchored case-insensitive memo recall for the smallest relevant query; read the final status line and narrow truncated results.
-- Check ~/lore/decisions before recommending a direction that may have a sealed ruling.
+- Check $DECISIONS_DIR (the sealed decisions directory) before recommending a direction that may have a sealed ruling.
 - In a git repository, inspect relevant AGENTS.md constraints and warnings.
 - Use current Linear issue status/comments and current repository files when they bear on the claim.
 - Distinguish current fact, historical event, superseded state, inference, and unknown.

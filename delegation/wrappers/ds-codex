@@ -5,7 +5,7 @@
 # completion-only panel tier.
 #
 # Transport: codex -> local LiteLLM /v1/responses bridge (litellm-deepseek.service,
-# 127.0.0.1:4100) -> api.deepseek.com. Thinking mode is disabled at the bridge (DeepSeek
+# 127.0.0.1:<deepseek-bridge-port>) -> api.deepseek.com. Thinking mode is disabled at the bridge (DeepSeek
 # v4 strictly requires reasoning_content round-trip on tool continuations, which the
 # bridge does not implement); a pre-call hook reorders tool replies adjacent to their
 # tool_calls (litellm_deepseek_hook.py). Built + verified 2026-07-23.

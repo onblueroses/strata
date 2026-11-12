@@ -9,8 +9,7 @@ Reason: Until this ruling every ask-first action waited for an approval record e
         operator had requested it, which stalled routine deploys and restarts for hours. The
         operator's own request now settles everything except these four, because each crosses a
         financial, identity, privacy, or irreversible-loss boundary that a relayed or quoted
-        request cannot be trusted to settle: ticket text can come from an assistant that reads
-        mail and the web.
+        request cannot be trusted to settle.
 
 Reopen when: An alternate authorization proves the same identity, scope, and one-action
              consent at each boundary.

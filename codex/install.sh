@@ -70,7 +70,7 @@ for source in "$REPO"/codex/skills/*/; do
     source=${source%/}
     link "$CODEX_HOME/skills/${source##*/}" "$source"
 done
-for name in cold-email outreach-atlas research-viz triage; do
+for name in asd-ste100 research-viz triage; do
     link "$CODEX_HOME/skills/$name" "$REPO/skills/$name"
 done
 

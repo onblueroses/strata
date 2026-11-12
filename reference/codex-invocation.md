@@ -44,8 +44,6 @@ Add a quoted positional prompt for review-specific instructions. Use `-` only wh
 
 ## Hook trust
 
-The managed hook file is `<codex-config>/hooks.json`, a link to this repository's `codex/hooks.json`. Codex records a `trusted_hash` per hook in `<codex-config>/config.toml` under `[hooks.state]`. Changing a hook command requires a fresh approval in the Codex startup hook review; until then that hook can silently stop running.
-
-`--dangerously-bypass-hook-trust` exists for a one-off invocation whose automation has already vetted the hook source. It does not update the persisted trust record. Treat it as verification tooling, not a default launch flag.
+The managed hook file is `<codex-config>/hooks.json`, a link to this repository's `codex/hooks.json`. Codex records a `trusted_hash` per hook in `<codex-config>/config.toml` under `[hooks.state]`. Changing a hook command requires a fresh approval in the Codex startup hook review.
 
 Run `bash <agent-config>/codex/install.sh --check` after managed-link changes. The installer does not touch local credentials, sessions, or `config.toml`.

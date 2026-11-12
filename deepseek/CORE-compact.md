@@ -26,8 +26,8 @@ Standing rules for delegated dispatches. The brief owns the task; this owns how 
 
 ## Git repositories
 
-- On arrival: `mycelium.sh find constraint` and `mycelium.sh find warning`; `mycelium.sh read <file>` before you modify that file.
-- On departure: `mycelium.sh note <target> -k decision|warning|constraint|context -m "..."` when you learned something a future agent cannot cheaply rediscover, body signed `(<agent>, YYYY-MM-DD)`. Leave `sync-init` alone.
+- On arrival: read the repo's `AGENTS.md` before you change anything; it holds what earlier agents could not cheaply rediscover.
+- On departure: when you learned something a future agent cannot cheaply rediscover, return it in your result as a proposed `AGENTS.md` line; the primary decides and writes it.
 - Commit messages on public remotes: capitalized imperative subject, short, no process narration.
 
 ## Register
@@ -36,4 +36,8 @@ Standing rules for delegated dispatches. The brief owns the task; this owns how 
 
 ## Decisions
 
-- Sealed rulings and rejections live in `~/lore/decisions/`; grep it before proposing a direction, file verdicts per its README. A rejection's reopening bar binds: beat the recorded reason, not the policy that produced it.
+- Sealed rulings and rejections live in `$DECISIONS_DIR` (the sealed decisions directory); grep it before proposing a direction, file verdicts per its README. A rejection's reopening bar binds: beat the recorded reason, not the policy that produced it.
+
+## Records
+
+- Agent-to-agent communication is permanent (the operator, 2026-11-02): never delete, prune or rotate away messages, transcripts or logs between agents; full rule in the shared [contract](../AGENTS.md).

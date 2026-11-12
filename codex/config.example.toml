@@ -3,8 +3,8 @@ model = "gpt-6.1-sol"
 model_provider = "openai"
 model_reasoning_effort = "high"
 service_tier = "default"
-approval_policy = "never"
-sandbox_mode = "danger-full-access"
+approval_policy = "on-request" # sample: choose your own approval and sandbox policy
+sandbox_mode = "workspace-write"
 
 [features]
 memories = false # External OptMem wake owns session memory.

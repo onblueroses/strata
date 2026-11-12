@@ -1,3 +1,0 @@
-[Service]
-# Size this for the vault and machine; alert on exhaustion rather than swapping.
-MemoryMax=2G

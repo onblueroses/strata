@@ -1,5 +1,5 @@
 # Public route inventory, not a client configuration or launch authorization.
-snapshot_date = "2026-10-17"
+snapshot_date = "2026-11-12"
 
 [routes.claude]
 runtime = "claude-code"
@@ -54,7 +54,7 @@ spend_authorization_required = true
 
 [routes.ds_flash]
 runtime = "pydantic-ai"
-provider = "deepseek-official"
+provider = "opencode-go"  # default; DS_AGENT_PROVIDER=deepseek selects deepseek-official
 model = "deepseek-v4-flash"
 role = "delegate"
 metered = true
@@ -62,7 +62,7 @@ spend_authorization_required = true
 
 [routes.ds_pro]
 runtime = "pydantic-ai"
-provider = "deepseek-official"
+provider = "opencode-go"  # default; DS_AGENT_PROVIDER=deepseek selects deepseek-official
 model = "deepseek-v4-pro"
 role = "delegate"
 metered = true
@@ -83,30 +83,8 @@ model = "kimi-code/k3-256k"
 role = "primary"
 authentication = "native-oauth"
 
-[routes.omp_search]
-runtime = "omp-in-free-silo"
-provider = "openrouter"
-model = "thinkingmachines/inkling-small:free"
+[routes.opencode_fast]
+runtime = "opencode"
+provider = "opencode-go"
+model = "opencode-go/deepseek-v4.1-flash"
 role = "delegate"
-public_inputs_only = true
-
-[routes.omp_inkling]
-runtime = "omp-in-free-silo"
-provider = "openrouter"
-model = "thinkingmachines/inkling:free"
-role = "delegate"
-public_inputs_only = true
-
-[routes.codex_union]
-runtime = "codex-in-free-silo"
-provider = "openrouter"
-role = "delegate"
-model_required = true
-public_inputs_only = true
-
-[routes.omp_union]
-runtime = "omp-in-free-silo"
-provider = "openrouter"
-role = "delegate"
-model_required = true
-public_inputs_only = true

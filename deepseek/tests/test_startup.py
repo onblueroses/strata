@@ -106,7 +106,7 @@ class StartupContextTests(unittest.TestCase):
                 "Compress memories #8-11 into one line of at most 280 characters.",
                 "Keep what has lasting effect, drop what does not. Invent nothing.",
                 "",
-                'Run: ~/Work/optmem/memo nap 8-11 "<your line>"',
+                'Run: ~/.local/bin/memo nap 8-11 "<your line>"',
             ]
         )
 

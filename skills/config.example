@@ -2,9 +2,7 @@
 RESEARCH_ROOT=/path/to/research
 VAULT_ROOT=/path/to/vault
 MEMO_CMD=/path/to/memo
-CRM_PROBE=/path/to/crm/probe.py
-CRM_REGISTRY=/path/to/crm/registry
-SESSION_STATE_DIR=/path/to/session-state
+NOTES_ROOT=/path/to/notes-tree
 RUNTIME_REFERENCE_DIR=/path/to/runtime-reference
 VPS_RUNBOOK=/path/to/vps-runbook.md
 ISSUE_CLI=/path/to/issue-cli

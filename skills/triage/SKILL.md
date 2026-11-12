@@ -132,9 +132,17 @@ Per concern, first match wins:
    comments, never edits.
 2. **A distinct concern inside an existing issue's problem** → sub-issue:
    `issues create` with `--parent-ticket <issue-id>`.
-3. **A new concern that fits an existing project** → new issue with `--project`.
-4. **A new concern with no fitting project** → issue on the work team without a project.
-   Creating a *project* is a structure decision: AskUserQuestion, never create silently.
+3. **A new concern that serves an existing outcome project** → new issue with `--project`
+   and, when the project has one that fits, `--project-milestone`. The view "Active
+   outcomes" lists the projects.
+4. **A new concern with no fitting project** → issue on the work team without a project, when
+   it serves no commitment. When it looks like a new outcome with a finish line or a
+   multi-step result, ask the operator (AskUserQuestion): project, parent issue or single issue,
+   with your recommendation. Never create a project silently.
+
+Project, milestone and relation rules live in one place: "Projects and relations" in
+[the follow-up convention](../../reference/followup-convention.md) (ruling of 2026-11-11).
+Report the project and milestone of each destination in the step 6 table.
 
 **Shell mechanics (exact — the CRITICAL boundary from above):** compose the description
 yourself, quoting bit text as needed, and save it to a scratch file with the Write tool.
@@ -157,8 +165,9 @@ Issue rules:
   carry it. Decision issues are exempt; one awaiting the operator carries `for:operator` as an
   attention flag only.
 - A genuine decision with options goes to the decision team; a lightweight call stays
-  in-team with the `decision` label (the runtime's follow-up convention).
-- The description carries context sufficient to decide without re-reading the source,
+  in-team with the `decision` label ([the follow-up convention](../../reference/followup-convention.md)).
+- The description starts with the current-state block (Outcome / Owner / route / Next
+  action / Waiting on / Evidence, per the convention). Below it, it carries context sufficient to decide without re-reading the source,
   the vault path from step 3 (or the trace path), and the signature
   `(claude, YYYY-MM-DD)`. "Contact asked about X" is useless; "Contact (transcript at
   <path>) needs a contract review before the next step; their template is in the source;
@@ -184,9 +193,9 @@ reporting.
 ### 6. Report the allocation
 
 ```markdown
-| Concern | Destination | Owner | New/Existing |
-|---|---|---|---|
-| Contract question from call | <issue-id> (sub-issue of <parent-id>) | for:operator | new |
+| Concern | Destination | Project / milestone | Owner | New/Existing |
+|---|---|---|---|---|
+| Contract question from call | <issue-id> (sub-issue of <parent-id>) | <project> / <milestone> | for:operator | new |
 
 Vault: $VAULT_ROOT/inbox/YYYY-MM-DD-<slug>.md
 Not filed: <anything left off the board, with the reason>

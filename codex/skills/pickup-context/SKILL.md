@@ -20,13 +20,13 @@ Build a compact, evidence-backed starting picture. Keep OptMem read-only and lea
 2. Run the read-only memory entry point:
 
    ```bash
-   python3 $HOME/Work/optmem/memo wake
+   python3 "${OPTMEM_MEMO:-$HOME/.local/bin/memo}" wake
    ```
 
    When one claim matters, use case-insensitive regex recall with an anchored type/entity/scope/key pattern. Read the final status line and narrow a truncated result before relying on it.
-3. Read the live ledger with `brain-linear pickup codex`. Treat issue status and signed comments as current work evidence, not as a replacement for repository facts. The unattended Sol workers take unclaimed `for:codex` issues within minutes; an issue signed `worker-vps` or `worker-laptop` is theirs until its outcome comment.
+3. Read the live ledger with `brain-linear pickup codex`. Treat issue status and signed comments as current work evidence, not as a replacement for repository facts. The unattended Sol workers take unclaimed `for:codex` issues within minutes; an issue signed `worker-vps` or `worker-laptop` is theirs until its outcome comment. For the issue you will work, read its project, milestone and the current-state block at the top of its description (`brain-linear issues read`); a missing project or a stale block is a finding for the claim comment (ruling of 2026-11-11, "Projects and relations" in `$HOME/.claude/reference/followup-convention.md`).
 4. In a git repository, read the repo AGENTS.md before proposing edits. Inspect the instructions that govern each file likely to change.
-5. Search `~/lore/decisions/` before recommending or reopening an architectural direction. Apply a sealed reopening bar as a constraint.
+5. Search `$DECISIONS_DIR` (the sealed decisions directory) before recommending or reopening an architectural direction. Apply a sealed reopening bar as a constraint.
 6. Reconcile disagreements in this order: current files and executable state; active spec decisions; current Linear status/comments; repo AGENTS.md constraints; OptMem orientation. Surface any unresolved contradiction.
 
 ## Return
@@ -34,7 +34,7 @@ Build a compact, evidence-backed starting picture. Keep OptMem read-only and lea
 Return a brief with:
 
 - live objective and its evidence;
-- active issue/spec and working-tree state;
+- active issue/spec, its outcome project and milestone, and working-tree state;
 - binding warnings, decisions, and unknowns;
 - the next concrete action.
 

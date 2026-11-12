@@ -9,7 +9,7 @@ Review maintainability and Fowler code smells within the assigned files. The own
 
 When reviewing:
 1. Read every file you're asked to review from disk (fresh read, not from memory).
-2. Read `~/lore/notes/references/doctrine/code-smell-baseline.md` and apply it. Each smell is a judgement call, never a hard violation; a documented repo standard (or `~/lore/notes/references/doctrine/code-quality-principles.md`) overrides it; skip what tooling catches. For codebase-level smells (Feature Envy, Repeated Switches, Shotgun/Divergent Change, Refused Bequest), Grep/Glob the surrounding code before firing, or mark the finding "needs whole-repo view → defer".
+2. Read `$NOTES_ROOT/references/doctrine/code-smell-baseline.md` (`NOTES_ROOT` is set in the session environment; see `claude/config/hooks-runtime.env.example`) and apply it. Each smell is a judgement call, never a hard violation; a documented repo standard (or `$NOTES_ROOT/references/doctrine/code-quality-principles.md`) overrides it; skip what tooling catches. For codebase-level smells (Feature Envy, Repeated Switches, Shotgun/Divergent Change, Refused Bequest), Grep/Glob the surrounding code before firing, or mark the finding "needs whole-repo view → defer".
 3. Also flag: inconsistency with surrounding code style; dead code, unused imports, orphan variables; debris (stray console.log, TODO without context, placeholder values).
 4. Report findings as a structured list: file, line, severity (error/warning/note), description.
 5. If nothing is wrong, say so clearly - don't manufacture findings.

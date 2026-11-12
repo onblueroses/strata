@@ -235,7 +235,7 @@ if [[ -z "${DEEPSEEK_API_KEY:-}" ]] && [[ -f "${DELEGATE_ENV_FILE:-$HOME/.config
 fi
 
 # Run the agent
-ARGS=(--model "$MODEL")
+ARGS=(--model "$MODEL" --provider "${DS_AGENT_PROVIDER:-go}")  # OpenCode Go first (ruling of 2026-11-12); DS_AGENT_PROVIDER=deepseek for the direct API
 [[ -n "$SYSTEM" ]] && ARGS+=(--system "$SYSTEM")
 
 DS_USAGE_FILE="$(mktemp 2>/dev/null || true)"; export DS_USAGE_FILE  # ds_agent.py writes usage here

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the portable setup tree without third-party dependencies."""
+"""Validate the structure and links of the setup tree without third-party dependencies."""
 from __future__ import annotations
 
 import argparse
@@ -27,18 +27,10 @@ FORBIDDEN_TOP_LEVEL = {
 }
 PUBLIC_TOP_LEVEL = {
     ".github", "assistant-bridge", "claude", "codex", "decisions", "deepseek",
-    "delegation", "integrations", "kimi", "memory", "reference", "scripts",
-    "skills", "work",
+    "delegation", "kimi", "memory", "reference", "scripts",
+    "skills", "stewards", "work",
 }
 LINK_RE = re.compile(r"(?<!!)\[[^\]]*\]\(([^)]+)\)")
-ABSOLUTE_PATH_RE = re.compile(r"(?<![A-Za-z0-9])/(?:(?:home|Users)/[A-Za-z0-9_.-]+|root/[A-Za-z0-9_.-]+)")
-CREDENTIAL_RE = re.compile(
-    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
-    r"|\b(?:sk-|ghp_|github_pat_|xox[baprs]-)[A-Za-z0-9_-]{12,}"
-    r"|\bBearer\s+[A-Za-z0-9._~-]{16,}"
-    r"|\b(?:api[_-]?key|access[_-]?token|client[_-]?secret)\s*[:=]\s*['\"][^$<{\"']{8,}",
-    re.IGNORECASE,
-)
 
 
 def tracked_paths(root: Path) -> list[Path]:
@@ -149,42 +141,26 @@ def check_skill_frontmatter(root: Path, errors: list[str]) -> None:
                 errors.append(f"{path.relative_to(root)} frontmatter lacks {required}")
 
 
-def check_forbidden_and_secrets(root: Path, errors: list[str]) -> None:
-    paths = tracked_paths(root)
-    for relative in paths:
+def check_layout(root: Path, errors: list[str]) -> None:
+    for relative in tracked_paths(root):
         if not (root / relative).exists():
             continue
         if relative.parts and relative.parts[0] in FORBIDDEN_TOP_LEVEL:
             errors.append(f"forbidden legacy path is present: {relative}")
         if relative.parts and len(relative.parts) > 1 and relative.parts[0] not in PUBLIC_TOP_LEVEL:
             errors.append(f"unexpected top-level directory: {relative.parts[0]}")
-    for relative in paths:
-        path = root / relative
-        if not path.is_file() or ".git" in relative.parts:
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        if ABSOLUTE_PATH_RE.search(text):
-            errors.append(f"machine absolute path found in {relative}")
-        if CREDENTIAL_RE.search(text):
-            errors.append(f"credential-like value found in {relative}")
 
 
 def check_native_setup(root: Path, errors: list[str]) -> None:
     required = (
         "providers.toml", "claude/README.md", "claude/settings.example.json",
-        "claude/hooks.example.json", "claude/hcom-hooks.example.json",
-        "claude/hooks/gate-gh-public-actions.sh", "claude/hooks/gate-pre-push.sh",
-        "codex/hooks.example.json", "codex/hcom-hooks.example.json",
-        "codex/hooks/pre_tool_use.py",
+        "claude/hooks.example.json", "claude/hooks/optmem-wake.sh",
+        "codex/hooks.example.json", "codex/hooks/optmem_start.py",
         "deepseek/AGENTS.md", "deepseek/AGENTS.delegate.md", "deepseek/primary-overlay.example.yml",
         "deepseek/codex-provider.example.toml", "deepseek/provider.env.example",
         "deepseek/launch-adapter.sh", "kimi/config.example.toml", "kimi/AGENTS.md",
-        "delegation/codex-run.py", "delegation/wrappers/free-silo",
-        "delegation/wrappers/dsh-agent.example.yml", "integrations/hook_adapter.py",
-        "integrations/adapters.example.json",
+        "delegation/codex-run.py",
+        "delegation/wrappers/dsh-agent.example.yml",
     )
     for name in required:
         if not (root / name).is_file():
@@ -218,7 +194,7 @@ def check_native_setup(root: Path, errors: list[str]) -> None:
     for name in ("pickup-context", "close-session"):
         if not (root / "codex" / "skills" / name / "SKILL.md").is_file():
             errors.append(f"missing native Codex skill: {name}")
-    for name in ("cold-email", "outreach-atlas", "research-viz", "triage", "end", "context-save", "deploy"):
+    for name in ("research-viz", "triage", "end", "context-save", "deploy"):
         if not (root / "skills" / name / "SKILL.md").is_file():
             errors.append(f"missing active personal skill: {name}")
     for name in ("claude/hooks.example.json", "codex/hooks.example.json"):
@@ -228,15 +204,12 @@ def check_native_setup(root: Path, errors: list[str]) -> None:
         try:
             config = json.loads(path.read_text())
             commands = []
-            for group in config["hooks"]["PreToolUse"]:
+            for group in config["hooks"]["SessionStart"]:
                 for hook in group["hooks"]:
                     commands.append(hook["command"])
-            if name.startswith("claude/"):
-                required = ("gate-gh-public-actions.sh", "gate-pre-push.sh")
-            else:
-                required = ("pre_tool_use.py",)
-            if any(not any(marker in command for command in commands) for marker in required):
-                errors.append(f"{name} lacks a native privacy gate registration")
+            marker = "optmem-wake.sh" if name.startswith("claude/") else "optmem_start.py"
+            if not any(marker in command for command in commands):
+                errors.append(f"{name} lacks the native memory wake registration")
         except (ValueError, KeyError, TypeError) as exc:
             errors.append(f"invalid hook registration {name}: {exc}")
 
@@ -265,7 +238,7 @@ def main() -> int:
     check_config(root, errors)
     check_links(root, errors)
     check_skill_frontmatter(root, errors)
-    check_forbidden_and_secrets(root, errors)
+    check_layout(root, errors)
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)

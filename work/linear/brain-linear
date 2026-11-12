@@ -36,6 +36,7 @@ import json
 import math
 import os
 import re
+import shutil
 import signal
 import stat
 import subprocess
@@ -482,16 +483,29 @@ def cmd_passthrough(auth, argv):
         die("app mode refuses token overrides and linearis auth commands", 2)
     env = dict(os.environ)
     try:
-        version = subprocess.run(["linearis", "--version"], capture_output=True,
-                                 text=True, env=env).stdout.strip()
+        probe = subprocess.run(["linearis", "--version"], capture_output=True,
+                               text=True, env=env)
     except FileNotFoundError:
         die("linearis not installed (npm install -g linearis@" + LINEARIS_PIN + "); gql/pickup still work", 4)
+    except OSError as e:
+        detail = auth.redact(f"{type(e).__name__}: {e}")[:ERR_BODY_BYTES]
+        die(f"linearis --version could not start ({detail}); gql/pickup still work", 4)
+    version = probe.stdout.strip()
+    diagnostics = (
+        f"executable={shutil.which('linearis')!r}; exit {probe.returncode}; "
+        f"stdout={auth.redact(probe.stdout)[:ERR_BODY_BYTES]!r}; "
+        f"stderr={auth.redact(probe.stderr)[:ERR_BODY_BYTES]!r}"
+    )
+    if probe.returncode != 0 or not version:
+        reason = "failed" if probe.returncode != 0 else "returned an empty version"
+        die(f"linearis --version {reason} ({diagnostics}); gql/pickup still work", 4)
     if version != LINEARIS_PIN:
+        display_version = auth.redact(version)[:ERR_BODY_BYTES]
         if os.environ.get("BRAIN_LINEAR_ALLOW_DRIFT") == "1":
-            print(f"brain-linear: WARNING linearis {version} != pinned {LINEARIS_PIN} (drift allowed by env)",
+            print(f"brain-linear: WARNING linearis {display_version} != pinned {LINEARIS_PIN} (drift allowed by env)",
                   file=sys.stderr)
         else:
-            die(f"linearis {version} != pinned {LINEARIS_PIN}; run: npm install -g linearis@{LINEARIS_PIN}, or set BRAIN_LINEAR_ALLOW_DRIFT=1 for a deliberate upgrade", 4)
+            die(f"linearis {display_version} != pinned {LINEARIS_PIN} ({diagnostics}); run: npm install -g linearis@{LINEARIS_PIN}, or set BRAIN_LINEAR_ALLOW_DRIFT=1 for a deliberate upgrade", 4)
     if not auth.app:
         env["LINEAR_API_TOKEN"] = auth.token()
         sys.exit(subprocess.run(["linearis", *argv], env=env).returncode)

@@ -5,7 +5,7 @@ description: "Map what is known about a topic with question-led research lanes, 
 
 # Topic Atlas
 
-Third of the atlas family. `outreach-atlas` maps people, `discourse-atlas` maps niche writing, this one maps what is known about a topic: the claims, the numbers, the mechanisms, the cases, the tools, where sources disagree, and what nobody has settled.
+Part of the atlas family. `discourse-atlas` maps niche writing, this one maps what is known about a topic: the claims, the numbers, the mechanisms, the cases, the tools, where sources disagree, and what nobody has settled.
 
 **Goal**: answer the brief's questions from pages someone actually read, and leave a field map that the next session can extend instead of redoing.
 **Success means**: every atlas item carries a verbatim quote, its URL, its date and its evidence kind; every lane ends with a coverage section naming what it searched and what it could not reach; every claim the synthesis rests on was spot-checked on its page by the primary; disagreement between sources appears as a listed disagreement, never a silent pick; what the research could not establish is listed under Nulls with what was tried.
@@ -25,7 +25,7 @@ Check what is already here before any spend: `$MEMO_CMD recall '<topic regex>'`,
 
 ## The one structural rule
 
-Fleets write `raw/`; judgment writes the atlas and the synthesis. No script, fleet job or regex edits a curated file. The primary reads lane output critically, spot-checks on the page, and hand-picks what earns a line. Curation is the merge.
+Fleets write only to `raw/`; the atlas and the synthesis are written by hand after review. No script, fleet job or regex edits a curated file. The primary reads lane output critically, spot-checks on the page, and hand-picks what earns a line. Curation is the merge.
 
 ## Layout
 
@@ -63,7 +63,7 @@ Sections of atlas.md, in this order, each omitted when empty: Claims · Numbers 
 
 **Map.** Round 1 is wide: one lane per angle, 6 to 12 lanes, each a report rather than a list. Lanes are aimed at pages that describe something that happened or was measured; a lane aimed at rosters and overviews returns overviews. Every brief carries the partial-output rule: write the report incrementally, a partial report with a coverage note beats an exhaustive search that times out with nothing.
 
-**Check.** Before anything is curated or quoted: open the page behind every item the synthesis will rest on, confirm the quote and the date, record the outcome in `CHECKS.md`. In a prior fleet, all sampled quotes verified, while another synthesis caught a lane's wrong claim about a vendor rate limit by reading the primary page. Grade each lane in one line: reported, thin, failed, off-brief.
+**Check.** Before anything is curated or quoted: run `quote-check raw/out/*.md > raw/quote-check.tsv` on every round (it fetches the page behind each findings-table row and reports exact, partial, not found; ruling of 2026-11-10: always on free fleets), then open the page behind every item the synthesis will rest on, confirm the quote and the date, record the outcome in `CHECKS.md`. In a prior fleet, all sampled quotes verified, while another synthesis caught a lane's wrong claim about a vendor rate limit by reading the primary page. Grade each lane in one line: reported, thin, failed, off-brief.
 
 **Aim.** Round 2 goes where round 1 left holes: the Nulls, the disagreements, the claims that rest on one source, plus one "what we missed" lane that reads round 1's coverage sections and hunts the adjacent angles. Rounds live in `raw/r2/` and so on; a rerun never overwrites an output file.
 
@@ -75,24 +75,24 @@ Sections of atlas.md, in this order, each omitted when empty: Claims · Numbers 
 
 ## Runtime
 
-Default is the free route, because topic briefs are public inputs (the operator ruling 2026-09-17: continual mapping and web-research loops over public inputs run on free models, not the Codex subscription). `omp-search` runs Inkling inside `free-silo`: the model sees an empty jail, search is Codex-hosted through the bridge, and `--oneshot` leaves it read-only, so the report is its stdout:
+Default is a free model, because topic briefs are public inputs (the operator ruling 2026-09-17: continual mapping and web-research loops over public inputs run on free models, not the Codex subscription). Free models run only on public inputs, inside a sandbox with no view of the machine, and every quote they return is checked with `quote-check`. `LANE_RUNNER` names the read-only free-model runner; the report is its stdout:
 
 ```bash
-D="$RESEARCH_ROOT/$SLUG"; POOL=3
+D="$RESEARCH_ROOT/$SLUG"; POOL="${POOL:?set the pool width}"; RUN="${LANE_RUNNER:?set the lane runner}"
 for b in "$D"/raw/briefs/*.md; do
   n=$(basename "$b" .md); o="$D/raw/out/$n.md"
   [ -s "$o" ] && { echo "SKIP $n" >> "$D/raw/FLEET_PROGRESS"; continue; }
-  while [ "$(jobs -rp | wc -l)" -ge "$POOL" ]; do sleep 4; done
-  ( timeout 1000 omp-search --oneshot --max-time 15m "$(cat "$b")" > "$o" 2> "$D/raw/out/$n.err" \
+  while [ "$(jobs -rp | wc -l)" -ge "$POOL" ]; do wait -n; done
+  ( "$RUN" "$(cat "$b")" > "$o" 2> "$D/raw/out/$n.err" \
       && grep -q '## Coverage' "$o" && echo "OK   $n" || echo "FAIL $n" ) >> "$D/raw/FLEET_PROGRESS" 2>&1 &
 done; wait; touch "$D/raw/FLEET_DONE"
 ```
 
-Launch it detached (`nohup … &`), poll `FLEET_PROGRESS`; the Bash tool's 120 s cap kills a foreground fleet. Pool 3 to 4: every `:free` run on the key shares 20 requests a minute and 1,000 a day, and a 429 storm means the pool is too wide. `--model thinkingmachines/inkling:free` swaps in the larger model when a lane needs depth. `--search tavily` is the fallback when Codex search quota or rate limits bite, with worse sources.
+Launch it detached (`nohup … &`) and poll `FLEET_PROGRESS`, so a foreground command limit cannot end the fleet. Rate-limit errors mean the pool is too wide. The success test should accept `## 6. Coverage` as well as `## Coverage`; Luna numbers its sections.
 
-`codex-fast --web-search on --oneshot --file "$b" < /dev/null` (Luna, pool 8 to 12, as `phone-control-hub/run-lunas.sh`) when the brief must carry something private, when the question needs the subscription model's judgment, or when a free lane came back thin. Claude-side fan-out (`Agent` with `quick-research` or `general-purpose` on sonnet) is the small-fleet path for 2 to 4 lanes when no directory is wanted; it draws on the session's shared WebSearch budget, which 15 workers exhausted in minutes on 2026-09-06. No Fable subagents. Nuanced judgment (which of two contradicting sources is right, what the field is converging on) does not fleet on the bulk tier; it runs in the primary or on sol.
+`codex-fast --web-search on --oneshot --file "$b" < /dev/null` (Luna, a wider pool) when the brief must carry something private, when the question needs the subscription model's judgment, or when a free lane came back thin. Claude-side fan-out (`Agent` with `quick-research` or `general-purpose` on sonnet) is the small-fleet path for a few lanes when no directory is wanted; it draws on the session's shared WebSearch budget, which a wide fan-out exhausts quickly. No Fable subagents. Nuanced judgment (which of two contradicting sources is right, what the field is converging on) does not fleet on the bulk tier; it runs in the primary or on sol.
 
-Runner mechanics, pool semaphores, the `xargs -P` trap, killing by fleet path and the Codex browser-connector rule are in `outreach-atlas/references/fleet-recipes.md`; read it before the first fleet of a session. The lane brief template is `references/lane-brief.md`.
+Build the pool as the plain loop with a job-count semaphore above, never `xargs -P` with an exported function: that shape silently drops the job id. Kill a fleet by its directory path. The lane brief template is `references/lane-brief.md`.
 
 ## Rules
 
